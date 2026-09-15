@@ -1,0 +1,21 @@
+{
+  "name": "nexora-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NEXORA - AI-Powered Experience-First Learning Companion",
+  "scripts": {
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "powershell -Command \"if (Test-Path backend\\.venv\\Scripts\\python.exe) { .\\backend\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --port 8000 --app-dir backend } else { python -m uvicorn app.main:app --reload --port 8000 --app-dir backend }\"",
+    "build:frontend": "npm --prefix frontend run build",
+    "test:backend": "powershell -Command \"if (Test-Path backend\\.venv\\Scripts\\pytest.exe) { .\\backend\\.venv\\Scripts\\pytest.exe backend\\tests -v } else { pytest backend\\tests -v }\"",
+    "lint:frontend": "npm --prefix frontend run lint"
+  },
+  "keywords": [
+    "nexora",
+    "learning-companion",
+    "education",
+    "ai"
+  ],
+  "author": "NEXORA Team",
+  "license": "MIT"
+}
