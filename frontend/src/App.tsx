@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { MainLayout } from './layouts/MainLayout';
+import { AppShell } from './layouts/AppShell';
 import { HomePage } from './pages/HomePage';
 import { LearnPage } from './pages/LearnPage';
 import { MaterialsPage } from './pages/MaterialsPage';
@@ -15,7 +15,7 @@ export const App: React.FC = () => {
   return (
     <BrowserRouter>
       <Routes>
-        <Route element={<MainLayout />}>
+        <Route element={<AppShell />}>
           <Route path="/" element={<HomePage />} />
           <Route path="/learn" element={<LearnPage />} />
           <Route path="/materials" element={<MaterialsPage />} />
