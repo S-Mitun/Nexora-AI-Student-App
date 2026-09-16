@@ -1,10 +1,10 @@
 from typing import Generator, Optional
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
-from backend.app.db.session import get_db
-from backend.app.core.security import AuthenticatedUser, SecurityContext
-from backend.app.services.ai.base import AIProvider
-from backend.app.services.ai.factory import get_ai_provider
+from app.db.session import get_db
+from app.core.security import AuthenticatedUser, SecurityContext
+from app.services.ai.base import AIProvider
+from app.services.ai.factory import get_ai_provider
 
 
 def get_current_user(

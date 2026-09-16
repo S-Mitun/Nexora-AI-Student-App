@@ -1,7 +1,7 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
-from backend.app.api.dependencies import get_current_user
-from backend.app.core.security import AuthenticatedUser
+from app.api.dependencies import get_current_user
+from app.core.security import AuthenticatedUser
 
 router = APIRouter(prefix="/documents", tags=["Document Harmonization (Stage 06 Prep)"])
 

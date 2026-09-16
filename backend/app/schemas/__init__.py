@@ -1,6 +1,6 @@
-from backend.app.schemas.common import ErrorResponse, PaginationParams
-from backend.app.schemas.health import HealthResponse, SystemStatus
-from backend.app.schemas.learning import (
+from app.schemas.common import ErrorResponse, PaginationParams
+from app.schemas.health import HealthResponse, SystemStatus
+from app.schemas.learning import (
     SubjectRead,
     TopicRead,
     ConceptRead,
@@ -8,7 +8,7 @@ from backend.app.schemas.learning import (
     ConceptExploreRequest,
     ConceptExploreResponse,
 )
-from backend.app.schemas.chat import ChatSessionRead, ChatMessageCreate, ChatMessageRead
+from app.schemas.chat import ChatSessionRead, ChatMessageCreate, ChatMessageRead
 
 __all__ = [
     "ErrorResponse",

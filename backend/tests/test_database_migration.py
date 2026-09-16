@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
-from backend.app.core.config import Settings
-from backend.app.core.security import SecurityContext, AuthenticatedUser
+from app.core.config import Settings
+from app.core.security import SecurityContext, AuthenticatedUser
 
 
 def test_supabase_configuration_detection():

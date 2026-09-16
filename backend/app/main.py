@@ -5,12 +5,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 
-from backend.app.core.config import settings
-from backend.app.core.logging import logger
-from backend.app.db.base import Base
-from backend.app.db.session import engine
-from backend.app.api.v1.router import api_v1_router
-from backend.app.api.v1.routes.health import get_health
+from app.core.config import settings
+from app.core.logging import logger
+from app.db.base import Base
+from app.db.session import engine
+from app.api.v1.router import api_v1_router
+from app.api.v1.routes.health import get_health
 
 
 @asynccontextmanager

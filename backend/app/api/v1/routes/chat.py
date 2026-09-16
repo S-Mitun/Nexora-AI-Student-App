@@ -1,8 +1,8 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
-from backend.app.schemas.chat import ChatSessionRead, ChatMessageCreate, ChatMessageRead
-from backend.app.api.dependencies import get_current_user
-from backend.app.core.security import AuthenticatedUser
+from app.schemas.chat import ChatSessionRead, ChatMessageCreate, ChatMessageRead
+from app.api.dependencies import get_current_user
+from app.core.security import AuthenticatedUser
 
 router = APIRouter(prefix="/chat", tags=["AI Tutor & Chat Companion (Stage 06 Prep)"])
 

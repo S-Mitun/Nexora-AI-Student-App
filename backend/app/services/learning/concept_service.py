@@ -1,9 +1,9 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from backend.app.models.learning import Subject, Topic, Concept, LearningModule
-from backend.app.schemas.learning import ConceptExploreResponse
-from backend.app.services.ai.factory import get_ai_provider
-from backend.app.core.logging import logger
+from app.models.learning import Subject, Topic, Concept, LearningModule
+from app.schemas.learning import ConceptExploreResponse
+from app.services.ai.factory import get_ai_provider
+from app.core.logging import logger
 
 
 class ConceptService:

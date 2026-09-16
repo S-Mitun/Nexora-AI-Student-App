@@ -1,16 +1,16 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from backend.app.db.session import get_db
-from backend.app.schemas.learning import (
+from app.db.session import get_db
+from app.schemas.learning import (
     SubjectRead,
     ConceptRead,
     LearningModuleRead,
     ConceptExploreRequest,
     ConceptExploreResponse,
 )
-from backend.app.services.learning.concept_service import ConceptService
-from backend.app.core.logging import logger
+from app.services.learning.concept_service import ConceptService
+from app.core.logging import logger
 
 router = APIRouter(prefix="/learning", tags=["Learning Engine"])
 

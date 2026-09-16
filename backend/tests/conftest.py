@@ -14,9 +14,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from backend.app.main import app
-from backend.app.db.base import Base
-from backend.app.db.session import get_db
+from app.main import app
+from app.db.base import Base
+from app.db.session import get_db
 
 # Use in-memory SQLite database for isolated test execution
 TEST_DATABASE_URL = "sqlite:///:memory:"

@@ -2,7 +2,7 @@ import uuid
 from typing import Optional
 from sqlalchemy import String, Text, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from backend.app.db.base import Base, TimestampMixin
+from app.db.base import Base, TimestampMixin
 
 
 class Note(Base, TimestampMixin):

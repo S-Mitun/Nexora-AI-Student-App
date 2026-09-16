@@ -1,8 +1,8 @@
 import hashlib
 from typing import List, Dict, Any, Optional, Type
 from pydantic import BaseModel
-from backend.app.services.ai.base import AIProvider
-from backend.app.core.logging import logger
+from app.services.ai.base import AIProvider
+from app.core.logging import logger
 
 
 class MockAIProvider(AIProvider):

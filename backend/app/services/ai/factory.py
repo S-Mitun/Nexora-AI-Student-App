@@ -1,7 +1,7 @@
-from backend.app.core.config import settings
-from backend.app.services.ai.base import AIProvider
-from backend.app.services.ai.mock import MockAIProvider
-from backend.app.core.logging import logger
+from app.core.config import settings
+from app.services.ai.base import AIProvider
+from app.services.ai.mock import MockAIProvider
+from app.core.logging import logger
 
 _provider_instance: AIProvider = None
 

@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy import String, Text, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from backend.app.db.base import Base, TimestampMixin
+from app.db.base import Base, TimestampMixin
 
 
 class UserProfile(Base, TimestampMixin):

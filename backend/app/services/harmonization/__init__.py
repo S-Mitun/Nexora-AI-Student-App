@@ -1,4 +1,4 @@
-from backend.app.services.harmonization.service import (
+from app.services.harmonization.service import (
     DocumentHarmonizationService,
     UnifiedLearningRepresentation,
 )
