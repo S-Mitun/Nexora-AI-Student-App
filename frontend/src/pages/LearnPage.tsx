@@ -1,39 +1,82 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import {
-  Compass,
   ArrowLeft,
+  ArrowRight,
+  BookOpen,
   CheckCircle2,
   XCircle,
   Play,
   RotateCcw,
-  BookOpen,
-  HelpCircle,
+  Sliders,
   PenTool,
   Award,
-  Sparkles,
-  Layers,
   ChevronRight,
+  FolderKanban,
+  FileText,
+  HelpCircle,
 } from 'lucide-react';
 import { apiService } from '../services/api';
 import { ConceptExploreResult } from '../types/learning';
-import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import { Tabs } from '../components/ui/Tabs';
-import { WhyItMatters } from '../components/learning/WhyItMatters';
 import { VisualContainer } from '../components/learning/VisualContainer';
-import { ProgressiveJourney, LearningStepId } from '../components/learning/ProgressiveJourney';
 
 export const LearnPage: React.FC = () => {
-  const [searchParams] = useSearchParams();
-  const queryParam = searchParams.get('q') || 'Doppler Effect';
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const queryParam = searchParams.get('q');
 
-  const [loading, setLoading] = useState(true);
+  // --- STATE FOR "MY LEARNING" VIEW ---
+  const [learningFilter, setLearningFilter] = useState<'all' | 'in-progress' | 'completed'>('all');
+
+  const registeredCourses = [
+    {
+      id: 'course-cs',
+      subject: 'Data Structures & Algorithms',
+      slug: 'computer-science',
+      totalTopics: 12,
+      completedTopics: 5,
+      progress: 42,
+      currentTopic: 'Binary Search Algorithm',
+      lastLessonSlug: 'Binary Search',
+    },
+    {
+      id: 'course-phys',
+      subject: 'Wave Mechanics & Acoustics',
+      slug: 'physics',
+      totalTopics: 10,
+      completedTopics: 6,
+      progress: 60,
+      currentTopic: 'Doppler Effect',
+      lastLessonSlug: 'Doppler Effect',
+    },
+    {
+      id: 'course-math',
+      subject: 'Linear Algebra & Matrices',
+      slug: 'mathematics',
+      totalTopics: 8,
+      completedTopics: 2,
+      progress: 25,
+      currentTopic: 'Matrix Transformations',
+      lastLessonSlug: 'Matrix Transformations',
+    },
+    {
+      id: 'course-bio',
+      subject: 'Cellular Biology & Genetics',
+      slug: 'biology',
+      totalTopics: 6,
+      completedTopics: 1,
+      progress: 16,
+      currentTopic: 'Cellular Respiration',
+      lastLessonSlug: 'Cellular Respiration',
+    },
+  ];
+
+  // --- STATE FOR "TOPIC / LESSON" VIEW ---
+  const [loading, setLoading] = useState(false);
   const [conceptData, setConceptData] = useState<ConceptExploreResult | null>(null);
-  const [activeTab, setActiveTab] = useState<'visualize' | 'technical' | 'ask'>('visualize');
-  const [currentStep, setCurrentStep] = useState<LearningStepId>('visualize');
-  const [completedSteps, setCompletedSteps] = useState<LearningStepId[]>(['discover', 'why', 'understand']);
 
   // Simulation state for Doppler Effect
   const [sourceSpeed, setSourceSpeed] = useState<number>(40);
@@ -55,8 +98,13 @@ export const LearnPage: React.FC = () => {
   const [studentNote, setStudentNote] = useState<string>('');
   const [noteSaved, setNoteSaved] = useState<boolean>(false);
 
-  // Load concept decomposition from backend
+  // Load concept decomposition when queryParam exists
   useEffect(() => {
+    if (!queryParam) {
+      setConceptData(null);
+      return;
+    }
+
     let isMounted = true;
     setLoading(true);
     apiService
@@ -68,7 +116,7 @@ export const LearnPage: React.FC = () => {
           setSelectedAnswer(null);
           setQuizSubmitted(false);
 
-          // Restore student note for this concept if saved
+          // Restore student note for this topic
           const savedNote = localStorage.getItem(`nexora_note_${data.concept}`);
           if (savedNote) {
             setStudentNote(savedNote);
@@ -79,9 +127,7 @@ export const LearnPage: React.FC = () => {
       })
       .catch((err) => {
         console.error('Failed to explore concept:', err);
-        if (isMounted) {
-          setLoading(false);
-        }
+        if (isMounted) setLoading(false);
       });
 
     return () => {
@@ -111,21 +157,18 @@ export const LearnPage: React.FC = () => {
       ctx.fillStyle = '#090d16';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Emit new wavefront at interval = 1000 / sourceFreq
       const intervalMs = 1000 / sourceFreq;
       if (time - lastWaveTime > intervalMs) {
         waves.push({ x: sourceX, y: canvas.height / 2, r: 0 });
         lastWaveTime = time;
       }
 
-      // Move source
       sourceX += sourceSpeed / 60;
       if (sourceX > canvas.width - 60) {
         sourceX = 100;
         waves.length = 0;
       }
 
-      // Draw and expand waves
       for (let i = waves.length - 1; i >= 0; i--) {
         const w = waves[i];
         w.r += waveSpeed / 60;
@@ -141,7 +184,7 @@ export const LearnPage: React.FC = () => {
         }
       }
 
-      // Draw stationary observer on the right
+      // Draw stationary observer
       const obsX = canvas.width - 60;
       const obsY = canvas.height / 2;
       ctx.fillStyle = '#10b981';
@@ -158,293 +201,328 @@ export const LearnPage: React.FC = () => {
       ctx.arc(sourceX, canvas.height / 2, 9, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#ffffff';
-      ctx.fillText('Source', sourceX - 16, canvas.height / 2 - 14);
+      ctx.font = '11px Inter, sans-serif';
+      ctx.fillText('Source', sourceX - 16, canvas.height / 2 - 16);
 
       animationFrame = requestAnimationFrame(render);
     };
 
     animationFrame = requestAnimationFrame(render);
-    return () => cancelAnimationFrame(animationFrame);
+
+    return () => {
+      cancelAnimationFrame(animationFrame);
+    };
   }, [conceptData, sourceSpeed, sourceFreq, isSimRunning]);
 
-  // Binary Search Traversal Logic
+  // Binary search stepper reset
   useEffect(() => {
-    const history: Array<{ low: number; mid: number; high: number }> = [];
-    let low = 0;
-    let high = bsArray.length - 1;
-
-    while (low <= high) {
-      const mid = Math.floor((low + high) / 2);
-      history.push({ low, mid, high });
-      if (bsArray[mid] === bsTarget) break;
-      if (bsArray[mid] < bsTarget) {
-        low = mid + 1;
-      } else {
-        high = mid - 1;
+    if (conceptData?.simulation?.simulation_type === 'binary_search_stepper') {
+      const history: Array<{ low: number; mid: number; high: number }> = [];
+      let low = 0;
+      let high = bsArray.length - 1;
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        history.push({ low, mid, high });
+        if (bsArray[mid] === bsTarget) break;
+        if (bsArray[mid] < bsTarget) low = mid + 1;
+        else high = mid - 1;
       }
+      setBsHistory(history);
+      setBsStep(0);
     }
-    setBsHistory(history);
-    setBsStep(0);
-  }, [bsTarget]);
-
-  const handleSaveNote = () => {
-    if (!conceptData) return;
-    localStorage.setItem(`nexora_note_${conceptData.concept}`, studentNote);
-    setNoteSaved(true);
-    if (!completedSteps.includes('reflect')) {
-      setCompletedSteps((prev) => [...prev, 'reflect']);
-    }
-    setTimeout(() => setNoteSaved(false), 2500);
-  };
+  }, [conceptData, bsTarget]);
 
   const handleQuizSubmit = () => {
+    if (selectedAnswer === null) return;
     setQuizSubmitted(true);
-    if (
-      selectedAnswer === conceptData?.quick_check_answer_index &&
-      !completedSteps.includes('practice')
-    ) {
-      setCompletedSteps((prev) => [...prev, 'practice', 'master']);
-    }
   };
 
+  const handleSaveNote = () => {
+    if (!conceptData || !studentNote.trim()) return;
+    localStorage.setItem(`nexora_note_${conceptData.concept}`, studentNote);
+    
+    // Also append to global student notes if not present
+    const rawNotes = localStorage.getItem('nexora_student_notes');
+    let notes = [];
+    try {
+      notes = rawNotes ? JSON.parse(rawNotes) : [];
+    } catch (e) {
+      notes = [];
+    }
+    const existingIndex = notes.findIndex((n: any) => n.title === conceptData.concept);
+    const newNoteObj = {
+      id: `note-${Date.now()}`,
+      title: conceptData.concept,
+      content: studentNote,
+      subject: conceptData.domain,
+      updatedAt: 'Just now',
+    };
+    if (existingIndex >= 0) {
+      notes[existingIndex] = { ...notes[existingIndex], content: studentNote, updatedAt: 'Just now' };
+    } else {
+      notes.unshift(newNoteObj);
+    }
+    localStorage.setItem('nexora_student_notes', JSON.stringify(notes));
+
+    setNoteSaved(true);
+    setTimeout(() => setNoteSaved(false), 3000);
+  };
+
+  // -------------------------------------------------------------
+  // VIEW 1: MY LEARNING (Course Cards & Filter Tabs)
+  // -------------------------------------------------------------
+  if (!queryParam) {
+    const filteredCourses = registeredCourses.filter((course) => {
+      if (learningFilter === 'in-progress') return course.progress > 0 && course.progress < 100;
+      if (learningFilter === 'completed') return course.progress === 100;
+      return true;
+    });
+
+    return (
+      <div className="space-y-8 animate-fadeIn">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-nexora-border/60">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+              My Learning
+            </h1>
+            <p className="text-sm text-nexora-subtext mt-1">
+              Your active subjects, curriculum modules, and progress tracks.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-1.5 p-1 bg-nexora-surface rounded-xl border border-nexora-border/70">
+            <button
+              onClick={() => setLearningFilter('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                learningFilter === 'all' ? 'bg-nexora-primary text-white' : 'text-nexora-muted hover:text-white'
+              }`}
+            >
+              All Courses
+            </button>
+            <button
+              onClick={() => setLearningFilter('in-progress')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                learningFilter === 'in-progress' ? 'bg-nexora-primary text-white' : 'text-nexora-muted hover:text-white'
+              }`}
+            >
+              In Progress
+            </button>
+            <button
+              onClick={() => setLearningFilter('completed')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                learningFilter === 'completed' ? 'bg-nexora-primary text-white' : 'text-nexora-muted hover:text-white'
+              }`}
+            >
+              Completed
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {filteredCourses.map((course) => (
+            <Card key={course.id} className="border-nexora-border/80 flex flex-col justify-between">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-mono text-nexora-muted uppercase tracking-wider">
+                    {course.totalTopics} Topics &bull; {course.completedTopics} Completed
+                  </span>
+                  <Badge variant={course.progress > 50 ? 'accent' : 'neutral'} size="sm">
+                    {course.progress}%
+                  </Badge>
+                </div>
+                <CardTitle className="text-lg text-white">{course.subject}</CardTitle>
+                <CardDescription className="text-xs">
+                  Current Lesson: <strong className="text-white">{course.currentTopic}</strong>
+                </CardDescription>
+              </CardHeader>
+
+              <CardContent className="py-2">
+                <div className="w-full h-2 bg-nexora-elevated rounded-full overflow-hidden mb-3">
+                  <div
+                    className="h-full bg-nexora-primary rounded-full"
+                    style={{ width: `${course.progress}%` }}
+                  />
+                </div>
+              </CardContent>
+
+              <CardFooter className="pt-3 border-t border-nexora-border/40 flex justify-between items-center">
+                <Link to={`/subjects/${course.slug}`}>
+                  <Button variant="outline" size="sm">
+                    View Modules
+                  </Button>
+                </Link>
+                <Link to={`/learn?q=${encodeURIComponent(course.lastLessonSlug)}`}>
+                  <Button variant="primary" size="sm" rightIcon={<ChevronRight className="w-3.5 h-3.5" />}>
+                    Continue Lesson
+                  </Button>
+                </Link>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------
+  // VIEW 2: TOPIC / LESSON PAGE (Reading, Visual Model, Practice)
+  // -------------------------------------------------------------
   if (loading) {
     return (
-      <div className="py-24 text-center max-w-lg mx-auto">
-        <div className="w-12 h-12 border-3 border-nexora-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-        <h2 className="text-xl font-bold text-white">Decomposing Concept into Experience...</h2>
-        <p className="text-xs text-nexora-subtext mt-2 leading-relaxed">
-          Generating intuitive mental models, parameter simulations, and real-world engineering contexts.
-        </p>
+      <div className="py-16 text-center space-y-3">
+        <div className="w-10 h-10 border-2 border-nexora-primary border-t-transparent rounded-full animate-spin mx-auto" />
+        <p className="text-sm text-nexora-subtext">Loading structured lesson content...</p>
       </div>
     );
   }
 
   if (!conceptData) {
     return (
-      <div className="py-24 text-center max-w-md mx-auto">
-        <p className="text-nexora-subtext text-sm">Could not find concept experience for "{queryParam}".</p>
-        <Link to="/" className="inline-flex items-center gap-1.5 mt-4 text-xs font-semibold text-nexora-primary hover:underline">
-          <ArrowLeft className="w-3.5 h-3.5" /> Return to Explorer
-        </Link>
+      <div className="py-16 text-center space-y-4 max-w-md mx-auto">
+        <BookOpen className="w-12 h-12 text-nexora-muted mx-auto" />
+        <h2 className="text-lg font-bold text-white">Lesson Not Found</h2>
+        <p className="text-xs text-nexora-subtext">
+          Could not find a structured lesson for "{queryParam}". Check your syllabus or search another topic.
+        </p>
+        <Button variant="primary" size="sm" onClick={() => navigate('/learn')}>
+          Back to My Learning
+        </Button>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto">
-      {/* 1. Header & Context Breadcrumb */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-nexora-border/40">
+    <div className="space-y-8 animate-fadeIn max-w-4xl mx-auto">
+      {/* 1. Header & Navigation */}
+      <div>
         <Link
-          to="/"
-          className="inline-flex items-center gap-1.5 text-xs text-nexora-muted hover:text-white transition-colors"
+          to="/learn"
+          className="inline-flex items-center gap-1.5 text-xs text-nexora-muted hover:text-white transition-colors mb-3"
         >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Back to All Concepts</span>
+          <ArrowLeft className="w-3.5 h-3.5" /> Back to My Learning
         </Link>
-        <div className="flex items-center gap-2">
-          <Badge variant="accent" size="sm">
-            {conceptData.domain}
-          </Badge>
-          <Badge variant="primary" size="sm">
-            Interactive Experience
-          </Badge>
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-nexora-border/60">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-nexora-accent">
+                {conceptData.domain}
+              </span>
+              <span className="text-xs text-nexora-muted">&bull;</span>
+              <span className="text-xs text-nexora-muted">Structured Lesson</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight mt-1">
+              {conceptData.concept}
+            </h1>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Badge variant="accent" size="sm">
+              Curriculum Standard
+            </Badge>
+          </div>
         </div>
       </div>
 
-      {/* 2. Concept Title & Headline */}
-      <div>
-        <h1 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight leading-tight mb-2">
-          {conceptData.concept}
-        </h1>
-        <p className="text-base sm:text-lg text-nexora-subtext italic">
-          "{conceptData.tagline}"
+      {/* 2. Short Introduction & Key Points */}
+      <div className="p-5 rounded-2xl bg-nexora-surface border border-nexora-border/80 space-y-3">
+        <h2 className="text-sm font-bold uppercase tracking-wider text-nexora-muted">
+          Core Concept Summary
+        </h2>
+        <p className="text-sm text-nexora-text leading-relaxed font-medium">
+          {conceptData.simple_explanation}
         </p>
+        <div className="pt-2 border-t border-nexora-border/40">
+          <p className="text-xs text-nexora-subtext">
+            <strong className="text-white">Why it matters: </strong>
+            {conceptData.why_it_matters}
+          </p>
+        </div>
       </div>
 
-      {/* 3. The 10-Stage Progressive Learning Loop */}
-      <ProgressiveJourney
-        currentStep={currentStep}
-        completedSteps={completedSteps}
-        onSelectStep={(step) => setCurrentStep(step)}
-      />
-
-      {/* 4. First-Class "WHY DOES THIS EXIST?" Section */}
-      <WhyItMatters
-        whyAmILearningThis={conceptData.why_it_matters}
-        problemItSolved={
-          conceptData.concept === 'Doppler Effect'
-            ? 'Before Doppler, physics assumed wave emission was invariant to motion. It solved why distant galaxies shift spectrum and how moving wavefronts compress in space.'
-            : 'Linear scanning over millions of records took millions of operations. It solved massive sequential search bottlenecks by halving the search space at each comparison.'
-        }
-        whereItIsUsed={conceptData.practical_application}
-        whatWouldHappenWithoutIt={
-          conceptData.concept === 'Doppler Effect'
-            ? 'Without Doppler formulations, radar weather tracking, ultrasound echocardiograms, and Hubble redshift measurements would be physically impossible.'
-            : 'Without logarithmic search, database query indexes, version control bisect, and operating system symbol tables would experience crippling lag.'
-        }
-      />
-
-      {/* 5. Intuitive Mental Model ("SHOW ME, DON'T JUST TELL ME") */}
-      <Card variant="glass">
-        <CardHeader>
-          <div className="flex items-center gap-2 text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">
-            <Compass className="w-4 h-4" />
-            <span>Intuitive Mental Model</span>
-          </div>
-          <CardTitle className="text-lg">Observable Conceptual Intuition</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm sm:text-base text-nexora-text leading-relaxed">
-            {conceptData.simple_explanation}
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* 6. Interactive Stage: Visualize & Experiment */}
+      {/* 3. Interactive Lesson Model / Visual Container */}
       <VisualContainer
-        title={
-          conceptData.simulation.simulation_type === 'wave_compression'
-            ? 'Wavefront Compression Simulator'
-            : 'Divide-and-Conquer Search Step Trace'
-        }
-        subtitle={
-          conceptData.simulation.simulation_type === 'wave_compression'
-            ? 'Observe how wavefront density compresses ahead of the moving source and stretches behind it.'
-            : 'Watch the boundaries [low, mid, high] narrow down to the target index in log2(N) steps.'
-        }
-        modelType={
-          conceptData.simulation.simulation_type === 'wave_compression'
-            ? 'Wave Mechanics Simulation'
-            : 'Logarithmic Step Visualizer'
-        }
-        hasInteractiveModel={true}
-        onReset={() => {
-          setSourceSpeed(40);
-          setSourceFreq(2);
-          setBsStep(0);
-        }}
+        title={`Visual Model: ${conceptData.concept}`}
+        subtitle="Observe the core mechanics and adjust parameters to observe behavior directly."
+        modelType="Interactive Model"
         controls={
           conceptData.simulation.simulation_type === 'wave_compression' ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 bg-nexora-bg/60 p-4 rounded-xl border border-nexora-border/40">
-                <div>
-                  <div className="flex justify-between text-xs font-medium text-white mb-2">
-                    <span>Source Velocity:</span>
-                    <span className="font-mono text-nexora-accent">{sourceSpeed} m/s</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={90}
-                    step={5}
-                    value={sourceSpeed}
-                    onChange={(e) => setSourceSpeed(Number(e.target.value))}
-                    className="w-full accent-nexora-accent cursor-pointer"
-                  />
-                  <span className="text-[10px] text-nexora-muted block mt-1">
-                    Wave velocity in medium is fixed at 100 m/s.
-                  </span>
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-xs font-medium text-white mb-2">
-                    <span>Base Siren Frequency:</span>
-                    <span className="font-mono text-nexora-accent">{sourceFreq} Hz</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={1}
-                    max={5}
-                    step={0.5}
-                    value={sourceFreq}
-                    onChange={(e) => setSourceFreq(Number(e.target.value))}
-                    className="w-full accent-nexora-accent cursor-pointer"
-                  />
-                  <span className="text-[10px] text-nexora-muted block mt-1">
-                    Number of pulses emitted per second.
-                  </span>
-                </div>
-              </div>
-
-              {/* Live Calculation Output */}
-              <div className="p-3.5 rounded-xl bg-indigo-950/20 border border-indigo-500/20 flex flex-wrap items-center justify-between gap-2 text-xs">
-                <span className="text-indigo-300 font-medium">
-                  Observed Frequency at Stationary Observer:
-                </span>
-                <span className="font-mono text-emerald-400 font-bold text-sm">
-                  {(sourceFreq * (100 / (100 - sourceSpeed))).toFixed(2)} Hz{' '}
-                  <span className="text-xs font-normal text-nexora-muted">(Compressed Wavefronts)</span>
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-wrap items-center justify-between gap-4 bg-nexora-bg/60 p-4 rounded-xl border border-nexora-border/40">
-              <div className="text-xs">
-                <span className="text-nexora-muted">Target Number: </span>
-                <select
-                  value={bsTarget}
-                  onChange={(e) => setBsTarget(Number(e.target.value))}
-                  className="bg-nexora-elevated border border-nexora-border text-white px-2 py-1 rounded text-xs ml-1"
-                >
-                  {bsArray.map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
+            <div className="flex flex-wrap items-center gap-4 text-xs">
               <div className="flex items-center gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={bsStep === 0}
-                  onClick={() => setBsStep(Math.max(0, bsStep - 1))}
-                >
-                  Previous
-                </Button>
-                <span className="text-xs text-nexora-subtext px-2">
-                  Step {bsStep + 1} of {bsHistory.length}
-                </span>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  disabled={bsStep >= bsHistory.length - 1}
-                  onClick={() => setBsStep(Math.min(bsHistory.length - 1, bsStep + 1))}
-                >
-                  Next Step
-                </Button>
+                <span className="text-nexora-muted">Source Speed:</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="95"
+                  value={sourceSpeed}
+                  onChange={(e) => setSourceSpeed(Number(e.target.value))}
+                  className="w-24 accent-indigo-500 cursor-pointer"
+                />
+                <span className="font-mono text-white w-12">{sourceSpeed} m/s</span>
               </div>
-            </div>
-          )
-        }
-      >
-        {conceptData.simulation.simulation_type === 'wave_compression' ? (
-          <div>
-            <div className="flex justify-end mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-nexora-muted">Frequency:</span>
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  step="0.5"
+                  value={sourceFreq}
+                  onChange={(e) => setSourceFreq(Number(e.target.value))}
+                  className="w-20 accent-indigo-500 cursor-pointer"
+                />
+                <span className="font-mono text-white">{sourceFreq} Hz</span>
+              </div>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setIsSimRunning(!isSimRunning)}
-                leftIcon={<Play className="w-3.5 h-3.5" />}
               >
-                {isSimRunning ? 'Pause Animation' : 'Resume Animation'}
+                {isSimRunning ? 'Pause' : 'Resume'}
               </Button>
             </div>
-            <div className="w-full bg-[#090d16] rounded-xl border border-nexora-border/60 overflow-hidden flex justify-center">
-              <canvas ref={canvasRef} width={680} height={260} className="w-full h-auto max-w-full" />
+          ) : conceptData.simulation.simulation_type === 'binary_search_stepper' ? (
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-nexora-muted">
+                Step {bsStep + 1} of {Math.max(1, bsHistory.length)}
+              </span>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={bsStep <= 0}
+                onClick={() => setBsStep((s) => Math.max(0, s - 1))}
+              >
+                Previous Step
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={bsStep >= bsHistory.length - 1}
+                onClick={() => setBsStep((s) => Math.min(bsHistory.length - 1, s + 1))}
+              >
+                Next Step
+              </Button>
             </div>
+          ) : null
+        }
+      >
+        {conceptData.simulation.simulation_type === 'wave_compression' && (
+          <div className="w-full flex justify-center py-2">
+            <canvas
+              ref={canvasRef}
+              width={650}
+              height={260}
+              className="w-full max-w-[650px] h-[260px] rounded-xl bg-[#090d16] border border-nexora-border"
+            />
           </div>
-        ) : (
-          <div className="flex flex-wrap gap-2 justify-center py-6 bg-[#090d16] rounded-xl border border-nexora-border/60 p-4">
+        )}
+
+        {conceptData.simulation.simulation_type === 'binary_search_stepper' && (
+          <div className="py-6 flex flex-wrap justify-center gap-1.5 max-w-2xl mx-auto">
             {bsArray.map((val, idx) => {
-              const currentStepData = bsHistory[bsStep] || {
-                low: 0,
-                mid: 0,
-                high: bsArray.length - 1,
-              };
-              const isMid = idx === currentStepData.mid;
-              const inRange = idx >= currentStepData.low && idx <= currentStepData.high;
+              const currentH = bsHistory[bsStep] || { low: 0, mid: 0, high: bsArray.length - 1 };
+              const inRange = idx >= currentH.low && idx <= currentH.high;
+              const isMid = idx === currentH.mid;
 
               return (
                 <div
@@ -466,50 +544,45 @@ export const LearnPage: React.FC = () => {
         )}
       </VisualContainer>
 
-      {/* 7. Deep Dive Tabs: Technical Math & Socratic Questioning */}
-      <Card variant="glass">
-        <Tabs
-          items={[
-            { id: 'technical', label: 'Technical Formulation', icon: <BookOpen className="w-4 h-4" /> },
-            { id: 'ask', label: 'Ask AI Companion', icon: <Sparkles className="w-4 h-4" />, badge: 'Stage 06' },
-          ]}
-          activeId={activeTab}
-          onChange={(id) => setActiveTab(id as any)}
-          variant="underline"
-        />
-        <CardContent className="pt-6">
-          {activeTab === 'technical' ? (
-            <div className="space-y-3">
-              <h4 className="text-sm font-bold text-white">Mathematical & Physical Formulation</h4>
-              <div className="p-4 rounded-xl bg-[#090d16] border border-nexora-border font-mono text-xs sm:text-sm text-indigo-300 leading-relaxed">
-                {conceptData.technical_explanation}
-              </div>
+      {/* 4. Technical Explanation & Practical Applications */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card className="border-nexora-border/80">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-bold text-white flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-nexora-primary" />
+              Technical &amp; Mathematical Formulation
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="p-3.5 rounded-xl bg-nexora-bg border border-nexora-border font-mono text-xs text-indigo-300 leading-relaxed">
+              {conceptData.technical_explanation}
             </div>
-          ) : (
-            <div className="text-center py-6">
-              <Sparkles className="w-8 h-8 text-indigo-400 mx-auto mb-2" />
-              <h4 className="text-base font-bold text-white">Socratic Inquiry Ready</h4>
-              <p className="text-xs text-nexora-subtext max-w-md mx-auto mb-4">
-                Ask targeted follow-ups about {conceptData.concept} grounded against your uploaded materials.
-              </p>
-              <Link to="/chat">
-                <Button variant="primary" size="sm" rightIcon={<ChevronRight className="w-3.5 h-3.5" />}>
-                  Open AI Chat
-                </Button>
-              </Link>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {/* 8. Quick Concept Check / Practice */}
-      <Card variant="glass">
-        <CardHeader>
-          <div className="flex items-center gap-2 text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">
+        <Card className="border-nexora-border/80">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-bold text-white flex items-center gap-2">
+              <Award className="w-4 h-4 text-emerald-400" />
+              Practical Engineering Application
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs sm:text-sm text-nexora-subtext leading-relaxed">
+              {conceptData.practical_application}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 5. Concept Check Question */}
+      <Card className="border-nexora-border/80">
+        <CardHeader className="pb-2">
+          <div className="flex items-center gap-2 text-xs font-bold text-nexora-accent uppercase tracking-wider mb-1">
             <HelpCircle className="w-4 h-4" />
-            <span>Interactive Concept Verification</span>
+            <span>Concept Verification</span>
           </div>
-          <CardTitle className="text-base sm:text-lg">
+          <CardTitle className="text-base text-white">
             {conceptData.quick_check_question}
           </CardTitle>
         </CardHeader>
@@ -519,14 +592,10 @@ export const LearnPage: React.FC = () => {
               const isSelected = selectedAnswer === idx;
               const isCorrect = idx === conceptData.quick_check_answer_index;
 
-              let style =
-                'bg-nexora-elevated/70 border-nexora-border/70 text-nexora-subtext hover:border-nexora-primary/50';
+              let style = 'bg-nexora-elevated/70 border-nexora-border/70 text-nexora-subtext hover:border-nexora-primary/50';
               if (quizSubmitted) {
-                if (isCorrect) {
-                  style = 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-medium';
-                } else if (isSelected) {
-                  style = 'bg-rose-500/20 border-rose-500 text-rose-300';
-                }
+                if (isCorrect) style = 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-medium';
+                else if (isSelected) style = 'bg-rose-500/20 border-rose-500 text-rose-300';
               } else if (isSelected) {
                 style = 'bg-nexora-primary/20 border-nexora-primary text-white font-medium';
               }
@@ -536,13 +605,11 @@ export const LearnPage: React.FC = () => {
                   key={idx}
                   disabled={quizSubmitted}
                   onClick={() => setSelectedAnswer(idx)}
-                  className={`w-full text-left p-3.5 rounded-xl border text-xs sm:text-sm transition-all flex items-center justify-between cursor-pointer ${style}`}
+                  className={`w-full text-left p-3 rounded-xl border text-xs sm:text-sm transition-all flex items-center justify-between cursor-pointer ${style}`}
                 >
                   <span>{opt}</span>
                   {quizSubmitted && isCorrect && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
-                  {quizSubmitted && isSelected && !isCorrect && (
-                    <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                  )}
+                  {quizSubmitted && isSelected && !isCorrect && <XCircle className="w-4 h-4 text-rose-400 shrink-0" />}
                 </button>
               );
             })}
@@ -556,14 +623,14 @@ export const LearnPage: React.FC = () => {
                 disabled={selectedAnswer === null}
                 onClick={handleQuizSubmit}
               >
-                Verify Answer
+                Submit Answer
               </Button>
             ) : (
-              <div className="flex items-center gap-3">
+              <div className="flex items-center justify-between w-full">
                 <span className="text-xs font-semibold text-emerald-400">
                   {selectedAnswer === conceptData.quick_check_answer_index
-                    ? 'Correct! You understood the key mechanic.'
-                    : 'Review the intuitive mental model above to see why option A holds.'}
+                    ? 'Correct! You understood the key principle.'
+                    : 'Review the technical formulation above to verify the correct answer.'}
                 </span>
                 <Button
                   variant="ghost"
@@ -573,7 +640,7 @@ export const LearnPage: React.FC = () => {
                     setQuizSubmitted(false);
                   }}
                 >
-                  Reset
+                  Try Again
                 </Button>
               </div>
             )}
@@ -581,17 +648,17 @@ export const LearnPage: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* 9. Personal Notes & Student Journal */}
-      <Card variant="glass">
-        <CardHeader>
+      {/* 6. Student Study Notes */}
+      <Card className="border-nexora-border/80">
+        <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs font-bold text-white uppercase tracking-wider">
+            <CardTitle className="text-sm font-bold text-white flex items-center gap-2">
               <PenTool className="w-4 h-4 text-nexora-accent" />
-              <span>Personal Learning Journal</span>
-            </div>
+              Lesson Study Notes
+            </CardTitle>
             {noteSaved && (
               <span className="text-xs text-emerald-400 flex items-center gap-1 font-semibold">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Saved to Notes
+                <CheckCircle2 className="w-3.5 h-3.5" /> Saved
               </span>
             )}
           </div>
@@ -601,12 +668,12 @@ export const LearnPage: React.FC = () => {
             rows={3}
             value={studentNote}
             onChange={(e) => setStudentNote(e.target.value)}
-            placeholder={`Jot down your personal reflections or questions on ${conceptData.concept}...`}
-            className="w-full bg-[#090d16] rounded-xl border border-nexora-border p-3 text-xs sm:text-sm text-white placeholder-nexora-muted focus:ring-1 focus:ring-nexora-primary focus:outline-none"
+            placeholder={`Write your personal notes or takeaways for ${conceptData.concept}...`}
+            className="w-full bg-nexora-bg rounded-xl border border-nexora-border p-3 text-xs sm:text-sm text-white placeholder-nexora-muted focus:ring-1 focus:ring-nexora-primary focus:outline-none"
           />
           <div className="flex justify-between items-center">
             <span className="text-[11px] text-nexora-muted">
-              Notes are saved to your local journal and synchronized in Stage 09.
+              Notes are saved to your account and accessible in your Notes library.
             </span>
             <Button
               variant="secondary"
@@ -620,22 +687,18 @@ export const LearnPage: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* 10. Conceptual Mastery Status */}
-      <div className="p-4 rounded-2xl bg-nexora-surface/80 border border-nexora-border flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-            <Award className="w-5 h-5" />
-          </div>
-          <div>
-            <h5 className="text-xs font-bold text-white">Concept Status</h5>
-            <p className="text-[11px] text-nexora-muted">
-              {completedSteps.length} of 10 Learning Loop Milestones Completed
-            </p>
-          </div>
-        </div>
-        <Badge variant="success" size="md">
-          {completedSteps.includes('master') ? 'Mastered' : 'In Progress'}
-        </Badge>
+      {/* 7. Lesson Navigation: Previous & Next */}
+      <div className="flex items-center justify-between pt-4 border-t border-nexora-border/60">
+        <Link to="/learn">
+          <Button variant="outline" size="sm" leftIcon={<ArrowLeft className="w-3.5 h-3.5" />}>
+            Previous Topic
+          </Button>
+        </Link>
+        <Link to="/subjects">
+          <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+            Next Topic
+          </Button>
+        </Link>
       </div>
     </div>
   );

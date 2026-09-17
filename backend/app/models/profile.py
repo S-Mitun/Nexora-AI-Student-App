@@ -20,6 +20,9 @@ class UserProfile(Base, TimestampMixin):
     avatar_url: Mapped[str] = mapped_column(String(1024), nullable=True)
     education_level: Mapped[str] = mapped_column(String(100), default="undergraduate")
     preferred_language: Mapped[str] = mapped_column(String(50), default="en")
+    institution: Mapped[str] = mapped_column(String(255), nullable=True)
+    interests: Mapped[str] = mapped_column(Text, default="[]", nullable=True)
+    enable_code_mixing: Mapped[bool] = mapped_column(Boolean, default=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Relationships

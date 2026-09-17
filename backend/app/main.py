@@ -22,6 +22,19 @@ async def lifespan(app: FastAPI):
     # In development, auto-create database tables
     try:
         Base.metadata.create_all(bind=engine)
+        # Synchronize any missing columns for SQLite local development
+        if "sqlite" in str(engine.url):
+            from sqlalchemy import text
+            with engine.connect() as conn:
+                existing_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(profiles)"))}
+                if existing_cols:
+                    if "institution" not in existing_cols:
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN institution VARCHAR(255)"))
+                    if "interests" not in existing_cols:
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN interests JSON"))
+                    if "enable_code_mixing" not in existing_cols:
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN enable_code_mixing BOOLEAN DEFAULT 0"))
+                    conn.commit()
         logger.info("Database schema synchronized successfully.")
     except Exception as e:
         logger.error(f"Error creating database tables: {str(e)}")

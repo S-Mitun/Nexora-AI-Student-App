@@ -20,13 +20,13 @@ export const AppShell: React.FC = () => {
           <Outlet />
         </main>
 
-        <footer className="border-t border-nexora-border/50 py-5 text-center text-xs text-nexora-muted bg-nexora-bg/60 hidden lg:block">
-          <div className="max-w-7xl mx-auto px-4 flex items-center justify-between">
-            <span>
-              <strong className="text-nexora-subtext">NEXORA</strong> — Learn it. See it. Try it. Apply it. Master it.
+        <footer className="border-t border-nexora-border/50 py-4 text-xs text-nexora-muted bg-nexora-bg/60 hidden lg:block">
+          <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
+            <span className="font-medium text-nexora-subtext">
+              NEXORA
             </span>
-            <span className="font-mono text-[11px] text-nexora-muted">
-              Master Prompt 02 UI/UX System
+            <span className="text-[11px] text-nexora-muted">
+              Structured Digital Classroom &amp; Course Materials
             </span>
           </div>
         </footer>

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Search,
-  Sparkles,
   ArrowRight,
   Zap,
   Cpu,
@@ -10,45 +9,83 @@ import {
   Dna,
   BookOpen,
   Play,
-  RotateCcw,
-  FlaskConical,
-  MessageSquare,
-  Award,
   CheckCircle2,
   Clock,
   ChevronRight,
+  FolderKanban,
+  FileText,
+  TrendingUp,
 } from 'lucide-react';
 import { apiService } from '../services/api';
 import { Subject } from '../types/learning';
+import { useAuth } from '../context/AuthContext';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { SkeletonCard } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
 
 const EXAMPLE_QUERIES = [
   { label: 'Doppler Effect', domain: 'Physics' },
-  { label: 'Binary Search', domain: 'Algorithms' },
-  { label: 'Convolutional Neural Network', domain: 'Deep Learning' },
-  { label: 'Explain deadlock', domain: 'Operating Systems' },
-  { label: 'Why is normalization important?', domain: 'Databases' },
+  { label: 'Binary Search', domain: 'Computer Science' },
+  { label: 'Wave Mechanics', domain: 'Physics' },
+  { label: 'Operating Systems Deadlock', domain: 'Computer Science' },
+  { label: 'Database Normalization', domain: 'Computer Science' },
 ];
 
 export const HomePage: React.FC = () => {
+  const { user, profile } = useAuth();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loadingSubjects, setLoadingSubjects] = useState(true);
 
-  // Active student context (real educational progress state)
-  const [lastStudiedConcept] = useState({
-    title: 'Doppler Effect',
-    subject: 'Physics',
-    topic: 'Wave Mechanics',
-    lastStep: 'Visualizing Wave Compression',
-    completedStages: 4,
-    totalStages: 10,
-    slug: 'doppler-effect',
-  });
+  // Time-aware greeting
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
+
+  const studentName = profile?.full_name || user?.email?.split('@')[0] || 'Student';
+
+  // Active student in-progress course
+  const activeCourse = {
+    subject: 'Computer Science & Engineering',
+    courseTitle: 'Data Structures & Algorithms',
+    currentTopic: 'Arrays & Logarithmic Search',
+    lastLesson: 'Binary Search Mechanics',
+    completedTopics: 5,
+    totalTopics: 12,
+    progressPercent: 42,
+    targetUrl: '/learn?q=Binary%20Search',
+  };
+
+  // Recent student learning activity
+  const [recentActivities] = useState([
+    {
+      id: 'act-1',
+      title: 'Completed Lesson: Acoustic Wave Mechanics',
+      subject: 'Physics',
+      time: '2 hours ago',
+      icon: CheckCircle2,
+    },
+    {
+      id: 'act-2',
+      title: 'Added Note: Binary Search Midpoint Overflow',
+      subject: 'Data Structures',
+      time: 'Yesterday',
+      icon: FileText,
+    },
+    {
+      id: 'act-3',
+      title: 'Practiced 5 Concept Check Questions',
+      subject: 'Algorithms',
+      time: '2 days ago',
+      icon: TrendingUp,
+    },
+  ]);
 
   useEffect(() => {
     let isMounted = true;
@@ -76,11 +113,6 @@ export const HomePage: React.FC = () => {
     navigate(`/learn?q=${encodeURIComponent(query.trim())}`);
   };
 
-  const selectExample = (example: string) => {
-    setQuery(example);
-    navigate(`/learn?q=${encodeURIComponent(example)}`);
-  };
-
   const getSubjectIcon = (iconName: string) => {
     switch (iconName) {
       case 'Zap':
@@ -97,187 +129,165 @@ export const HomePage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-10">
-      {/* 1. Greeting & Daily Intent */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 border-b border-nexora-border/40">
+    <div className="space-y-8 animate-fadeIn">
+      {/* 1. Welcome Area */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-nexora-border/60">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-nexora-accent uppercase tracking-wider">
-              Student Workspace
-            </span>
-            <span className="text-xs text-nexora-muted">&bull;</span>
-            <span className="text-xs text-nexora-muted">Daily Learning Session</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mt-1">
-            Welcome back. What are you trying to understand today?
+          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+            {getGreeting()}, {studentName}
           </h1>
+          <p className="text-sm text-nexora-subtext mt-1">
+            Continue your structured learning journey across your registered courses.
+          </p>
         </div>
 
-        <Link to="/learn?q=Doppler%20Effect">
-          <Button
-            variant="primary"
-            size="sm"
-            leftIcon={<Play className="w-3.5 h-3.5" />}
-          >
-            Resume Active Session
+        <Link to={activeCourse.targetUrl}>
+          <Button variant="primary" size="sm" leftIcon={<Play className="w-3.5 h-3.5" />}>
+            Resume Learning
           </Button>
         </Link>
       </div>
 
-      {/* 2. Primary Action Hero: What are you trying to understand? */}
-      <div className="relative rounded-3xl p-6 sm:p-8 bg-gradient-to-br from-nexora-surface via-nexora-elevated to-nexora-surface border border-nexora-border/80 shadow-glow/30 overflow-hidden">
-        {/* Ambient background blur */}
-        <div className="absolute top-0 right-0 w-80 h-80 bg-nexora-primary/10 rounded-full blur-3xl pointer-events-none -mr-16 -mt-16" />
+      {/* 2. Educational Search & Concept Exploration */}
+      <div className="p-6 rounded-2xl bg-nexora-surface/80 border border-nexora-border/80">
+        <h2 className="text-base font-semibold text-white mb-1">
+          Explore a Topic or Subject
+        </h2>
+        <p className="text-xs text-nexora-muted mb-4">
+          Search for core concepts in your syllabus to view structured lesson breakdowns and examples.
+        </p>
 
-        <div className="relative z-10 max-w-3xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-nexora-primary/15 border border-nexora-primary/30 text-indigo-300 text-xs font-semibold uppercase tracking-wider mb-4">
-            <Sparkles className="w-3.5 h-3.5 text-nexora-accent" />
-            SHOW ME, DON'T JUST TELL ME
+        <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-2.5 max-w-3xl mb-3">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-nexora-muted absolute left-3.5 top-3.5 pointer-events-none" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search concepts or topics (e.g. Doppler Effect, Binary Search, Deadlock)..."
+              className="w-full bg-nexora-bg border border-nexora-border text-white text-xs sm:text-sm rounded-xl pl-10 pr-4 py-2.5 placeholder-nexora-muted focus:outline-none focus:border-nexora-primary focus:ring-1 focus:ring-nexora-primary"
+            />
           </div>
+          <Button type="submit" variant="primary" size="md" rightIcon={<ArrowRight className="w-4 h-4" />}>
+            Open Lesson
+          </Button>
+        </form>
 
-          <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight leading-snug mb-3">
-            You're already learning. <br />
-            <span className="bg-gradient-to-r from-indigo-400 via-purple-300 to-cyan-400 bg-clip-text text-transparent">
-              NEXORA helps you understand difficult concepts.
-            </span>
-          </h2>
-
-          <p className="text-xs sm:text-sm text-nexora-subtext max-w-2xl leading-relaxed mb-6">
-            Keep your lectures, textbooks, and syllabus. When you hit a theoretical wall, NEXORA transforms it into an intuitive, observable experience.
-          </p>
-
-          {/* Search Box */}
-          <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-2 max-w-2xl mb-4">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-nexora-muted absolute left-3.5 top-3.5 pointer-events-none" />
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="What concept do you find difficult? (e.g. Doppler Effect, Binary Search, CNN)"
-                className="w-full bg-nexora-bg/90 border border-nexora-border text-white text-sm rounded-xl pl-10 pr-4 py-3 placeholder-nexora-muted focus:outline-none focus:border-nexora-primary focus:ring-1 focus:ring-nexora-primary"
-              />
-            </div>
-            <Button type="submit" variant="primary" size="md" rightIcon={<ArrowRight className="w-4 h-4" />}>
-              Explore Concept
-            </Button>
-          </form>
-
-          {/* Quick Concept Chips */}
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="text-nexora-muted font-medium">Quick explore:</span>
-            {EXAMPLE_QUERIES.map((item, idx) => (
-              <button
-                key={idx}
-                onClick={() => selectExample(item.label)}
-                className="px-2.5 py-1 rounded-lg bg-nexora-bg/70 border border-nexora-border/70 text-nexora-subtext hover:text-white hover:border-nexora-primary/50 transition-colors cursor-pointer"
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-nexora-muted font-medium">Suggested topics:</span>
+          {EXAMPLE_QUERIES.map((item, idx) => (
+            <button
+              key={idx}
+              onClick={() => navigate(`/learn?q=${encodeURIComponent(item.label)}`)}
+              className="px-2.5 py-1 rounded-lg bg-nexora-bg/90 border border-nexora-border text-nexora-subtext hover:text-white hover:border-nexora-primary/50 transition-colors cursor-pointer"
+            >
+              {item.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* 3. Continue Learning & Recommended Next Action Grid */}
+      {/* 3. Continue Learning & Overall Progress Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Continue Learning Card */}
         <Card variant="interactive" className="lg:col-span-2">
           <CardHeader>
             <div className="flex items-center justify-between">
               <Badge variant="accent" size="sm" hasDot>
-                Active Learning Journey
+                Continue Learning
               </Badge>
               <span className="text-xs text-nexora-muted flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5" /> Recent
               </span>
             </div>
-            <CardTitle className="mt-2 text-xl">{lastStudiedConcept.title}</CardTitle>
+            <CardTitle className="mt-2 text-xl">{activeCourse.courseTitle}</CardTitle>
             <CardDescription>
-              {lastStudiedConcept.subject} &bull; {lastStudiedConcept.topic}
+              {activeCourse.subject} &bull; {activeCourse.currentTopic}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="p-4 rounded-xl bg-nexora-bg/70 border border-nexora-border/60 mb-4">
               <div className="flex justify-between text-xs font-semibold text-white mb-2">
-                <span>Current Step: {lastStudiedConcept.lastStep}</span>
+                <span>Current Lesson: {activeCourse.lastLesson}</span>
                 <span className="text-nexora-accent">
-                  Step {lastStudiedConcept.completedStages} of {lastStudiedConcept.totalStages}
+                  {activeCourse.completedTopics} of {activeCourse.totalTopics} Topics Completed
                 </span>
               </div>
-              <div className="w-full h-2 bg-nexora-elevated rounded-full overflow-hidden">
+              <div className="w-full h-2.5 bg-nexora-elevated rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-indigo-500 to-cyan-500 rounded-full"
-                  style={{
-                    width: `${(lastStudiedConcept.completedStages / lastStudiedConcept.totalStages) * 100}%`,
-                  }}
+                  className="h-full bg-nexora-primary rounded-full"
+                  style={{ width: `${activeCourse.progressPercent}%` }}
                 />
               </div>
+              <div className="flex justify-between items-center mt-2 text-[11px] text-nexora-muted">
+                <span>Progress: {activeCourse.progressPercent}%</span>
+                <span>Next: Divide &amp; Conquer Space Partitioning</span>
+              </div>
             </div>
-            <p className="text-xs text-nexora-subtext leading-relaxed">
-              You tested wave propagation at 40 m/s. Next, observe frequency compression when the source approaches the speed of sound.
-            </p>
           </CardContent>
-          <CardFooter>
-            <span className="text-xs text-emerald-400 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Simulation active
+          <CardFooter className="flex justify-between items-center pt-0">
+            <span className="text-xs text-nexora-subtext">
+              Recommended for your study plan
             </span>
-            <Link to={`/learn?q=${encodeURIComponent(lastStudiedConcept.title)}`}>
+            <Link to={activeCourse.targetUrl}>
               <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
-                Continue Concept
+                Continue Lesson
               </Button>
             </Link>
           </CardFooter>
         </Card>
 
-        {/* Quick Launch Shortcuts: AI Chat & Labs */}
-        <div className="space-y-4">
-          <Card variant="interactive">
-            <Link to="/chat" className="block p-5">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-9 h-9 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-                  <MessageSquare className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-white">Ask AI Companion</h4>
-                  <p className="text-[11px] text-nexora-muted">Socratic & textbook grounded</p>
-                </div>
+        {/* Overall Progress Widget */}
+        <Card className="flex flex-col justify-between">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-nexora-accent" />
+              Overall Progress
+            </CardTitle>
+            <CardDescription>Cumulative course completion</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="text-center py-3">
+              <div className="text-4xl font-extrabold text-white mb-1">68%</div>
+              <p className="text-xs text-nexora-subtext">Course requirements on schedule</p>
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs text-nexora-subtext">
+                <span>Completed Lessons</span>
+                <span className="font-semibold text-white">18 Lessons</span>
               </div>
-              <p className="text-xs text-nexora-subtext leading-relaxed">
-                Stuck on a homework problem or formula? Ask for intuitive analogies and step-by-step breakdowns.
-              </p>
-            </Link>
-          </Card>
-
-          <Card variant="interactive">
-            <Link to="/labs" className="block p-5">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-9 h-9 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
-                  <FlaskConical className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-white">Virtual Laboratories</h4>
-                  <p className="text-[11px] text-nexora-muted">Simulate & experiment</p>
-                </div>
+              <div className="flex justify-between text-xs text-nexora-subtext">
+                <span>Practice Checks Passed</span>
+                <span className="font-semibold text-white">24 Quizzes</span>
               </div>
-              <p className="text-xs text-nexora-subtext leading-relaxed">
-                Tune physics parameters, explore algorithm step trees, and observe mechanics live.
-              </p>
+              <div className="flex justify-between text-xs text-nexora-subtext">
+                <span>Active Subjects</span>
+                <span className="font-semibold text-white">4 Courses</span>
+              </div>
+            </div>
+          </CardContent>
+          <CardFooter className="pt-2 border-t border-nexora-border/40">
+            <Link to="/progress" className="w-full">
+              <Button variant="outline" size="sm" className="w-full">
+                View Full Progress
+              </Button>
             </Link>
-          </Card>
-        </div>
+          </CardFooter>
+        </Card>
       </div>
 
-      {/* 4. Curriculum Domains (Connected to live API) */}
+      {/* 4. My Subjects */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-xl font-bold text-white tracking-tight">Curriculum Domains</h3>
-            <p className="text-xs text-nexora-muted">Foundational STEM subjects configured for conceptual mastery</p>
+            <h2 className="text-xl font-bold text-white tracking-tight">My Subjects</h2>
+            <p className="text-xs text-nexora-muted">Structured curriculum modules and course tracks</p>
           </div>
-          <Badge variant="neutral" size="sm">
-            Live Database Feed
-          </Badge>
+          <Link to="/subjects">
+            <Button variant="ghost" size="sm" rightIcon={<ChevronRight className="w-4 h-4" />}>
+              View All Subjects
+            </Button>
+          </Link>
         </div>
 
         {loadingSubjects ? (
@@ -288,72 +298,111 @@ export const HomePage: React.FC = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {subjects.map((sub) => (
-              <Card
-                key={sub.id}
-                variant="interactive"
-                onClick={() => navigate(`/learn?subject=${sub.slug}`)}
-                className="group"
-              >
-                <CardHeader className="pb-2">
-                  <div className="w-10 h-10 rounded-xl bg-nexora-elevated flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                    {getSubjectIcon(sub.icon)}
-                  </div>
-                  <CardTitle className="text-base group-hover:text-nexora-accent transition-colors">
-                    {sub.name}
-                  </CardTitle>
-                  <CardDescription className="line-clamp-2">
-                    {sub.description}
-                  </CardDescription>
-                </CardHeader>
-                <CardFooter className="pt-3">
-                  <span className="text-[11px] text-nexora-muted">
-                    {sub.concept_count} foundational concepts
-                  </span>
-                  <ChevronRight className="w-4 h-4 text-nexora-muted group-hover:text-white transition-colors" />
-                </CardFooter>
-              </Card>
-            ))}
+            {subjects.map((sub, idx) => {
+              // Educational subject progress calculations
+              const progressMap: Record<string, { pct: number; lastTopic: string }> = {
+                physics: { pct: 75, lastTopic: 'Wave Mechanics' },
+                'computer-science': { pct: 42, lastTopic: 'Binary Search' },
+                mathematics: { pct: 30, lastTopic: 'Linear Algebra' },
+                biology: { pct: 15, lastTopic: 'Cellular Respiration' },
+              };
+              const subMeta = progressMap[sub.slug] || { pct: 20 * (idx + 1), lastTopic: 'Foundations' };
+
+              return (
+                <Card
+                  key={sub.id}
+                  variant="interactive"
+                  onClick={() => navigate(`/subjects/${sub.slug}`)}
+                  className="group flex flex-col justify-between"
+                >
+                  <CardHeader className="pb-2">
+                    <div className="w-10 h-10 rounded-xl bg-nexora-elevated flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                      {getSubjectIcon(sub.icon)}
+                    </div>
+                    <CardTitle className="text-base group-hover:text-nexora-accent transition-colors">
+                      {sub.name}
+                    </CardTitle>
+                    <CardDescription className="line-clamp-2 text-xs">
+                      {sub.description}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="py-2">
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-[11px] text-nexora-muted">
+                        <span>Progress</span>
+                        <span className="font-semibold text-white">{subMeta.pct}%</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-nexora-elevated rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-nexora-primary rounded-full"
+                          style={{ width: `${subMeta.pct}%` }}
+                        />
+                      </div>
+                      <p className="text-[10px] text-nexora-subtext truncate">
+                        Last: {subMeta.lastTopic}
+                      </p>
+                    </div>
+                  </CardContent>
+                  <CardFooter className="pt-2 border-t border-nexora-border/40">
+                    <span className="text-[11px] text-nexora-muted">
+                      {sub.concept_count} topics
+                    </span>
+                    <span className="text-xs font-semibold text-nexora-primary group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+                      Open <ChevronRight className="w-3.5 h-3.5" />
+                    </span>
+                  </CardFooter>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>
 
-      {/* 5. The NEXORA 10-Stage Learning Loop Overview */}
-      <div className="glass-panel rounded-2xl p-6 border border-nexora-border/60">
-        <div className="flex items-center gap-2 mb-2">
-          <Award className="w-4 h-4 text-emerald-400" />
-          <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-            NEXORA Experiential Pathway
-          </h4>
+      {/* 5. Recent Activity */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-xl font-bold text-white tracking-tight">Recent Activity</h2>
+            <p className="text-xs text-nexora-muted">Your latest completed lessons, practice runs, and notes</p>
+          </div>
         </div>
-        <p className="text-xs text-nexora-muted mb-4 max-w-xl">
-          Students do not learn through summaries alone. NEXORA structures each concept into ten active comprehension stages:
-        </p>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-center text-xs">
-          {[
-            { num: '01', title: 'DISCOVER', desc: 'Identify core problem' },
-            { num: '02', title: 'WHY?', desc: 'Real-world anchor' },
-            { num: '03', title: 'UNDERSTAND', desc: 'Intuitive mental model' },
-            { num: '04', title: 'VISUALIZE', desc: 'Observable motion' },
-            { num: '05', title: 'EXPERIMENT', desc: 'Tune live variables' },
-            { num: '06', title: 'APPLY', desc: 'Practical engineering' },
-            { num: '07', title: 'ASK', desc: 'Socratic dialogue' },
-            { num: '08', title: 'PRACTICE', desc: 'Concept checks' },
-            { num: '09', title: 'REFLECT', desc: 'Personal notes' },
-            { num: '10', title: 'MASTER', desc: 'Retention & transfer' },
-          ].map((step) => (
-            <div
-              key={step.num}
-              className="p-2.5 rounded-xl bg-nexora-elevated/50 border border-nexora-border/40 text-left"
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="font-mono text-[10px] text-nexora-accent">{step.num}</span>
-                <span className="font-bold text-[11px] text-white">{step.title}</span>
-              </div>
-              <span className="text-[10px] text-nexora-muted line-clamp-1">{step.desc}</span>
-            </div>
-          ))}
-        </div>
+
+        {recentActivities.length === 0 ? (
+          <EmptyState
+            icon={<Clock className="w-6 h-6 text-nexora-muted" />}
+            title="No activity yet"
+            description="Your recent lesson completions, practice tests, and study notes will appear here."
+            action={
+              <Link to="/learn">
+                <Button variant="primary" size="sm">Start a Lesson</Button>
+              </Link>
+            }
+          />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {recentActivities.map((act) => {
+              const Icon = act.icon;
+              return (
+                <div
+                  key={act.id}
+                  className="p-4 rounded-xl bg-nexora-surface/80 border border-nexora-border/70 flex items-start gap-3"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-nexora-elevated flex items-center justify-center text-nexora-accent shrink-0 mt-0.5">
+                    <Icon className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-xs font-semibold text-white truncate">{act.title}</h3>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[11px] text-nexora-primary font-medium">{act.subject}</span>
+                      <span className="text-xs text-nexora-border">&bull;</span>
+                      <span className="text-[10px] text-nexora-muted">{act.time}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

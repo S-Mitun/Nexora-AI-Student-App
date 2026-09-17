@@ -9,6 +9,8 @@ from app.schemas.learning import (
     ConceptExploreResponse,
 )
 from app.schemas.chat import ChatSessionRead, ChatMessageCreate, ChatMessageRead
+from app.schemas.profile import ProfileRead, ProfileUpdate, ProfileCreate
+from app.schemas.auth import UserContextResponse
 
 __all__ = [
     "ErrorResponse",
@@ -24,4 +26,8 @@ __all__ = [
     "ChatSessionRead",
     "ChatMessageCreate",
     "ChatMessageRead",
+    "ProfileRead",
+    "ProfileUpdate",
+    "ProfileCreate",
+    "UserContextResponse",
 ]

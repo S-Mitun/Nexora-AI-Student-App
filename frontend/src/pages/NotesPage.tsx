@@ -1,417 +1,427 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  BookMarked, 
-  Plus, 
-  Search, 
-  Sparkles, 
-  User, 
-  Calendar, 
-  Tag, 
-  Trash2, 
-  Save, 
-  Edit3, 
-  ArrowRight,
+import {
+  BookMarked,
+  Plus,
+  Search,
+  Trash2,
+  Edit3,
+  Calendar,
+  FolderKanban,
   CheckCircle2,
+  X,
   FileText,
-  Star
+  Save,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import { Input } from '../components/ui/Input';
-import { Tabs } from '../components/ui/Tabs';
-import { Callout } from '../components/ui/Callout';
 import { EmptyState } from '../components/ui/EmptyState';
-import { Link } from 'react-router-dom';
 
-interface Note {
+export interface StudentNote {
   id: string;
   title: string;
+  subject: string;
   content: string;
-  authorType: 'student' | 'ai';
-  conceptTag: string;
   updatedAt: string;
-  starred: boolean;
 }
 
-const DEFAULT_NOTES: Note[] = [
+const DEFAULT_STUDENT_NOTES: StudentNote[] = [
   {
     id: 'note-1',
-    title: 'Doppler Effect Wavefront Intuition',
-    content: `When the wave source moves, the emitted wavefronts don't speed up—they stay at speed 'v'.\n\nInstead, the center of each consecutive sphere is shifted forward by (v_s * Δt). Ahead of the source, consecutive crests are crammed closer together (λ' < λ), causing higher frequency.\n\nCrucial for exams: If v_s = v, wavefronts stack directly on top of each other (Mach 1 shock wave).`,
-    authorType: 'student',
-    conceptTag: 'Doppler Effect',
+    title: 'Doppler Effect Wavefront Mechanics',
+    subject: 'Physics',
+    content:
+      "When the wave source moves, emitted wavefronts do not speed up—they remain at propagation speed 'v'.\n\nInstead, the geometric center of each consecutive sphere is shifted forward by (v_s * Δt). Ahead of the moving source, consecutive crests are compressed together (λ' < λ), producing higher observed frequency.\n\nExam Tip: If v_s approaches v, wavefronts pile up into a high-pressure shock cone (Mach 1).",
     updatedAt: 'Today at 4:15 PM',
-    starred: true
   },
   {
     id: 'note-2',
-    title: 'Binary Search Midpoint Calculation Gotcha',
-    content: `Never write: mid = (low + high) / 2;\n\nIn languages with 32-bit signed integers (C++, Java), if low and high are large (e.g. > 10^9), the sum overflows into negative numbers!\n\nCorrect formula: mid = low + (high - low) / 2;\n\nAlso remember: Binary search requires random access (O(1)) like arrays. On linked lists, finding mid takes O(N), defeating the purpose.`,
-    authorType: 'student',
-    conceptTag: 'Binary Search',
+    title: 'Binary Search Midpoint Overflow Protection',
+    subject: 'Computer Science',
+    content:
+      'Avoid writing: mid = (low + high) / 2;\n\nIn standard 32-bit signed integers, if low and high are large (e.g. > 10^9), the sum overflows into negative values!\n\nStandard robust formulation: mid = low + (high - low) / 2;\n\nKey requirement: Binary search strictly requires random access memory arrays (O(1)). On singly linked lists, finding midpoint requires O(N) sequential traversal.',
     updatedAt: 'Yesterday',
-    starred: true
   },
   {
     id: 'note-3',
-    title: 'AI Synthesis: Acoustic Radar & Redshift Comparison',
-    content: `Key Parallel:\n1. Acoustic Doppler uses sound waves moving through air (medium dependent, governed by classical Doppler formula).\n2. Optical Redshift uses electromagnetic radiation in vacuum (medium independent, governed by Special Relativistic Doppler: f_obs = f_src * sqrt((1 - β)/(1 + β))).\n\nBoth reflect the fundamental geometry of moving sources relative to wavefront propagation.`,
-    authorType: 'ai',
-    conceptTag: 'Doppler Effect',
+    title: 'Matrix Coordinate Transformations & Basis Vectors',
+    subject: 'Mathematics',
+    content:
+      'A matrix transformation can be visualized simply as describing where the standard basis vectors i-hat (1, 0) and j-hat (0, 1) land in the transformed space.\n\nThe determinant represents the factor by which any unit area scales under the transformation.',
     updatedAt: 'Sep 14, 2026',
-    starred: false
-  }
+  },
 ];
 
 export const NotesPage: React.FC = () => {
-  const [notes, setNotes] = useState<Note[]>(() => {
+  const [notes, setNotes] = useState<StudentNote[]>(() => {
     const saved = localStorage.getItem('nexora_student_notes');
     if (saved) {
       try {
         return JSON.parse(saved);
       } catch (e) {
-        return DEFAULT_NOTES;
+        return DEFAULT_STUDENT_NOTES;
       }
     }
-    return DEFAULT_NOTES;
+    return DEFAULT_STUDENT_NOTES;
   });
 
-  const [activeFilter, setActiveFilter] = useState<'all' | 'student' | 'ai' | 'starred'>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'recent' | 'by-subject'>('all');
+  const [selectedSubject, setSelectedSubject] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedNoteId, setSelectedNoteId] = useState<string>(notes[0]?.id || '');
-  const [isEditing, setIsEditing] = useState<boolean>(false);
-  const [editTitle, setEditTitle] = useState('');
-  const [editContent, setEditContent] = useState('');
-  const [editTag, setEditTag] = useState('');
-  const [saveAlert, setSaveAlert] = useState<string | null>(null);
+
+  // Modal / Editor State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalSubject, setModalSubject] = useState('Computer Science');
+  const [modalContent, setModalContent] = useState('');
+
+  // View note detail state
+  const [viewingNote, setViewingNote] = useState<StudentNote | null>(null);
 
   useEffect(() => {
     localStorage.setItem('nexora_student_notes', JSON.stringify(notes));
   }, [notes]);
 
-  const selectedNote = notes.find(n => n.id === selectedNoteId) || notes[0];
+  const handleOpenCreateModal = () => {
+    setEditingNoteId(null);
+    setModalTitle('');
+    setModalSubject('Computer Science');
+    setModalContent('');
+    setIsModalOpen(true);
+  };
 
-  useEffect(() => {
-    if (selectedNote) {
-      setEditTitle(selectedNote.title);
-      setEditContent(selectedNote.content);
-      setEditTag(selectedNote.conceptTag);
+  const handleOpenEditModal = (note: StudentNote) => {
+    setEditingNoteId(note.id);
+    setModalTitle(note.title);
+    setModalSubject(note.subject);
+    setModalContent(note.content);
+    setIsModalOpen(true);
+  };
+
+  const handleSaveNote = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!modalTitle.trim()) return;
+
+    if (editingNoteId) {
+      // Edit existing
+      setNotes(
+        notes.map((n) =>
+          n.id === editingNoteId
+            ? {
+                ...n,
+                title: modalTitle.trim(),
+                subject: modalSubject,
+                content: modalContent,
+                updatedAt: 'Just now',
+              }
+            : n
+        )
+      );
+    } else {
+      // Create new
+      const newNote: StudentNote = {
+        id: `note-${Date.now()}`,
+        title: modalTitle.trim(),
+        subject: modalSubject,
+        content: modalContent,
+        updatedAt: 'Just now',
+      };
+      setNotes([newNote, ...notes]);
     }
-  }, [selectedNoteId]);
 
-  const handleCreateNote = () => {
-    const newNote: Note = {
-      id: `note-${Date.now()}`,
-      title: 'Untitled Concept Note',
-      content: 'Write your notes, derivations, and questions here...',
-      authorType: 'student',
-      conceptTag: 'General',
-      updatedAt: 'Just now',
-      starred: false
-    };
-    setNotes(prev => [newNote, ...prev]);
-    setSelectedNoteId(newNote.id);
-    setIsEditing(true);
-    setEditTitle(newNote.title);
-    setEditContent(newNote.content);
-    setEditTag(newNote.conceptTag);
+    setIsModalOpen(false);
   };
 
-  const handleSaveNote = () => {
-    setNotes(prev => prev.map(n => {
-      if (n.id === selectedNoteId) {
-        return {
-          ...n,
-          title: editTitle,
-          content: editContent,
-          conceptTag: editTag,
-          updatedAt: 'Just now'
-        };
-      }
-      return n;
-    }));
-    setIsEditing(false);
-    setSaveAlert('Note saved successfully!');
-    setTimeout(() => setSaveAlert(null), 3000);
+  const handleDelete = (id: string) => {
+    setNotes(notes.filter((n) => n.id !== id));
+    if (viewingNote?.id === id) setViewingNote(null);
   };
 
-  const handleDeleteNote = (id: string) => {
-    setNotes(prev => prev.filter(n => n.id !== id));
-    if (selectedNoteId === id) {
-      const remaining = notes.filter(n => n.id !== id);
-      if (remaining.length > 0) {
-        setSelectedNoteId(remaining[0].id);
-      }
-    }
-  };
+  // Unique subjects for subject filter
+  const allSubjects = Array.from(new Set(notes.map((n) => n.subject)));
 
-  const handleToggleStar = (id: string) => {
-    setNotes(prev => prev.map(n => n.id === id ? { ...n, starred: !n.starred } : n));
-  };
-
-  const filterTabs = [
-    { id: 'all', label: `All Notes (${notes.length})` },
-    { id: 'student', label: `My Notes (${notes.filter(n => n.authorType === 'student').length})` },
-    { id: 'ai', label: `AI Summaries (${notes.filter(n => n.authorType === 'ai').length})` },
-    { id: 'starred', label: `Starred (${notes.filter(n => n.starred).length})` },
-  ];
-
-  const filteredNotes = notes.filter(n => {
-    const matchesFilter = 
-      activeFilter === 'all' ? true :
-      activeFilter === 'student' ? n.authorType === 'student' :
-      activeFilter === 'ai' ? n.authorType === 'ai' :
-      n.starred;
-
-    const matchesSearch = 
-      n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      n.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      n.conceptTag.toLowerCase().includes(searchQuery.toLowerCase());
-
-    return matchesFilter && matchesSearch;
+  const filteredNotes = notes.filter((note) => {
+    const matchesSubject =
+      selectedSubject === 'all' || note.subject.toLowerCase() === selectedSubject.toLowerCase();
+    const matchesSearch =
+      note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      note.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      note.subject.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesSubject && matchesSearch;
   });
 
   return (
-    <div className="space-y-8 animate-fadeIn">
+    <div className="space-y-8 animate-fadeIn max-w-5xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-nexora-border/60">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-nexora-primary bg-nexora-primary/10 px-2.5 py-0.5 rounded-full border border-nexora-primary/20">
-              Personal Knowledge Journal
-            </span>
-            <span className="text-xs text-nexora-text-muted">Master Prompt 07 Reflection</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-nexora-text">
-            My Notes & Synthesis
+          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+            My Notes
           </h1>
-          <p className="text-sm text-nexora-text-muted mt-1">
-            Capture your conceptual breakthroughs, derivations, and AI-assisted summaries in one searchable repository.
+          <p className="text-sm text-nexora-subtext mt-1">
+            Personal study reflections, lecture notes, and formula references.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button 
-            variant="primary" 
-            icon={<Plus className="w-4 h-4" />}
-            onClick={handleCreateNote}
-          >
-            New Note
-          </Button>
-        </div>
+
+        <Button
+          variant="primary"
+          size="sm"
+          leftIcon={<Plus className="w-4 h-4" />}
+          onClick={handleOpenCreateModal}
+        >
+          Create Note
+        </Button>
       </div>
 
-      {/* Tabs & Search */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <Tabs 
-          tabs={filterTabs} 
-          activeTab={activeFilter} 
-          onChange={(id) => setActiveFilter(id as any)} 
-          variant="pills"
-        />
-        <div className="w-full sm:w-64">
-          <Input 
-            placeholder="Search notes or tags..." 
+      {/* Filter Tabs & Search */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5 p-1 bg-nexora-surface rounded-xl border border-nexora-border/70 w-full sm:w-auto overflow-x-auto">
+          <button
+            onClick={() => {
+              setActiveFilter('all');
+              setSelectedSubject('all');
+            }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shrink-0 ${
+              activeFilter === 'all' && selectedSubject === 'all'
+                ? 'bg-nexora-primary text-white'
+                : 'text-nexora-muted hover:text-white'
+            }`}
+          >
+            All Notes ({notes.length})
+          </button>
+          {allSubjects.map((sub) => (
+            <button
+              key={sub}
+              onClick={() => {
+                setActiveFilter('by-subject');
+                setSelectedSubject(sub);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shrink-0 ${
+                selectedSubject === sub
+                  ? 'bg-nexora-primary text-white'
+                  : 'text-nexora-muted hover:text-white'
+              }`}
+            >
+              {sub}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative w-full sm:w-64">
+          <Search className="w-4 h-4 text-nexora-muted absolute left-3 top-2.5 pointer-events-none" />
+          <input
+            type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            icon={<Search className="w-4 h-4" />}
+            placeholder="Search notes..."
+            className="w-full bg-nexora-surface border border-nexora-border text-white text-xs rounded-xl pl-9 pr-3 py-2 placeholder-nexora-muted focus:outline-none focus:border-nexora-primary"
           />
         </div>
       </div>
 
-      {/* Notes Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Notes List (1 Col) */}
-        <div className="space-y-3">
-          {filteredNotes.length === 0 ? (
-            <EmptyState 
-              icon={<FileText className="w-8 h-8" />}
-              title="No notes found"
-              description="Create a new note or change your active filter."
-              action={
-                <Button variant="primary" size="sm" onClick={handleCreateNote}>
-                  Create Note
-                </Button>
-              }
-            />
-          ) : (
-            filteredNotes.map((note) => {
-              const isSelected = note.id === selectedNoteId;
-              return (
-                <div
-                  key={note.id}
-                  onClick={() => { setSelectedNoteId(note.id); setIsEditing(false); }}
-                  className={`p-4 rounded-xl border transition-all duration-200 cursor-pointer ${
-                    isSelected 
-                      ? 'bg-nexora-surface border-nexora-primary shadow-glow-sm scale-[1.01]' 
-                      : 'bg-nexora-surface/40 border-nexora-border/60 hover:bg-nexora-surface-hover/50 hover:border-nexora-border'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-sm font-semibold text-nexora-text line-clamp-1">
-                      {note.title}
-                    </h3>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleToggleStar(note.id); }}
-                      className={`p-1 rounded hover:bg-nexora-surface-hover ${note.starred ? 'text-amber-400' : 'text-nexora-text-subtle'}`}
-                    >
-                      <Star className="w-3.5 h-3.5 fill-current" />
-                    </button>
-                  </div>
-
-                  <p className="text-xs text-nexora-text-muted mt-1.5 line-clamp-2 leading-relaxed">
-                    {note.content}
-                  </p>
-
-                  <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-nexora-border/40 text-[11px]">
-                    <div className="flex items-center gap-1.5">
-                      {note.authorType === 'student' ? (
-                        <span className="flex items-center gap-1 text-nexora-primary font-medium">
-                          <User className="w-3 h-3" /> My Note
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1 text-nexora-accent font-medium">
-                          <Sparkles className="w-3 h-3" /> AI Summary
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-nexora-text-subtle font-mono">{note.conceptTag}</span>
-                  </div>
+      {/* Notes Grid */}
+      {filteredNotes.length === 0 ? (
+        <EmptyState
+          icon={<BookMarked className="w-8 h-8 text-nexora-muted" />}
+          title="No notes yet"
+          description="Create your first study note to organize your learning reflections."
+          action={
+            <Button
+              variant="primary"
+              size="sm"
+              leftIcon={<Plus className="w-4 h-4" />}
+              onClick={handleOpenCreateModal}
+            >
+              Create Note
+            </Button>
+          }
+        />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {filteredNotes.map((note) => (
+            <Card
+              key={note.id}
+              className="border-nexora-border/80 flex flex-col justify-between hover:border-nexora-primary/40 transition-colors group"
+            >
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="text-[11px] font-semibold text-nexora-accent bg-nexora-elevated px-2 py-0.5 rounded-md">
+                    {note.subject}
+                  </span>
+                  <span className="text-[10px] text-nexora-muted flex items-center gap-1">
+                    <Calendar className="w-3 h-3" /> {note.updatedAt}
+                  </span>
                 </div>
-              );
-            })
-          )}
-        </div>
-
-        {/* Right: Note Detail / Editor (2 Cols) */}
-        <div className="lg:col-span-2">
-          {selectedNote ? (
-            <Card className="border-nexora-border/80 shadow-glow-sm">
-              <CardHeader className="p-6 border-b border-nexora-border/40">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    {selectedNote.authorType === 'student' ? (
-                      <Badge variant="primary">Student Written</Badge>
-                    ) : (
-                      <Badge variant="info">AI Synthesis</Badge>
-                    )}
-                    <span className="text-xs text-nexora-text-muted flex items-center gap-1">
-                      <Calendar className="w-3 h-3" /> {selectedNote.updatedAt}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {isEditing ? (
-                      <Button 
-                        size="sm" 
-                        variant="primary" 
-                        icon={<Save className="w-3.5 h-3.5" />}
-                        onClick={handleSaveNote}
-                      >
-                        Save Note
-                      </Button>
-                    ) : (
-                      <Button 
-                        size="sm" 
-                        variant="secondary" 
-                        icon={<Edit3 className="w-3.5 h-3.5" />}
-                        onClick={() => setIsEditing(true)}
-                      >
-                        Edit
-                      </Button>
-                    )}
-                    <button
-                      onClick={() => handleDeleteNote(selectedNote.id)}
-                      className="p-2 text-nexora-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                      title="Delete Note"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                {isEditing ? (
-                  <div className="space-y-3 mt-4">
-                    <input
-                      type="text"
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                      className="w-full text-xl font-bold bg-nexora-surface/60 border border-nexora-border rounded-lg px-3 py-2 text-nexora-text focus:outline-none focus:border-nexora-primary"
-                      placeholder="Note Title..."
-                    />
-                    <input
-                      type="text"
-                      value={editTag}
-                      onChange={(e) => setEditTag(e.target.value)}
-                      className="w-48 text-xs font-mono bg-nexora-surface/60 border border-nexora-border rounded-lg px-2.5 py-1 text-nexora-text-muted focus:outline-none focus:border-nexora-primary"
-                      placeholder="Concept Tag..."
-                    />
-                  </div>
-                ) : (
-                  <div className="mt-3">
-                    <h2 className="text-xl font-bold text-nexora-text">
-                      {selectedNote.title}
-                    </h2>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <Tag className="w-3.5 h-3.5 text-nexora-text-muted" />
-                      <span className="text-xs font-mono text-nexora-primary bg-nexora-primary/10 px-2 py-0.5 rounded border border-nexora-primary/20">
-                        #{selectedNote.conceptTag}
-                      </span>
-                    </div>
-                  </div>
-                )}
+                <CardTitle className="text-base text-white group-hover:text-nexora-primary transition-colors line-clamp-1">
+                  {note.title}
+                </CardTitle>
               </CardHeader>
 
-              <CardContent className="p-6">
-                {saveAlert && (
-                  <div className="mb-4 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-2 animate-fadeIn">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>{saveAlert}</span>
-                  </div>
-                )}
-
-                {isEditing ? (
-                  <textarea
-                    rows={14}
-                    value={editContent}
-                    onChange={(e) => setEditContent(e.target.value)}
-                    className="w-full p-4 rounded-xl bg-[#090d16] border border-nexora-border text-sm text-nexora-text font-mono leading-relaxed focus:outline-none focus:border-nexora-primary resize-y"
-                    placeholder="Type note in markdown..."
-                  />
-                ) : (
-                  <div className="prose prose-invert max-w-none text-sm leading-relaxed whitespace-pre-wrap text-nexora-text font-sans">
-                    {selectedNote.content}
-                  </div>
-                )}
+              <CardContent className="py-2 flex-1">
+                <p className="text-xs text-nexora-subtext line-clamp-4 leading-relaxed whitespace-pre-line font-normal">
+                  {note.content}
+                </p>
               </CardContent>
 
-              <CardFooter className="p-5 bg-nexora-surface-hover/20 border-t border-nexora-border/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <span className="text-xs text-nexora-text-muted">
-                  Connected Concept: <strong>{selectedNote.conceptTag}</strong>
-                </span>
-                <div className="flex items-center gap-2">
-                  <Link to={`/learn?q=${encodeURIComponent(selectedNote.conceptTag)}`}>
-                    <Button variant="secondary" size="sm" icon={<ArrowRight className="w-3.5 h-3.5" />}>
-                      Study in Learn
-                    </Button>
-                  </Link>
-                  <Link to={`/chat?context=${encodeURIComponent(selectedNote.title)}`}>
-                    <Button variant="ghost" size="sm" icon={<Sparkles className="w-3.5 h-3.5" />}>
-                      Ask AI about this
-                    </Button>
-                  </Link>
+              <CardFooter className="pt-3 border-t border-nexora-border/40 flex justify-between items-center">
+                <button
+                  onClick={() => setViewingNote(note)}
+                  className="text-xs font-semibold text-nexora-primary hover:underline flex items-center gap-1"
+                >
+                  Open Note
+                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => handleOpenEditModal(note)}
+                    className="p-1.5 text-nexora-muted hover:text-white hover:bg-nexora-elevated rounded-lg transition-colors"
+                    title="Edit Note"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(note.id)}
+                    className="p-1.5 text-nexora-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+                    title="Delete Note"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </CardFooter>
             </Card>
-          ) : (
-            <EmptyState
-              icon={<BookMarked className="w-8 h-8" />}
-              title="No note selected"
-              description="Choose a note from the left column or create a new one."
-            />
-          )}
+          ))}
         </div>
-      </div>
+      )}
+
+      {/* Note View Dialog */}
+      {viewingNote && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-nexora-surface border border-nexora-border rounded-2xl w-full max-w-2xl p-6 space-y-4 shadow-2xl">
+            <div className="flex items-start justify-between pb-3 border-b border-nexora-border/60">
+              <div>
+                <span className="text-xs font-semibold text-nexora-accent bg-nexora-elevated px-2 py-0.5 rounded-md">
+                  {viewingNote.subject}
+                </span>
+                <h3 className="text-lg font-bold text-white mt-1.5">{viewingNote.title}</h3>
+                <p className="text-[11px] text-nexora-muted">Last edited: {viewingNote.updatedAt}</p>
+              </div>
+              <button
+                onClick={() => setViewingNote(null)}
+                className="p-1 rounded-lg text-nexora-muted hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 rounded-xl bg-nexora-bg border border-nexora-border text-xs sm:text-sm text-nexora-text leading-relaxed whitespace-pre-line max-h-96 overflow-y-auto">
+              {viewingNote.content}
+            </div>
+
+            <div className="flex justify-between items-center pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                leftIcon={<Edit3 className="w-3.5 h-3.5" />}
+                onClick={() => {
+                  const toEdit = viewingNote;
+                  setViewingNote(null);
+                  handleOpenEditModal(toEdit);
+                }}
+              >
+                Edit Note
+              </Button>
+              <Button variant="primary" size="sm" onClick={() => setViewingNote(null)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create / Edit Note Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-nexora-surface border border-nexora-border rounded-2xl w-full max-w-lg p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-nexora-border/60">
+              <h3 className="text-base font-bold text-white">
+                {editingNoteId ? 'Edit Study Note' : 'Create Study Note'}
+              </h3>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="p-1 rounded-lg text-nexora-muted hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveNote} className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-nexora-subtext block mb-1">
+                  Note Title
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={modalTitle}
+                  onChange={(e) => setModalTitle(e.target.value)}
+                  placeholder="e.g. Asymptotic Complexity Rules"
+                  className="w-full bg-nexora-bg border border-nexora-border rounded-xl px-3 py-2 text-xs sm:text-sm text-white placeholder-nexora-muted focus:outline-none focus:border-nexora-primary"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-nexora-subtext block mb-1">
+                  Subject
+                </label>
+                <select
+                  value={modalSubject}
+                  onChange={(e) => setModalSubject(e.target.value)}
+                  className="w-full bg-nexora-bg border border-nexora-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-nexora-primary"
+                >
+                  <option value="Computer Science">Computer Science</option>
+                  <option value="Physics">Physics</option>
+                  <option value="Mathematics">Mathematics</option>
+                  <option value="Biology">Biology</option>
+                  <option value="Electrical Engineering">Electrical Engineering</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-nexora-subtext block mb-1">
+                  Content &amp; Key Takeaways
+                </label>
+                <textarea
+                  rows={6}
+                  required
+                  value={modalContent}
+                  onChange={(e) => setModalContent(e.target.value)}
+                  placeholder="Write your personal observations, equations, or reflections..."
+                  className="w-full bg-nexora-bg border border-nexora-border rounded-xl p-3 text-xs sm:text-sm text-white placeholder-nexora-muted focus:outline-none focus:border-nexora-primary"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-nexora-border/60">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<Save className="w-3.5 h-3.5" />}
+                >
+                  Save Note
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -12,10 +12,10 @@ export const MainLayout: React.FC = () => {
       <footer className="border-t border-nexora-border/60 py-6 text-center text-xs text-nexora-muted bg-nexora-bg">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div>
-            <span className="font-semibold text-nexora-subtext">NEXORA</span> — Learn it. See it. Try it. Apply it. Master it.
+            <span className="font-semibold text-nexora-subtext">NEXORA</span> &bull; Digital Learning Platform
           </div>
           <div>
-            Master Prompt 01 Architectural Foundation
+            Structured Classroom &amp; Course Materials
           </div>
         </div>
       </footer>

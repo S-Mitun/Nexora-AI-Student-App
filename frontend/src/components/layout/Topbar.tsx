@@ -1,37 +1,46 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
-import { Search, Sparkles, User, Layers, Menu } from 'lucide-react';
+import { Search, Sparkles, User, Layers, Menu, LogOut } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { useAuth } from '../../context/AuthContext';
 
 export interface TopbarProps {
   onOpenMobileMenu?: () => void;
 }
 
 export const Topbar: React.FC<TopbarProps> = ({ onOpenMobileMenu }) => {
+  const { user, profile, isAuthenticated, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
 
   const getPageTitle = () => {
+    if (location.pathname.startsWith('/subjects/')) return 'Subject Curriculum';
     switch (location.pathname) {
       case '/':
-        return 'Home & Discover';
+        return 'Student Dashboard';
       case '/learn':
-        return 'Learning Experience';
+        return 'My Learning';
+      case '/subjects':
+        return 'Subjects & Courses';
       case '/materials':
-        return 'My Materials';
-      case '/chat':
-        return 'AI Tutor & Chat Companion';
+        return 'Study Materials';
+      case '/practice':
+        return 'Practice & Review';
       case '/labs':
-        return 'Virtual Laboratories & Simulations';
+        return 'Interactive Labs';
+      case '/notes':
+        return 'Personal Notes';
+      case '/progress':
+        return 'Learning Progress';
+      case '/profile':
+        return 'Student Profile';
+      case '/settings':
+        return 'Settings';
+      case '/chat':
+        return 'Study Assistant';
       case '/mindmap':
         return 'Concept Mind Map';
-      case '/notes':
-        return 'Personal Learning Notes';
-      case '/progress':
-        return 'Mastery & Progress';
-      case '/profile':
-        return 'Student Profile & Preferences';
       default:
         return 'NEXORA';
     }
@@ -67,7 +76,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onOpenMobileMenu }) => {
 
       {/* Desktop Breadcrumb/Title */}
       <div className="hidden lg:flex items-center gap-2">
-        <span className="text-xs text-nexora-muted">NEXORA</span>
+        <span className="text-xs text-nexora-muted font-medium">NEXORA</span>
         <span className="text-xs text-nexora-border">/</span>
         <h2 className="text-sm font-semibold text-white tracking-tight">{getPageTitle()}</h2>
       </div>
@@ -80,7 +89,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onOpenMobileMenu }) => {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search concepts to understand (e.g. Doppler Effect, Binary Search)..."
+            placeholder="Search subjects, topics, or concepts..."
             className="w-full bg-nexora-surface/90 border border-nexora-border text-xs text-white placeholder-nexora-muted rounded-xl pl-9 pr-3 py-2 transition-all focus:outline-none focus:border-nexora-primary focus:ring-1 focus:ring-nexora-primary"
           />
         </div>
@@ -88,18 +97,42 @@ export const Topbar: React.FC<TopbarProps> = ({ onOpenMobileMenu }) => {
 
       {/* Quick Actions & Profile */}
       <div className="flex items-center gap-2.5">
-        <Link to="/chat">
-          <Button variant="outline" size="sm" leftIcon={<Sparkles className="w-3.5 h-3.5 text-indigo-400" />}>
-            <span className="hidden md:inline">Ask</span> AI Companion
+        <Link to="/practice">
+          <Button variant="outline" size="sm">
+            Quick Practice
           </Button>
         </Link>
-        <Link
-          to="/profile"
-          className="w-9 h-9 rounded-xl bg-nexora-elevated border border-nexora-border flex items-center justify-center text-nexora-subtext hover:text-white hover:border-nexora-primary/50 transition-colors"
-          title="Student Profile & Settings"
-        >
-          <User className="w-4 h-4" />
-        </Link>
+
+        {isAuthenticated ? (
+          <div className="flex items-center gap-2">
+            <Link
+              to="/profile"
+              className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-nexora-elevated border border-nexora-border text-xs text-nexora-text hover:text-white hover:border-nexora-primary/50 transition-colors"
+              title="Student Profile & Settings"
+            >
+              <div className="w-5 h-5 rounded-full bg-nexora-primary/20 text-nexora-primary flex items-center justify-center font-bold text-[10px]">
+                {profile?.full_name?.charAt(0) || user?.email?.charAt(0)?.toUpperCase() || 'S'}
+              </div>
+              <span className="hidden sm:inline font-medium max-w-[100px] truncate">
+                {profile?.full_name || user?.email?.split('@')[0] || 'Student'}
+              </span>
+            </Link>
+            <button
+              onClick={() => signOut()}
+              className="p-2 text-nexora-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors"
+              title="Sign Out"
+              aria-label="Sign Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <Link to="/login">
+            <Button variant="primary" size="sm">
+              Sign In
+            </Button>
+          </Link>
+        )}
       </div>
     </header>
   );

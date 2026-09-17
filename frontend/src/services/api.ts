@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { env } from '../config/env';
 import { BackendHealth, Subject, ConceptExploreResult } from '../types/learning';
+import { StudentProfile } from '../types/auth';
 
 export const apiClient = axios.create({
   baseURL: env.API_URL,
@@ -8,6 +9,21 @@ export const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+});
+
+let currentAccessToken: string | null = null;
+
+export const setApiAccessToken = (token: string | null) => {
+  currentAccessToken = token;
+};
+
+// Automatic Authorization Bearer interceptor
+apiClient.interceptors.request.use((config) => {
+  const token = currentAccessToken || localStorage.getItem('nexora_access_token');
+  if (token && !config.headers.Authorization) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
 });
 
 export const apiService = {
@@ -26,6 +42,21 @@ export const apiService = {
       query,
       subject_hint: subjectHint,
     });
+    return response.data;
+  },
+
+  async getAuthMe(): Promise<{ id: string; email?: string; role: string; is_authenticated: boolean }> {
+    const response = await apiClient.get('/api/v1/auth/me');
+    return response.data;
+  },
+
+  async getProfile(): Promise<StudentProfile> {
+    const response = await apiClient.get<StudentProfile>('/api/v1/profile');
+    return response.data;
+  },
+
+  async updateProfile(updates: Partial<StudentProfile>): Promise<StudentProfile> {
+    const response = await apiClient.put<StudentProfile>('/api/v1/profile', updates);
     return response.data;
   },
 };

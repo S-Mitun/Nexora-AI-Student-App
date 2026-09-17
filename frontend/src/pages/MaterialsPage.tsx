@@ -1,339 +1,359 @@
-import React, { useState } from 'react';
-import { 
-  UploadCloud, 
-  FileText, 
-  FileCheck, 
-  Clock, 
-  Sparkles, 
-  Trash2, 
-  ExternalLink, 
-  Search, 
-  BookOpen, 
-  Layers,
-  Filter,
-  CheckCircle2
+import React, { useState, useEffect } from 'react';
+import {
+  FileText,
+  Plus,
+  Search,
+  Trash2,
+  ExternalLink,
+  BookOpen,
+  CheckCircle2,
+  X,
+  Upload,
 } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/Card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import { Input } from '../components/ui/Input';
-import { Tabs } from '../components/ui/Tabs';
-import { Callout } from '../components/ui/Callout';
 import { EmptyState } from '../components/ui/EmptyState';
-import { Link } from 'react-router-dom';
 
-interface DocumentItem {
+export interface StudyMaterial {
   id: string;
   name: string;
-  type: 'PDF' | 'DOCX' | 'PPTX' | 'IMAGE';
+  type: 'PDF' | 'DOCX' | 'PPTX';
+  subject: string;
+  dateAdded: string;
+  status: 'Ready' | 'Processing';
   size: string;
-  uploadedAt: string;
-  status: 'indexed' | 'processing' | 'pending';
-  topicsExtracted: number;
-  course: string;
 }
 
-const INITIAL_DOCS: DocumentItem[] = [
+const DEFAULT_MATERIALS: StudyMaterial[] = [
   {
-    id: 'doc-1',
-    name: 'Halliday_Resnick_Wave_Mechanics_Ch17.pdf',
+    id: 'mat-1',
+    name: 'Wave_Mechanics_and_Acoustics_Chapter_17.pdf',
     type: 'PDF',
+    subject: 'Physics',
+    dateAdded: 'Sep 15, 2026',
+    status: 'Ready',
     size: '4.8 MB',
-    uploadedAt: 'Yesterday',
-    status: 'indexed',
-    topicsExtracted: 14,
-    course: 'Physics 101'
   },
   {
-    id: 'doc-2',
-    name: 'CLRS_Algorithms_Divide_and_Conquer.docx',
+    id: 'mat-2',
+    name: 'Data_Structures_Divide_and_Conquer_Notes.docx',
     type: 'DOCX',
+    subject: 'Computer Science',
+    dateAdded: 'Sep 16, 2026',
+    status: 'Ready',
     size: '2.1 MB',
-    uploadedAt: '3 days ago',
-    status: 'indexed',
-    topicsExtracted: 8,
-    course: 'Data Structures & Algorithms'
   },
   {
-    id: 'doc-3',
-    name: 'Signals_Systems_Fourier_Transform_Lec04.pptx',
+    id: 'mat-3',
+    name: 'Signals_and_Fourier_Analysis_Lecture_04.pptx',
     type: 'PPTX',
+    subject: 'Electrical Engineering',
+    dateAdded: 'Sep 17, 2026',
+    status: 'Ready',
     size: '12.4 MB',
-    uploadedAt: 'Just now',
-    status: 'processing',
-    topicsExtracted: 6,
-    course: 'Electrical Engineering'
   },
   {
-    id: 'doc-4',
-    name: 'Differential_Calculus_Handwritten_Notes.pdf',
+    id: 'mat-4',
+    name: 'Differential_Calculus_Formula_Sheet.pdf',
     type: 'PDF',
-    size: '9.2 MB',
-    uploadedAt: 'Sep 12, 2026',
-    status: 'indexed',
-    topicsExtracted: 11,
-    course: 'Engineering Mathematics'
-  }
+    subject: 'Mathematics',
+    dateAdded: 'Sep 12, 2026',
+    status: 'Ready',
+    size: '1.5 MB',
+  },
 ];
 
 export const MaterialsPage: React.FC = () => {
-  const [documents, setDocuments] = useState<DocumentItem[]>(INITIAL_DOCS);
-  const [filterType, setFilterType] = useState('all');
+  const [materials, setMaterials] = useState<StudyMaterial[]>(() => {
+    const saved = localStorage.getItem('nexora_student_materials');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return DEFAULT_MATERIALS;
+      }
+    }
+    return DEFAULT_MATERIALS;
+  });
+
+  const [activeFilter, setActiveFilter] = useState<'all' | 'PDF' | 'DOCX' | 'PPTX'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isDragging, setIsDragging] = useState(false);
-  const [uploadNotice, setUploadNotice] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const filterTabs = [
-    { id: 'all', label: `All Materials (${documents.length})` },
-    { id: 'PDF', label: `PDFs (${documents.filter(d => d.type === 'PDF').length})` },
-    { id: 'DOCX', label: `Word / DOCX (${documents.filter(d => d.type === 'DOCX').length})` },
-    { id: 'PPTX', label: `Slides / PPTX (${documents.filter(d => d.type === 'PPTX').length})` },
-  ];
+  // Add material form state
+  const [newName, setNewName] = useState('');
+  const [newSubject, setNewSubject] = useState('Computer Science');
+  const [newType, setNewType] = useState<'PDF' | 'DOCX' | 'PPTX'>('PDF');
 
-  const handleSimulatedUpload = (fileType: 'PDF' | 'DOCX' | 'PPTX' = 'PDF') => {
-    const newDoc: DocumentItem = {
-      id: `doc-${Date.now()}`,
-      name: `Uploaded_Syllabus_${Date.now().toString().slice(-4)}.${fileType.toLowerCase()}`,
-      type: fileType,
-      size: `${(Math.random() * 5 + 1).toFixed(1)} MB`,
-      uploadedAt: 'Just now',
-      status: 'processing',
-      topicsExtracted: Math.floor(Math.random() * 8) + 3,
-      course: 'Independent Study'
+  useEffect(() => {
+    localStorage.setItem('nexora_student_materials', JSON.stringify(materials));
+  }, [materials]);
+
+  const handleAddMaterial = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName.trim()) return;
+
+    const formattedName = newName.trim().endsWith(`.${newType.toLowerCase()}`)
+      ? newName.trim()
+      : `${newName.trim()}.${newType.toLowerCase()}`;
+
+    const newMaterial: StudyMaterial = {
+      id: `mat-${Date.now()}`,
+      name: formattedName,
+      type: newType,
+      subject: newSubject,
+      dateAdded: 'Today',
+      status: 'Ready',
+      size: '2.4 MB',
     };
-    setDocuments(prev => [newDoc, ...prev]);
-    setUploadNotice(`Received "${newDoc.name}". Harmonization pipeline queued.`);
-    setTimeout(() => setUploadNotice(null), 4000);
+
+    setMaterials([newMaterial, ...materials]);
+    setNewName('');
+    setIsModalOpen(false);
   };
 
   const handleDelete = (id: string) => {
-    setDocuments(prev => prev.filter(d => d.id !== id));
+    setMaterials(materials.filter((m) => m.id !== id));
   };
 
-  const filteredDocs = documents.filter(doc => {
-    const matchesType = filterType === 'all' || doc.type === filterType;
-    const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          doc.course.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesType && matchesSearch;
+  const filteredMaterials = materials.filter((m) => {
+    const matchesFilter = activeFilter === 'all' || m.type === activeFilter;
+    const matchesSearch =
+      m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      m.subject.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesFilter && matchesSearch;
   });
 
+  const getTypeBadge = (type: StudyMaterial['type']) => {
+    switch (type) {
+      case 'PDF':
+        return <span className="px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 font-mono text-[10px] font-bold">PDF</span>;
+      case 'DOCX':
+        return <span className="px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 font-mono text-[10px] font-bold">DOCX</span>;
+      case 'PPTX':
+        return <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 font-mono text-[10px] font-bold">PPTX</span>;
+    }
+  };
+
   return (
-    <div className="space-y-8 animate-fadeIn">
+    <div className="space-y-8 animate-fadeIn max-w-5xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-nexora-border/60">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-nexora-primary bg-nexora-primary/10 px-2.5 py-0.5 rounded-full border border-nexora-primary/20">
-              Harmonization Hub
-            </span>
-            <span className="text-xs text-nexora-text-muted">Master Prompt 06 Ingestion</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-nexora-text">
-            My Study Materials
+          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+            My Materials
           </h1>
-          <p className="text-sm text-nexora-text-muted mt-1">
-            Upload your syllabus, lecture slides, and notes. NEXORA unifies them into cross-referenced, interactive learning objects.
+          <p className="text-sm text-nexora-subtext mt-1">
+            Keep your textbooks, lecture notes, syllabus, and course slides organized in one place.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button 
-            variant="primary" 
-            icon={<UploadCloud className="w-4 h-4" />}
-            onClick={() => handleSimulatedUpload('PDF')}
-          >
-            Upload File
-          </Button>
-        </div>
+
+        <Button
+          variant="primary"
+          size="sm"
+          leftIcon={<Plus className="w-4 h-4" />}
+          onClick={() => setIsModalOpen(true)}
+        >
+          Add Material
+        </Button>
       </div>
 
-      {/* Harmonization Explanation Callout */}
-      <Callout
-        variant="info"
-        title="Document Harmonization Engine (Concept-Centric Architecture)"
-      >
-        <p className="text-sm leading-relaxed">
-          NEXORA doesn't simply store static PDFs. In the harmonization pipeline, uploaded files are parsed, 
-          deconstructed into structural headings, sanitized of duplicate terminology, and mapped into our 
-          <strong> universal knowledge graph</strong>. This connects your college slides directly to visual labs, 
-          Socratic AI explanations, and practice checkpoints.
-        </p>
-      </Callout>
-
-      {/* Upload Dropzone */}
-      <div 
-        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setIsDragging(false);
-          handleSimulatedUpload('PDF');
-        }}
-        className={`border-2 border-dashed rounded-2xl p-8 sm:p-10 text-center transition-all duration-300 ${
-          isDragging 
-            ? 'border-nexora-primary bg-nexora-primary/10 scale-[1.01]' 
-            : 'border-nexora-border/60 hover:border-nexora-primary/40 bg-nexora-surface/30'
-        }`}
-      >
-        <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-nexora-primary/10 border border-nexora-primary/20 flex items-center justify-center text-nexora-primary shadow-glow-sm">
-          <UploadCloud className="w-7 h-7" />
-        </div>
-        <h3 className="text-base font-semibold text-nexora-text">
-          Drag & drop your study materials here
-        </h3>
-        <p className="text-xs text-nexora-text-muted mt-1.5 max-w-md mx-auto">
-          Supports PDF, Word (.docx), PowerPoint (.pptx), and high-res diagram scans. Maximum file size 50 MB.
-        </p>
-
-        <div className="flex items-center justify-center gap-3 mt-5">
-          <Button 
-            variant="secondary" 
-            size="sm" 
-            onClick={() => handleSimulatedUpload('PDF')}
+      {/* Filters and Search */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5 p-1 bg-nexora-surface rounded-xl border border-nexora-border/70 w-full sm:w-auto">
+          <button
+            onClick={() => setActiveFilter('all')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              activeFilter === 'all' ? 'bg-nexora-primary text-white' : 'text-nexora-muted hover:text-white'
+            }`}
           >
-            + Add PDF
-          </Button>
-          <Button 
-            variant="secondary" 
-            size="sm" 
-            onClick={() => handleSimulatedUpload('DOCX')}
+            All ({materials.length})
+          </button>
+          <button
+            onClick={() => setActiveFilter('PDF')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              activeFilter === 'PDF' ? 'bg-nexora-primary text-white' : 'text-nexora-muted hover:text-white'
+            }`}
           >
-            + Add DOCX
-          </Button>
-          <Button 
-            variant="secondary" 
-            size="sm" 
-            onClick={() => handleSimulatedUpload('PPTX')}
+            PDFs
+          </button>
+          <button
+            onClick={() => setActiveFilter('DOCX')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              activeFilter === 'DOCX' ? 'bg-nexora-primary text-white' : 'text-nexora-muted hover:text-white'
+            }`}
           >
-            + Add Slides
-          </Button>
+            Documents
+          </button>
+          <button
+            onClick={() => setActiveFilter('PPTX')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              activeFilter === 'PPTX' ? 'bg-nexora-primary text-white' : 'text-nexora-muted hover:text-white'
+            }`}
+          >
+            Slides
+          </button>
         </div>
 
-        {uploadNotice && (
-          <div className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs animate-fadeIn">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>{uploadNotice}</span>
-          </div>
-        )}
-      </div>
-
-      {/* Filter & Search Bar */}
-      <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <Tabs 
-            tabs={filterTabs} 
-            activeTab={filterType} 
-            onChange={setFilterType} 
-            variant="pills"
+        <div className="relative w-full sm:w-64">
+          <Search className="w-4 h-4 text-nexora-muted absolute left-3 top-2.5 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search materials..."
+            className="w-full bg-nexora-surface border border-nexora-border text-white text-xs rounded-xl pl-9 pr-3 py-2 placeholder-nexora-muted focus:outline-none focus:border-nexora-primary"
           />
-          <div className="w-full sm:w-72">
-            <Input 
-              placeholder="Filter by title or course..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              icon={<Search className="w-4 h-4" />}
-            />
+        </div>
+      </div>
+
+      {/* Materials List */}
+      {filteredMaterials.length === 0 ? (
+        <EmptyState
+          icon={<FileText className="w-8 h-8 text-nexora-muted" />}
+          title="No materials yet"
+          description="Add your study materials to keep them organized here."
+          action={
+            <Button
+              variant="primary"
+              size="sm"
+              leftIcon={<Plus className="w-4 h-4" />}
+              onClick={() => setIsModalOpen(true)}
+            >
+              Add Material
+            </Button>
+          }
+        />
+      ) : (
+        <div className="space-y-3">
+          {filteredMaterials.map((mat) => (
+            <div
+              key={mat.id}
+              className="p-4 rounded-xl bg-nexora-surface border border-nexora-border/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-nexora-primary/40 transition-colors"
+            >
+              <div className="flex items-start sm:items-center gap-3.5 min-w-0">
+                <div className="w-10 h-10 rounded-lg bg-nexora-elevated flex items-center justify-center shrink-0">
+                  <FileText className="w-5 h-5 text-nexora-primary" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    {getTypeBadge(mat.type)}
+                    <span className="text-xs font-semibold text-nexora-subtext">{mat.subject}</span>
+                    <span className="text-xs text-nexora-border">&bull;</span>
+                    <span className="text-[11px] text-nexora-muted">Added {mat.dateAdded}</span>
+                  </div>
+                  <h3 className="text-sm font-medium text-white truncate max-w-xl">
+                    {mat.name}
+                  </h3>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 self-end sm:self-center shrink-0">
+                <Badge variant="success" size="sm">
+                  {mat.status}
+                </Badge>
+                <button
+                  onClick={() => alert(`Opening material: ${mat.name}`)}
+                  className="px-3 py-1.5 rounded-lg bg-nexora-elevated hover:bg-nexora-elevated/80 text-white text-xs font-medium border border-nexora-border transition-colors flex items-center gap-1.5"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Open</span>
+                </button>
+                <button
+                  onClick={() => handleDelete(mat.id)}
+                  className="p-1.5 text-nexora-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+                  title="Remove Material"
+                  aria-label="Remove Material"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add Material Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-nexora-surface border border-nexora-border rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-nexora-border/60">
+              <h3 className="text-base font-bold text-white">Add Study Material</h3>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="p-1 rounded-lg text-nexora-muted hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddMaterial} className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-nexora-subtext block mb-1">
+                  Document or Material Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="e.g. Operating Systems Chapter 3 Notes"
+                  className="w-full bg-nexora-bg border border-nexora-border rounded-xl px-3 py-2 text-xs sm:text-sm text-white placeholder-nexora-muted focus:outline-none focus:border-nexora-primary"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-nexora-subtext block mb-1">
+                    Subject Course
+                  </label>
+                  <select
+                    value={newSubject}
+                    onChange={(e) => setNewSubject(e.target.value)}
+                    className="w-full bg-nexora-bg border border-nexora-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-nexora-primary"
+                  >
+                    <option value="Computer Science">Computer Science</option>
+                    <option value="Physics">Physics</option>
+                    <option value="Mathematics">Mathematics</option>
+                    <option value="Electrical Engineering">Electrical Engineering</option>
+                    <option value="Biology">Biology</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-nexora-subtext block mb-1">
+                    Document Type
+                  </label>
+                  <select
+                    value={newType}
+                    onChange={(e) => setNewType(e.target.value as any)}
+                    className="w-full bg-nexora-bg border border-nexora-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-nexora-primary"
+                  >
+                    <option value="PDF">PDF Document</option>
+                    <option value="DOCX">Word (.docx)</option>
+                    <option value="PPTX">Slides (.pptx)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-nexora-border/60">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" variant="primary" size="sm">
+                  Add to Materials
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
-
-        {/* Documents Grid */}
-        {filteredDocs.length === 0 ? (
-          <EmptyState
-            icon={<FileText className="w-8 h-8" />}
-            title="No matching materials found"
-            description="Try changing your search query or upload a new syllabus document."
-            action={
-              <Button variant="primary" size="sm" onClick={() => handleSimulatedUpload('PDF')}>
-                Upload Document
-              </Button>
-            }
-          />
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredDocs.map((doc) => {
-              const typeColor = 
-                doc.type === 'PDF' ? 'text-red-400 bg-red-500/10 border-red-500/20' :
-                doc.type === 'DOCX' ? 'text-blue-400 bg-blue-500/10 border-blue-500/20' :
-                doc.type === 'PPTX' ? 'text-amber-400 bg-amber-500/10 border-amber-500/20' :
-                'text-purple-400 bg-purple-500/10 border-purple-500/20';
-
-              return (
-                <Card key={doc.id} hover className="flex flex-col justify-between">
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3.5">
-                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border font-semibold text-xs ${typeColor}`}>
-                          {doc.type}
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-semibold text-nexora-text leading-snug break-all line-clamp-1">
-                            {doc.name}
-                          </h4>
-                          <p className="text-xs text-nexora-text-muted mt-1 flex items-center gap-2">
-                            <span>{doc.course}</span>
-                            <span>•</span>
-                            <span>{doc.size}</span>
-                            <span>•</span>
-                            <span>{doc.uploadedAt}</span>
-                          </p>
-                        </div>
-                      </div>
-
-                      <div>
-                        {doc.status === 'indexed' && (
-                          <Badge variant="success" dot pulse={false}>
-                            Indexed
-                          </Badge>
-                        )}
-                        {doc.status === 'processing' && (
-                          <Badge variant="warning" dot pulse={true}>
-                            Harmonizing
-                          </Badge>
-                        )}
-                        {doc.status === 'pending' && (
-                          <Badge variant="neutral">
-                            Pending
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="mt-4 pt-3.5 border-t border-nexora-border/40 flex items-center justify-between text-xs text-nexora-text-muted">
-                      <div className="flex items-center gap-1.5 text-nexora-accent">
-                        <Layers className="w-3.5 h-3.5" />
-                        <span className="font-medium">{doc.topicsExtracted} concepts extracted</span>
-                      </div>
-                      <span className="text-nexora-text-subtle">Vector Embeddings Ready</span>
-                    </div>
-                  </CardContent>
-
-                  <CardFooter className="p-4 bg-nexora-surface-hover/30 border-t border-nexora-border/40 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Link to={`/learn?concept=wave-mechanics`}>
-                        <Button variant="secondary" size="sm" icon={<BookOpen className="w-3.5 h-3.5" />}>
-                          Explore
-                        </Button>
-                      </Link>
-                      <Link to={`/chat?context=${encodeURIComponent(doc.name)}`}>
-                        <Button variant="ghost" size="sm" icon={<Sparkles className="w-3.5 h-3.5" />}>
-                          Ask AI
-                        </Button>
-                      </Link>
-                    </div>
-
-                    <button 
-                      onClick={() => handleDelete(doc.id)}
-                      className="p-1.5 text-nexora-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                      title="Delete material"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </CardFooter>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 };
