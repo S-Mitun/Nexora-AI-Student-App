@@ -1,6 +1,15 @@
 import axios from 'axios';
 import { env } from '../config/env';
-import { BackendHealth, Subject, ConceptExploreResult } from '../types/learning';
+import {
+  BackendHealth,
+  Subject,
+  SubjectDetail,
+  TopicDetail,
+  ConceptDetail,
+  LearningModuleDetail,
+  LessonDetail,
+  ConceptExploreResult,
+} from '../types/learning';
 import { StudentProfile } from '../types/auth';
 
 export const apiClient = axios.create({
@@ -34,6 +43,31 @@ export const apiService = {
 
   async getSubjects(): Promise<Subject[]> {
     const response = await apiClient.get<Subject[]>('/api/v1/learning/subjects');
+    return response.data;
+  },
+
+  async getSubject(slugOrId: string): Promise<SubjectDetail> {
+    const response = await apiClient.get<SubjectDetail>(`/api/v1/learning/subjects/${encodeURIComponent(slugOrId)}`);
+    return response.data;
+  },
+
+  async getTopic(slugOrId: string): Promise<TopicDetail> {
+    const response = await apiClient.get<TopicDetail>(`/api/v1/learning/topics/${encodeURIComponent(slugOrId)}`);
+    return response.data;
+  },
+
+  async getConcept(slugOrId: string): Promise<ConceptDetail> {
+    const response = await apiClient.get<ConceptDetail>(`/api/v1/learning/concepts/${encodeURIComponent(slugOrId)}`);
+    return response.data;
+  },
+
+  async getModule(slugOrId: string): Promise<LearningModuleDetail> {
+    const response = await apiClient.get<LearningModuleDetail>(`/api/v1/learning/modules/${encodeURIComponent(slugOrId)}`);
+    return response.data;
+  },
+
+  async getLesson(slugOrId: string): Promise<LessonDetail> {
+    const response = await apiClient.get<LessonDetail>(`/api/v1/learning/lessons/${encodeURIComponent(slugOrId)}`);
     return response.data;
   },
 

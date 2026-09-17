@@ -44,7 +44,61 @@ async def lifespan(app: FastAPI):
                         conn.execute(text("ALTER TABLE profiles ADD COLUMN learning_preferences JSON DEFAULT '[\"visual\", \"practical\", \"step_by_step\"]'"))
                         conn.execute(text("UPDATE profiles SET learning_preferences = '[\"visual\", \"practical\", \"step_by_step\"]' WHERE learning_preferences IS NULL OR learning_preferences = '[]'"))
                     conn.commit()
-        logger.info("Database schema synchronized successfully.")
+
+                # Sync subjects table columns
+                subj_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(subjects)"))}
+                if subj_cols:
+                    if "category" not in subj_cols:
+                        conn.execute(text("ALTER TABLE subjects ADD COLUMN category VARCHAR(100) DEFAULT 'Computer Science & Engineering'"))
+                    if "difficulty_level" not in subj_cols:
+                        conn.execute(text("ALTER TABLE subjects ADD COLUMN difficulty_level VARCHAR(50) DEFAULT 'all-levels'"))
+                    if "is_active" not in subj_cols:
+                        conn.execute(text("ALTER TABLE subjects ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+                    conn.commit()
+
+                # Sync topics table columns
+                top_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(topics)"))}
+                if top_cols and "is_active" not in top_cols:
+                    conn.execute(text("ALTER TABLE topics ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+                    conn.commit()
+
+                # Sync concepts table columns
+                con_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(concepts)"))}
+                if con_cols:
+                    if "short_description" not in con_cols:
+                        conn.execute(text("ALTER TABLE concepts ADD COLUMN short_description TEXT"))
+                    if "difficulty_level" not in con_cols:
+                        conn.execute(text("ALTER TABLE concepts ADD COLUMN difficulty_level VARCHAR(50) DEFAULT 'intermediate'"))
+                    if "is_active" not in con_cols:
+                        conn.execute(text("ALTER TABLE concepts ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+                    conn.commit()
+
+                # Sync learning_modules table columns
+                mod_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(learning_modules)"))}
+                if mod_cols:
+                    if "slug" not in mod_cols:
+                        conn.execute(text("ALTER TABLE learning_modules ADD COLUMN slug VARCHAR(255) DEFAULT ''"))
+                    if "description" not in mod_cols:
+                        conn.execute(text("ALTER TABLE learning_modules ADD COLUMN description TEXT"))
+                    if "learning_objective" not in mod_cols:
+                        conn.execute(text("ALTER TABLE learning_modules ADD COLUMN learning_objective TEXT"))
+                    if "difficulty_level" not in mod_cols:
+                        conn.execute(text("ALTER TABLE learning_modules ADD COLUMN difficulty_level VARCHAR(50) DEFAULT 'intermediate'"))
+                    if "estimated_minutes" not in mod_cols:
+                        conn.execute(text("ALTER TABLE learning_modules ADD COLUMN estimated_minutes INTEGER DEFAULT 15"))
+                    if "order_index" not in mod_cols:
+                        conn.execute(text("ALTER TABLE learning_modules ADD COLUMN order_index INTEGER DEFAULT 0"))
+                    if "is_active" not in mod_cols:
+                        conn.execute(text("ALTER TABLE learning_modules ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+                    conn.commit()
+
+        # Seed starter curriculum if empty
+        from app.db.session import SessionLocal
+        from app.services.learning.curriculum_service import CurriculumSeedService
+        with SessionLocal() as session:
+            CurriculumSeedService.seed_if_empty(session)
+
+        logger.info("Database schema synchronized and starter curriculum verified.")
     except Exception as e:
         logger.error(f"Error creating database tables: {str(e)}")
 

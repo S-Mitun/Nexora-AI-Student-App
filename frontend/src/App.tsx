@@ -9,6 +9,9 @@ import { HomePage } from './pages/HomePage';
 import { LearnPage } from './pages/LearnPage';
 import { SubjectsPage } from './pages/SubjectsPage';
 import { SubjectDetailPage } from './pages/SubjectDetailPage';
+import { ConceptPage } from './pages/ConceptPage';
+import { ModulePage } from './pages/ModulePage';
+import { LessonPage } from './pages/LessonPage';
 import { MaterialsPage } from './pages/MaterialsPage';
 import { PracticePage } from './pages/PracticePage';
 import { LabsPage } from './pages/LabsPage';
@@ -35,6 +38,10 @@ export const App: React.FC = () => {
               <Route path="/learn" element={<LearnPage />} />
               <Route path="/subjects" element={<SubjectsPage />} />
               <Route path="/subjects/:subjectSlug" element={<SubjectDetailPage />} />
+              <Route path="/concepts/:conceptSlug" element={<ConceptPage />} />
+              <Route path="/modules/:moduleId" element={<ModulePage />} />
+              <Route path="/modules/:moduleId/lessons/:lessonSlug" element={<LessonPage />} />
+              <Route path="/lessons/:lessonSlug" element={<LessonPage />} />
               <Route path="/materials" element={<MaterialsPage />} />
               <Route path="/practice" element={<PracticePage />} />
               <Route path="/labs" element={<LabsPage />} />

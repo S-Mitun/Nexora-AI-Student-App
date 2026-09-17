@@ -1,450 +1,270 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   BookOpen,
-  CheckCircle2,
-  Clock,
-  Circle,
-  Play,
-  FileText,
-  HelpCircle,
   ChevronRight,
-  TrendingUp,
+  FolderKanban,
+  Layers,
+  Sparkles,
+  Cpu,
+  Zap,
+  Binary,
+  GraduationCap,
 } from 'lucide-react';
+import { apiService } from '../services/api';
+import { SubjectDetail, TopicDetail, Concept } from '../types/learning';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import { studentActivityService } from '../services/studentActivity';
-
-interface TopicItem {
-  id: string;
-  title: string;
-  duration: string;
-  status: 'completed' | 'in-progress' | 'not-started';
-  lessonSlug: string;
-}
-
-interface ModuleItem {
-  moduleNumber: number;
-  title: string;
-  description: string;
-  topics: TopicItem[];
-}
-
-interface SubjectCourseData {
-  title: string;
-  code: string;
-  department: string;
-  description: string;
-  progressPercent: number;
-  modules: ModuleItem[];
-}
-
-const COURSES_DATA: Record<string, SubjectCourseData> = {
-  'computer-science': {
-    title: 'Data Structures & Algorithms',
-    code: 'CS-201',
-    department: 'Computer Science & Engineering',
-    description:
-      'Master essential computer science foundations including contiguous memory, pointer structures, asymptotic complexity, and logarithmic search patterns.',
-    progressPercent: 38,
-    modules: [
-      {
-        moduleNumber: 1,
-        title: 'Introduction to Data Structures & Complexity',
-        description: 'Big-O notation, space-time tradeoffs, and memory layout.',
-        topics: [
-          {
-            id: 'cs-m1-1',
-            title: 'Asymptotic Analysis & Big-O Notation',
-            duration: '20 mins',
-            status: 'not-started',
-            lessonSlug: 'Asymptotic Analysis',
-          },
-          {
-            id: 'cs-m1-2',
-            title: 'Memory Contiguity & Cache Locality',
-            duration: '25 mins',
-            status: 'not-started',
-            lessonSlug: 'Memory Allocation',
-          },
-        ],
-      },
-      {
-        moduleNumber: 2,
-        title: 'Arrays & Logarithmic Search',
-        description: 'Direct indexing, binary search mechanics, and midpoint overflow.',
-        topics: [
-          {
-            id: 'cs-m2-1',
-            title: 'Binary Search Algorithm',
-            duration: '35 mins',
-            status: 'not-started',
-            lessonSlug: 'Binary Search',
-          },
-          {
-            id: 'cs-m2-2',
-            title: 'Logarithmic Space Reduction',
-            duration: '30 mins',
-            status: 'not-started',
-            lessonSlug: 'Logarithmic Complexity',
-          },
-        ],
-      },
-      {
-        moduleNumber: 3,
-        title: 'Linked Lists & Pointer Traversal',
-        description: 'Singly, doubly, and circular linked nodes with memory manipulation.',
-        topics: [
-          {
-            id: 'cs-m3-1',
-            title: 'Singly Linked Lists',
-            duration: '30 mins',
-            status: 'not-started',
-            lessonSlug: 'Linked Lists',
-          },
-          {
-            id: 'cs-m3-2',
-            title: 'Two-Pointer Technique & Cycle Detection',
-            duration: '40 mins',
-            status: 'not-started',
-            lessonSlug: 'Two Pointer Technique',
-          },
-        ],
-      },
-      {
-        moduleNumber: 4,
-        title: 'Stacks & Queues',
-        description: 'LIFO and FIFO data buffering, call stacks, and BFS search frontiers.',
-        topics: [
-          {
-            id: 'cs-m4-1',
-            title: 'Stack Mechanics & Expression Evaluation',
-            duration: '25 mins',
-            status: 'not-started',
-            lessonSlug: 'Stacks',
-          },
-          {
-            id: 'cs-m4-2',
-            title: 'Queue Buffers & Deques',
-            duration: '25 mins',
-            status: 'not-started',
-            lessonSlug: 'Queues',
-          },
-        ],
-      },
-      {
-        moduleNumber: 5,
-        title: 'Trees & Hierarchical Structures',
-        description: 'Binary trees, binary search trees, and heap ordering properties.',
-        topics: [
-          {
-            id: 'cs-m5-1',
-            title: 'Binary Search Trees (BST)',
-            duration: '45 mins',
-            status: 'not-started',
-            lessonSlug: 'Binary Search Trees',
-          },
-        ],
-      },
-    ],
-  },
-  physics: {
-    title: 'Wave Mechanics & Acoustics',
-    code: 'PHYS-101',
-    department: 'Department of Physics',
-    description:
-      'Rigorous study of mechanical waves, wavefront propagation, frequency modulation, and the Doppler effect across acoustic and electromagnetic media.',
-    progressPercent: 75,
-    modules: [
-      {
-        moduleNumber: 1,
-        title: 'Foundations of Periodic Motion',
-        description: 'Simple harmonic motion, wave period, frequency, and wavelength.',
-        topics: [
-          {
-            id: 'ph-m1-1',
-            title: 'Periodic Motion & Oscillations',
-            duration: '20 mins',
-            status: 'completed',
-            lessonSlug: 'Periodic Motion',
-          },
-          {
-            id: 'ph-m1-2',
-            title: 'Wave Speed, Frequency, and Wavelength',
-            duration: '25 mins',
-            status: 'completed',
-            lessonSlug: 'Wave Frequency',
-          },
-        ],
-      },
-      {
-        moduleNumber: 2,
-        title: 'Wavefront Propagation & Doppler Shift',
-        description: 'Moving wave sources, acoustic frequency shifts, and Mach cone mechanics.',
-        topics: [
-          {
-            id: 'ph-m2-1',
-            title: 'Doppler Effect',
-            duration: '35 mins',
-            status: 'completed',
-            lessonSlug: 'Doppler Effect',
-          },
-          {
-            id: 'ph-m2-2',
-            title: 'Supersonic Shock Waves & Mach Angle',
-            duration: '30 mins',
-            status: 'in-progress',
-            lessonSlug: 'Supersonic Waves',
-          },
-        ],
-      },
-      {
-        moduleNumber: 3,
-        title: 'Interference & Superposition',
-        description: 'Constructive and destructive wave superposition in two dimensions.',
-        topics: [
-          {
-            id: 'ph-m3-1',
-            title: 'Wave Superposition Principle',
-            duration: '30 mins',
-            status: 'not-started',
-            lessonSlug: 'Wave Interference',
-          },
-        ],
-      },
-      {
-        moduleNumber: 4,
-        title: 'Standing Waves & Resonant Cavities',
-        description: 'Nodes, antinodes, and harmonic frequency overtones.',
-        topics: [
-          {
-            id: 'ph-m4-1',
-            title: 'Standing Waves in Acoustic Pipes',
-            duration: '25 mins',
-            status: 'not-started',
-            lessonSlug: 'Standing Waves',
-          },
-        ],
-      },
-    ],
-  },
-  mathematics: {
-    title: 'Linear Algebra & Multivariable Calculus',
-    code: 'MATH-210',
-    department: 'Mathematics Department',
-    description:
-      'Vector spaces, matrix transformations, eigenvalues, partial differentiation, and gradient vector fields.',
-    progressPercent: 30,
-    modules: [
-      {
-        moduleNumber: 1,
-        title: 'Vectors & Matrix Foundations',
-        description: 'Vector spaces, dot products, cross products, and linear combinations.',
-        topics: [
-          {
-            id: 'ma-m1-1',
-            title: 'Vector Spaces & Span',
-            duration: '30 mins',
-            status: 'completed',
-            lessonSlug: 'Vector Spaces',
-          },
-          {
-            id: 'ma-m1-2',
-            title: 'Matrix Transformations',
-            duration: '35 mins',
-            status: 'in-progress',
-            lessonSlug: 'Matrix Transformations',
-          },
-        ],
-      },
-      {
-        moduleNumber: 2,
-        title: 'Eigenvalues & Diagonalization',
-        description: 'Characteristic equations, eigenspaces, and coordinate transformation.',
-        topics: [
-          {
-            id: 'ma-m2-1',
-            title: 'Eigenvalues & Eigenvectors',
-            duration: '40 mins',
-            status: 'not-started',
-            lessonSlug: 'Eigenvalues',
-          },
-        ],
-      },
-    ],
-  },
-  biology: {
-    title: 'Cellular Biology & Molecular Genetics',
-    code: 'BIO-105',
-    department: 'Biological Sciences',
-    description:
-      'Cellular membranes, ATP synthesis, enzyme kinetics, and DNA transcription and translation mechanisms.',
-    progressPercent: 15,
-    modules: [
-      {
-        moduleNumber: 1,
-        title: 'Cellular Energy Transfer',
-        description: 'Mitochondrial respiration, electron transport chain, and glycolysis.',
-        topics: [
-          {
-            id: 'bio-m1-1',
-            title: 'Cellular Respiration & ATP Cycle',
-            duration: '30 mins',
-            status: 'in-progress',
-            lessonSlug: 'Cellular Respiration',
-          },
-        ],
-      },
-    ],
-  },
-};
+import { SkeletonCard } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
 
 export const SubjectDetailPage: React.FC = () => {
   const { subjectSlug } = useParams<{ subjectSlug: string }>();
   const navigate = useNavigate();
+  const [subject, setSubject] = useState<SubjectDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [expandedTopic, setExpandedTopic] = useState<string | null>(null);
 
-  const course = COURSES_DATA[subjectSlug || 'computer-science'] || COURSES_DATA['computer-science'];
+  useEffect(() => {
+    if (!subjectSlug) return;
+    let isMounted = true;
+    setLoading(true);
+    setError(null);
 
-  const getTopicStatus = (topic: TopicItem): TopicItem['status'] => {
-    if (studentActivityService.isTopicCompleted(topic.title)) return 'completed';
-    const active = studentActivityService.getActiveCourse();
-    if (active && active.currentTopic.toLowerCase() === topic.title.toLowerCase()) return 'in-progress';
-    return 'not-started';
-  };
+    apiService
+      .getSubject(subjectSlug)
+      .then((data) => {
+        if (isMounted) {
+          setSubject(data);
+          if (data.topics && data.topics.length > 0) {
+            setExpandedTopic(data.topics[0].id);
+          }
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (isMounted) {
+          setError(err.response?.data?.detail || `Unable to load syllabus for subject '${subjectSlug}'.`);
+          setLoading(false);
+        }
+      });
 
-  const allTopics = course.modules.flatMap((m) => m.topics);
-  const totalTopicsCount = allTopics.length;
-  const completedTopicsCount = allTopics.filter((t) => getTopicStatus(t) === 'completed').length;
-  const progressPercent = totalTopicsCount > 0 ? Math.round((completedTopicsCount / totalTopicsCount) * 100) : 0;
+    return () => {
+      isMounted = false;
+    };
+  }, [subjectSlug]);
 
-  const getStatusIcon = (status: TopicItem['status']) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />;
-      case 'in-progress':
-        return <Clock className="w-4 h-4 text-amber-400 shrink-0" />;
+  const getDifficultyBadge = (difficulty?: string) => {
+    switch (difficulty?.toLowerCase()) {
+      case 'beginner':
+        return <Badge variant="success" size="sm">Beginner</Badge>;
+      case 'advanced':
+        return <Badge variant="primary" size="sm">Advanced</Badge>;
       default:
-        return <Circle className="w-4 h-4 text-nexora-muted shrink-0" />;
+        return <Badge variant="neutral" size="sm">Intermediate</Badge>;
     }
   };
 
-  const getStatusBadge = (status: TopicItem['status']) => {
-    switch (status) {
-      case 'completed':
-        return <Badge variant="success" size="sm">Completed</Badge>;
-      case 'in-progress':
-        return <Badge variant="accent" size="sm">In Progress</Badge>;
-      default:
-        return <span className="text-[11px] text-nexora-muted">Not Started</span>;
-    }
-  };
+  if (loading) {
+    return (
+      <div className="space-y-6 animate-fadeIn">
+        <div className="h-6 w-36 bg-nexora-surface rounded-lg animate-pulse" />
+        <div className="h-28 bg-nexora-surface rounded-2xl animate-pulse" />
+        <div className="space-y-4">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !subject) {
+    return (
+      <div className="space-y-6">
+        <Button variant="ghost" size="sm" onClick={() => navigate('/subjects')} leftIcon={<ArrowLeft className="w-4 h-4" />}>
+          Back to All Subjects
+        </Button>
+        <EmptyState
+          icon={<BookOpen className="w-8 h-8 text-nexora-muted" />}
+          title="Subject Not Found"
+          description={error || "The requested academic subject does not exist in the curriculum."}
+          action={
+            <Button variant="primary" size="md" onClick={() => navigate('/subjects')}>
+              Browse Subjects
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+
+  const topics = subject.topics || [];
+  const totalConcepts = topics.reduce((acc, t) => acc + (t.concepts?.length || 0), 0);
 
   return (
-    <div className="space-y-8 animate-fadeIn max-w-5xl mx-auto">
-      {/* Navigation Breadcrumb */}
-      <div>
-        <Link
-          to="/subjects"
-          className="inline-flex items-center gap-1.5 text-xs text-nexora-muted hover:text-white transition-colors mb-3"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" /> Back to All Subjects
+    <div className="space-y-8 animate-fadeIn">
+      {/* Back & Breadcrumbs */}
+      <div className="flex items-center gap-2 text-xs text-nexora-subtext">
+        <Link to="/subjects" className="hover:text-white transition-colors flex items-center gap-1">
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Subjects
         </Link>
+        <span>/</span>
+        <span className="text-white font-medium">{subject.name}</span>
+      </div>
 
-        {/* Course Header Banner */}
-        <div className="p-6 rounded-2xl bg-nexora-surface border border-nexora-border/80 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2 max-w-2xl">
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-xs font-bold text-nexora-accent bg-nexora-elevated px-2 py-0.5 rounded-md">
-                {course.code}
-              </span>
-              <span className="text-xs text-nexora-muted">&bull;</span>
-              <span className="text-xs text-nexora-muted">{course.department}</span>
+      {/* Subject Banner Header */}
+      <div className="p-6 sm:p-8 rounded-2xl bg-gradient-to-r from-nexora-surface via-nexora-surface/90 to-nexora-elevated/40 border border-nexora-border/70 relative overflow-hidden">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+          <div className="space-y-3 max-w-3xl">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="primary" size="sm">
+                {subject.category || 'Computer Science & Engineering'}
+              </Badge>
+              <Badge variant="neutral" size="sm">
+                {subject.difficulty_level || 'All Levels'}
+              </Badge>
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
-              {course.title}
+              {subject.name}
             </h1>
-            <p className="text-xs sm:text-sm text-nexora-subtext leading-relaxed">
-              {course.description}
+            <p className="text-sm text-nexora-subtext leading-relaxed">
+              {subject.description}
             </p>
           </div>
 
-          <div className="p-4 rounded-xl bg-nexora-bg border border-nexora-border/70 shrink-0 md:w-56 space-y-2">
-            <div className="flex justify-between text-xs">
-              <span className="text-nexora-muted">Course Progress</span>
-              <span className="font-bold text-white">{progressPercent}%</span>
+          <div className="flex items-center gap-4 bg-nexora-bg/60 border border-nexora-border/60 rounded-xl p-4 shrink-0">
+            <div className="text-center px-3 border-r border-nexora-border/50">
+              <div className="text-xl font-bold text-white">{topics.length}</div>
+              <div className="text-[11px] text-nexora-muted">Topics</div>
             </div>
-            <div className="w-full h-2 bg-nexora-elevated rounded-full overflow-hidden">
-              <div
-                className="h-full bg-nexora-primary rounded-full"
-                style={{ width: `${progressPercent}%` }}
-              />
+            <div className="text-center px-3">
+              <div className="text-xl font-bold text-white">{totalConcepts}</div>
+              <div className="text-[11px] text-nexora-muted">Concepts</div>
             </div>
-            <p className="text-[10px] text-nexora-muted">
-              {completedTopicsCount} of {totalTopicsCount} Lessons Completed
-            </p>
           </div>
         </div>
       </div>
 
-      {/* Modules & Topics Outline */}
-      <div className="space-y-6">
+      {/* Syllabus Topics Section */}
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-white tracking-tight">Curriculum Modules</h2>
-            <p className="text-xs text-nexora-muted">Follow topics in sequential pedagogical order</p>
-          </div>
+          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+            <FolderKanban className="w-5 h-5 text-nexora-accent" />
+            Syllabus Topics &amp; Core Concepts
+          </h2>
+          <span className="text-xs text-nexora-muted">
+            {topics.length} structured topics
+          </span>
         </div>
 
-        <div className="space-y-4">
-          {course.modules.map((mod) => (
-            <Card key={mod.moduleNumber} className="overflow-hidden border-nexora-border/80">
-              <CardHeader className="bg-nexora-elevated/40 pb-3 border-b border-nexora-border/40">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs font-bold text-nexora-accent uppercase tracking-wider">
-                    Module {mod.moduleNumber}
-                  </span>
-                  <span className="text-xs text-nexora-muted">
-                    {mod.topics.length} {mod.topics.length === 1 ? 'Topic' : 'Topics'}
-                  </span>
-                </div>
-                <CardTitle className="text-base text-white">{mod.title}</CardTitle>
-                <CardDescription className="text-xs">{mod.description}</CardDescription>
-              </CardHeader>
+        {topics.length === 0 ? (
+          <EmptyState
+            icon={<FolderKanban className="w-8 h-8 text-nexora-muted" />}
+            title="No Topics Available"
+            description="Topic syllabi are currently being authored for this subject."
+          />
+        ) : (
+          <div className="space-y-4">
+            {topics.map((topic, index) => {
+              const isExpanded = expandedTopic === topic.id;
+              const concepts = topic.concepts || [];
 
-              <CardContent className="p-0 divide-y divide-nexora-border/40">
-                {mod.topics.map((topic) => {
-                  const status = getTopicStatus(topic);
-                  return (
-                    <div
-                      key={topic.id}
-                      onClick={() => navigate(`/learn?q=${encodeURIComponent(topic.title)}`)}
-                      className="p-4 flex items-center justify-between gap-4 hover:bg-nexora-elevated/50 transition-colors cursor-pointer group"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        {getStatusIcon(status)}
-                        <div>
-                          <h4 className="text-xs sm:text-sm font-medium text-white group-hover:text-nexora-accent transition-colors truncate">
-                            {topic.title}
-                          </h4>
-                          <span className="text-[11px] text-nexora-muted">{topic.duration}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3 shrink-0">
-                        {getStatusBadge(status)}
-                        <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
-                          Open Lesson <ChevronRight className="w-3.5 h-3.5 ml-1" />
-                        </Button>
+              return (
+                <div
+                  key={topic.id}
+                  className="rounded-2xl border border-nexora-border/70 bg-nexora-surface/60 overflow-hidden transition-all duration-200"
+                >
+                  {/* Topic Header Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setExpandedTopic(isExpanded ? null : topic.id)}
+                    className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-nexora-elevated/40 transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-start sm:items-center gap-3">
+                      <span className="w-7 h-7 rounded-lg bg-nexora-elevated border border-nexora-border flex items-center justify-center text-xs font-mono font-bold text-nexora-accent shrink-0">
+                        {index + 1}
+                      </span>
+                      <div>
+                        <h3 className="text-sm sm:text-base font-semibold text-white">
+                          {topic.name}
+                        </h3>
+                        {topic.description && (
+                          <p className="text-xs text-nexora-muted mt-0.5 line-clamp-1">
+                            {topic.description}
+                          </p>
+                        )}
                       </div>
                     </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="text-xs text-nexora-muted hidden sm:inline">
+                        {concepts.length} {concepts.length === 1 ? 'Concept' : 'Concepts'}
+                      </span>
+                      <ChevronRight
+                        className={`w-4 h-4 text-nexora-muted transition-transform duration-200 ${
+                          isExpanded ? 'rotate-90 text-white' : ''
+                        }`}
+                      />
+                    </div>
+                  </button>
+
+                  {/* Concepts List Under Topic */}
+                  {isExpanded && (
+                    <div className="px-4 pb-4 sm:px-6 sm:pb-6 pt-1 border-t border-nexora-border/40 space-y-3">
+                      {concepts.length === 0 ? (
+                        <p className="text-xs text-nexora-muted py-2 italic">
+                          No concepts listed under this topic yet.
+                        </p>
+                      ) : (
+                        concepts.map((concept) => (
+                          <div
+                            key={concept.id}
+                            className="p-4 rounded-xl bg-nexora-bg/50 border border-nexora-border/40 hover:border-nexora-primary/50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
+                          >
+                            <div className="space-y-1 max-w-xl">
+                              <div className="flex items-center gap-2">
+                                <h4 className="text-sm font-semibold text-white group-hover:text-nexora-accent transition-colors">
+                                  {concept.name}
+                                </h4>
+                                {getDifficultyBadge(concept.difficulty_level || concept.difficulty)}
+                              </div>
+                              <p className="text-xs text-nexora-subtext line-clamp-2">
+                                {concept.short_description || concept.summary}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => navigate(`/concepts/${concept.slug}`)}
+                                rightIcon={<ChevronRight className="w-3.5 h-3.5" />}
+                              >
+                                View Modules
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => navigate(`/learn?q=${encodeURIComponent(concept.name)}`)}
+                                title="Open Experiential Simulation"
+                              >
+                                <Sparkles className="w-3.5 h-3.5 text-nexora-accent" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

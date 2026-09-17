@@ -436,6 +436,20 @@ class PersonalizationService:
         return True, valid_set, None
 
     @classmethod
+    def get_personalized_context(
+        cls,
+        concept: str,
+        interests: Optional[List[str]] = None,
+        preferred_interest: Optional[str] = None,
+    ) -> Optional[PersonalizedContext]:
+        """Convenience alias for get_personalization_for_concept."""
+        return cls.get_personalization_for_concept(
+            concept_name=concept,
+            student_interests=interests,
+            preferred_interest=preferred_interest,
+        )
+
+    @classmethod
     def get_personalization_for_concept(
         cls,
         concept_name: str,
