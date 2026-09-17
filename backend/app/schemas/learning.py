@@ -53,6 +53,7 @@ class SubjectRead(BaseModel):
 class ConceptExploreRequest(BaseModel):
     query: str = Field(..., min_length=2, max_length=200, description="Concept or question the student wants to understand")
     subject_hint: Optional[str] = Field(None, description="Optional subject domain hint")
+    interest_hint: Optional[str] = Field(None, description="Optional student interest domain (e.g. Gaming, Cricket, Cars)")
 
 
 class InteractiveSimulationSpec(BaseModel):
@@ -73,3 +74,6 @@ class ConceptExploreResponse(BaseModel):
     quick_check_question: str
     quick_check_options: List[str]
     quick_check_answer_index: int
+    personalized_context: Optional[Dict[str, Any]] = Field(None, description="Active tailored contextual perspective")
+    available_perspectives: List[Dict[str, Any]] = Field(default_factory=list, description="All available interest perspectives for this concept")
+

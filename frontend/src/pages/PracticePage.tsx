@@ -13,6 +13,7 @@ import {
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { studentActivityService } from '../services/studentActivity';
 
 interface PracticeQuestion {
   id: string;
@@ -147,6 +148,13 @@ export const PracticePage: React.FC = () => {
       setIsAnswerSubmitted(false);
     } else {
       setSessionCompleted(true);
+      // Record genuine practice attempt
+      studentActivityService.recordQuizAttempt(
+        selectedTopic,
+        selectedSubject,
+        score,
+        sessionQuestions.length
+      );
     }
   };
 

@@ -15,10 +15,18 @@ import {
   FolderKanban,
   FileText,
   TrendingUp,
+  Compass,
+  Heart,
 } from 'lucide-react';
 import { apiService } from '../services/api';
-import { Subject } from '../types/learning';
+import { Subject, RecommendedTopic } from '../types/learning';
 import { useAuth } from '../context/AuthContext';
+import {
+  studentActivityService,
+  ActiveCourseProgress,
+  OverallStudentProgress,
+  StudentActivityItem,
+} from '../services/studentActivity';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -39,6 +47,8 @@ export const HomePage: React.FC = () => {
   const [query, setQuery] = useState('');
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loadingSubjects, setLoadingSubjects] = useState(true);
+  const [recommendations, setRecommendations] = useState<RecommendedTopic[]>([]);
+  const [loadingRecommendations, setLoadingRecommendations] = useState(true);
 
   // Time-aware greeting
   const getGreeting = () => {
@@ -50,42 +60,16 @@ export const HomePage: React.FC = () => {
 
   const studentName = profile?.full_name || user?.email?.split('@')[0] || 'Student';
 
-  // Active student in-progress course
-  const activeCourse = {
-    subject: 'Computer Science & Engineering',
-    courseTitle: 'Data Structures & Algorithms',
-    currentTopic: 'Arrays & Logarithmic Search',
-    lastLesson: 'Binary Search Mechanics',
-    completedTopics: 5,
-    totalTopics: 12,
-    progressPercent: 42,
-    targetUrl: '/learn?q=Binary%20Search',
-  };
-
-  // Recent student learning activity
-  const [recentActivities] = useState([
-    {
-      id: 'act-1',
-      title: 'Completed Lesson: Acoustic Wave Mechanics',
-      subject: 'Physics',
-      time: '2 hours ago',
-      icon: CheckCircle2,
-    },
-    {
-      id: 'act-2',
-      title: 'Added Note: Binary Search Midpoint Overflow',
-      subject: 'Data Structures',
-      time: 'Yesterday',
-      icon: FileText,
-    },
-    {
-      id: 'act-3',
-      title: 'Practiced 5 Concept Check Questions',
-      subject: 'Algorithms',
-      time: '2 days ago',
-      icon: TrendingUp,
-    },
-  ]);
+  // Genuine student learning activity & active course
+  const [activeCourse, setActiveCourse] = useState<ActiveCourseProgress | null>(() =>
+    studentActivityService.getActiveCourse()
+  );
+  const [recentActivities, setRecentActivities] = useState<StudentActivityItem[]>(() =>
+    studentActivityService.getRecentActivities(3)
+  );
+  const [overallProgress, setOverallProgress] = useState<OverallStudentProgress>(() =>
+    studentActivityService.getOverallProgress()
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -102,6 +86,21 @@ export const HomePage: React.FC = () => {
           setLoadingSubjects(false);
         }
       });
+
+    apiService
+      .getRecommendations()
+      .then((recs) => {
+        if (isMounted) {
+          setRecommendations(recs);
+          setLoadingRecommendations(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setLoadingRecommendations(false);
+        }
+      });
+
     return () => {
       isMounted = false;
     };
@@ -141,11 +140,19 @@ export const HomePage: React.FC = () => {
           </p>
         </div>
 
-        <Link to={activeCourse.targetUrl}>
-          <Button variant="primary" size="sm" leftIcon={<Play className="w-3.5 h-3.5" />}>
-            Resume Learning
-          </Button>
-        </Link>
+        {activeCourse ? (
+          <Link to={activeCourse.targetUrl}>
+            <Button variant="primary" size="sm" leftIcon={<Play className="w-3.5 h-3.5" />}>
+              Resume Learning
+            </Button>
+          </Link>
+        ) : (
+          <Link to="/subjects">
+            <Button variant="primary" size="sm" leftIcon={<BookOpen className="w-3.5 h-3.5" />}>
+              Start Learning
+            </Button>
+          </Link>
+        )}
       </div>
 
       {/* 2. Educational Search & Concept Exploration */}
@@ -190,52 +197,88 @@ export const HomePage: React.FC = () => {
       {/* 3. Continue Learning & Overall Progress Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Continue Learning Card */}
-        <Card variant="interactive" className="lg:col-span-2">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <Badge variant="accent" size="sm" hasDot>
-                Continue Learning
-              </Badge>
-              <span className="text-xs text-nexora-muted flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5" /> Recent
-              </span>
-            </div>
-            <CardTitle className="mt-2 text-xl">{activeCourse.courseTitle}</CardTitle>
-            <CardDescription>
-              {activeCourse.subject} &bull; {activeCourse.currentTopic}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="p-4 rounded-xl bg-nexora-bg/70 border border-nexora-border/60 mb-4">
-              <div className="flex justify-between text-xs font-semibold text-white mb-2">
-                <span>Current Lesson: {activeCourse.lastLesson}</span>
-                <span className="text-nexora-accent">
-                  {activeCourse.completedTopics} of {activeCourse.totalTopics} Topics Completed
+        {activeCourse ? (
+          <Card variant="interactive" className="lg:col-span-2">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <Badge variant="accent" size="sm" hasDot>
+                  Continue Learning
+                </Badge>
+                <span className="text-xs text-nexora-muted flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5" /> Recent
                 </span>
               </div>
-              <div className="w-full h-2.5 bg-nexora-elevated rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-nexora-primary rounded-full"
-                  style={{ width: `${activeCourse.progressPercent}%` }}
-                />
+              <CardTitle className="mt-2 text-xl">{activeCourse.courseTitle}</CardTitle>
+              <CardDescription>
+                {activeCourse.subject} &bull; {activeCourse.currentTopic}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="p-4 rounded-xl bg-nexora-bg/70 border border-nexora-border/60 mb-4">
+                <div className="flex justify-between text-xs font-semibold text-white mb-2">
+                  <span>Current Lesson: {activeCourse.lastLesson}</span>
+                  <span className="text-nexora-accent">
+                    {activeCourse.completedTopics} of {activeCourse.totalTopics} Topics Completed
+                  </span>
+                </div>
+                <div className="w-full h-2.5 bg-nexora-elevated rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-nexora-primary rounded-full"
+                    style={{ width: `${activeCourse.progressPercent}%` }}
+                  />
+                </div>
+                <div className="flex justify-between items-center mt-2 text-[11px] text-nexora-muted">
+                  <span>Progress: {activeCourse.progressPercent}%</span>
+                  <span>Target: Next Concept</span>
+                </div>
               </div>
-              <div className="flex justify-between items-center mt-2 text-[11px] text-nexora-muted">
-                <span>Progress: {activeCourse.progressPercent}%</span>
-                <span>Next: Divide &amp; Conquer Space Partitioning</span>
+            </CardContent>
+            <CardFooter className="flex justify-between items-center pt-0">
+              <span className="text-xs text-nexora-subtext">
+                Your active study track
+              </span>
+              <Link to={activeCourse.targetUrl}>
+                <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                  Continue Lesson
+                </Button>
+              </Link>
+            </CardFooter>
+          </Card>
+        ) : (
+          <Card variant="interactive" className="lg:col-span-2 flex flex-col justify-between">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <Badge variant="neutral" size="sm">
+                  Curriculum Core
+                </Badge>
+                <span className="text-xs text-nexora-muted flex items-center gap-1">
+                  <BookOpen className="w-3.5 h-3.5" /> Structured Syllabus
+                </span>
               </div>
-            </div>
-          </CardContent>
-          <CardFooter className="flex justify-between items-center pt-0">
-            <span className="text-xs text-nexora-subtext">
-              Recommended for your study plan
-            </span>
-            <Link to={activeCourse.targetUrl}>
-              <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
-                Continue Lesson
-              </Button>
-            </Link>
-          </CardFooter>
-        </Card>
+              <CardTitle className="mt-2 text-xl">Start Your First Lesson</CardTitle>
+              <CardDescription>
+                You haven't started learning yet. Choose any concept from the curriculum below or search above to begin.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="p-4 rounded-xl bg-nexora-bg/70 border border-nexora-border/60">
+                <p className="text-xs text-nexora-subtext leading-relaxed">
+                  NEXORA breaks down concepts through foundational intuition, practical motivation, interactive visual models, and verified concept checks.
+                </p>
+              </div>
+            </CardContent>
+            <CardFooter className="flex justify-between items-center pt-0">
+              <span className="text-xs text-nexora-subtext">
+                Free structured curriculum tracks
+              </span>
+              <Link to="/subjects">
+                <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                  Explore Subjects
+                </Button>
+              </Link>
+            </CardFooter>
+          </Card>
+        )}
 
         {/* Overall Progress Widget */}
         <Card className="flex flex-col justify-between">
@@ -248,21 +291,33 @@ export const HomePage: React.FC = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="text-center py-3">
-              <div className="text-4xl font-extrabold text-white mb-1">68%</div>
-              <p className="text-xs text-nexora-subtext">Course requirements on schedule</p>
+              <div className="text-4xl font-extrabold text-white mb-1">
+                {overallProgress.overallProgressPercent}%
+              </div>
+              <p className="text-xs text-nexora-subtext">
+                {overallProgress.completedLessons > 0
+                  ? `${overallProgress.completedLessons} lessons verified`
+                  : 'No progress recorded yet'}
+              </p>
             </div>
             <div className="space-y-2">
               <div className="flex justify-between text-xs text-nexora-subtext">
                 <span>Completed Lessons</span>
-                <span className="font-semibold text-white">18 Lessons</span>
+                <span className="font-semibold text-white">
+                  {overallProgress.completedLessons} Lessons
+                </span>
               </div>
               <div className="flex justify-between text-xs text-nexora-subtext">
                 <span>Practice Checks Passed</span>
-                <span className="font-semibold text-white">24 Quizzes</span>
+                <span className="font-semibold text-white">
+                  {overallProgress.completedQuizzes} Quizzes
+                </span>
               </div>
               <div className="flex justify-between text-xs text-nexora-subtext">
                 <span>Active Subjects</span>
-                <span className="font-semibold text-white">4 Courses</span>
+                <span className="font-semibold text-white">
+                  {overallProgress.activeSubjects} Courses
+                </span>
               </div>
             </div>
           </CardContent>
@@ -276,7 +331,78 @@ export const HomePage: React.FC = () => {
         </Card>
       </div>
 
-      {/* 4. My Subjects */}
+      {/* 4. Exploration Through Your Interests (Master Prompt 04) */}
+      <div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs font-semibold uppercase tracking-wider text-nexora-primary bg-nexora-primary/10 px-2 py-0.5 rounded-full border border-nexora-primary/20 flex items-center gap-1.5">
+                <Compass className="w-3 h-3" />
+                {profile?.interests && profile.interests.length > 0
+                  ? 'Connected to Your Interests'
+                  : 'Curriculum Exploration'}
+              </span>
+            </div>
+            <h2 className="text-xl font-bold text-white tracking-tight">
+              {profile?.interests && profile.interests.length > 0
+                ? 'Learn Through Examples You Care About'
+                : 'Recommended Core Topics'}
+            </h2>
+            <p className="text-xs text-nexora-muted">
+              {profile?.interests && profile.interests.length > 0
+                ? 'Concepts connected with your selected hobbies and technical passions.'
+                : 'Foundational concepts. You can connect explanations to your hobbies anytime in Profile.'}
+            </p>
+          </div>
+          <Link to="/profile">
+            <Button variant="ghost" size="sm" rightIcon={<ChevronRight className="w-4 h-4" />}>
+              {profile?.interests && profile.interests.length > 0 ? 'Edit Interests' : 'Personalize Interests'}
+            </Button>
+          </Link>
+        </div>
+
+        {loadingRecommendations ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3].map((i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {recommendations.map((rec) => (
+              <Card
+                key={rec.concept}
+                variant="interactive"
+                onClick={() => navigate(rec.target_url)}
+                className="group flex flex-col justify-between"
+              >
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <Badge variant={rec.matched_interest === 'Curriculum Core' ? 'neutral' : 'primary'} size="sm">
+                      {rec.matched_interest}
+                    </Badge>
+                    <span className="text-[11px] font-medium text-nexora-muted">
+                      {rec.subject}
+                    </span>
+                  </div>
+                  <CardTitle className="text-sm font-bold text-white group-hover:text-nexora-accent transition-colors line-clamp-1">
+                    {rec.headline}
+                  </CardTitle>
+                  <CardDescription className="text-xs text-nexora-subtext line-clamp-2 mt-1">
+                    {rec.summary}
+                  </CardDescription>
+                </CardHeader>
+                <CardFooter className="pt-2 border-t border-nexora-border/40 flex items-center justify-between text-xs text-nexora-primary font-medium group-hover:translate-x-0.5 transition-transform">
+                  <span>Explore Lesson ({rec.concept})</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 5. My Subjects */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -298,62 +424,46 @@ export const HomePage: React.FC = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {subjects.map((sub, idx) => {
-              // Educational subject progress calculations
-              const progressMap: Record<string, { pct: number; lastTopic: string }> = {
-                physics: { pct: 75, lastTopic: 'Wave Mechanics' },
-                'computer-science': { pct: 42, lastTopic: 'Binary Search' },
-                mathematics: { pct: 30, lastTopic: 'Linear Algebra' },
-                biology: { pct: 15, lastTopic: 'Cellular Respiration' },
-              };
-              const subMeta = progressMap[sub.slug] || { pct: 20 * (idx + 1), lastTopic: 'Foundations' };
-
-              return (
-                <Card
-                  key={sub.id}
-                  variant="interactive"
-                  onClick={() => navigate(`/subjects/${sub.slug}`)}
-                  className="group flex flex-col justify-between"
-                >
-                  <CardHeader className="pb-2">
-                    <div className="w-10 h-10 rounded-xl bg-nexora-elevated flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                      {getSubjectIcon(sub.icon)}
+            {subjects.map((sub) => (
+              <Card
+                key={sub.id}
+                variant="interactive"
+                onClick={() => navigate(`/subjects/${sub.slug}`)}
+                className="group flex flex-col justify-between"
+              >
+                <CardHeader className="pb-2">
+                  <div className="w-10 h-10 rounded-xl bg-nexora-elevated flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                    {getSubjectIcon(sub.icon)}
+                  </div>
+                  <CardTitle className="text-base group-hover:text-nexora-accent transition-colors">
+                    {sub.name}
+                  </CardTitle>
+                  <CardDescription className="line-clamp-2 text-xs">
+                    {sub.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="py-2">
+                  <div className="p-3 rounded-xl bg-nexora-bg/60 border border-nexora-border/50 space-y-1.5">
+                    <div className="flex justify-between text-[11px] text-nexora-subtext">
+                      <span>Curriculum Core</span>
+                      <span className="font-semibold text-white">{sub.concept_count} Lessons</span>
                     </div>
-                    <CardTitle className="text-base group-hover:text-nexora-accent transition-colors">
-                      {sub.name}
-                    </CardTitle>
-                    <CardDescription className="line-clamp-2 text-xs">
-                      {sub.description}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="py-2">
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between text-[11px] text-nexora-muted">
-                        <span>Progress</span>
-                        <span className="font-semibold text-white">{subMeta.pct}%</span>
-                      </div>
-                      <div className="w-full h-1.5 bg-nexora-elevated rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-nexora-primary rounded-full"
-                          style={{ width: `${subMeta.pct}%` }}
-                        />
-                      </div>
-                      <p className="text-[10px] text-nexora-subtext truncate">
-                        Last: {subMeta.lastTopic}
-                      </p>
+                    <div className="flex justify-between text-[11px] text-nexora-muted">
+                      <span>Track Status</span>
+                      <span className="text-nexora-accent font-medium">Available</span>
                     </div>
-                  </CardContent>
-                  <CardFooter className="pt-2 border-t border-nexora-border/40">
-                    <span className="text-[11px] text-nexora-muted">
-                      {sub.concept_count} topics
-                    </span>
-                    <span className="text-xs font-semibold text-nexora-primary group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                      Open <ChevronRight className="w-3.5 h-3.5" />
-                    </span>
-                  </CardFooter>
-                </Card>
-              );
-            })}
+                  </div>
+                </CardContent>
+                <CardFooter className="pt-2 border-t border-nexora-border/40">
+                  <span className="text-[11px] text-nexora-muted">
+                    Full structured syllabus
+                  </span>
+                  <span className="text-xs font-semibold text-nexora-primary group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+                    Open <ChevronRight className="w-3.5 h-3.5" />
+                  </span>
+                </CardFooter>
+              </Card>
+            ))}
           </div>
         )}
       </div>
@@ -371,36 +481,33 @@ export const HomePage: React.FC = () => {
           <EmptyState
             icon={<Clock className="w-6 h-6 text-nexora-muted" />}
             title="No activity yet"
-            description="Your recent lesson completions, practice tests, and study notes will appear here."
+            description="Your recent lesson completions, practice tests, and study notes will appear here as you learn."
             action={
-              <Link to="/learn">
-                <Button variant="primary" size="sm">Start a Lesson</Button>
+              <Link to="/subjects">
+                <Button variant="primary" size="sm">Explore Subjects</Button>
               </Link>
             }
           />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {recentActivities.map((act) => {
-              const Icon = act.icon;
-              return (
-                <div
-                  key={act.id}
-                  className="p-4 rounded-xl bg-nexora-surface/80 border border-nexora-border/70 flex items-start gap-3"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-nexora-elevated flex items-center justify-center text-nexora-accent shrink-0 mt-0.5">
-                    <Icon className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-xs font-semibold text-white truncate">{act.title}</h3>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[11px] text-nexora-primary font-medium">{act.subject}</span>
-                      <span className="text-xs text-nexora-border">&bull;</span>
-                      <span className="text-[10px] text-nexora-muted">{act.time}</span>
-                    </div>
+            {recentActivities.map((act) => (
+              <div
+                key={act.id}
+                className="p-4 rounded-xl bg-nexora-surface/80 border border-nexora-border/70 flex items-start gap-3"
+              >
+                <div className="w-8 h-8 rounded-lg bg-nexora-elevated flex items-center justify-center text-nexora-accent shrink-0 mt-0.5">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-xs font-semibold text-white truncate">{act.title}</h3>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[11px] text-nexora-primary font-medium">{act.subject}</span>
+                    <span className="text-xs text-nexora-border">&bull;</span>
+                    <span className="text-[10px] text-nexora-muted">{act.timeAgo}</span>
                   </div>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         )}
       </div>

@@ -25,33 +25,6 @@ export interface StudentNote {
   updatedAt: string;
 }
 
-const DEFAULT_STUDENT_NOTES: StudentNote[] = [
-  {
-    id: 'note-1',
-    title: 'Doppler Effect Wavefront Mechanics',
-    subject: 'Physics',
-    content:
-      "When the wave source moves, emitted wavefronts do not speed up—they remain at propagation speed 'v'.\n\nInstead, the geometric center of each consecutive sphere is shifted forward by (v_s * Δt). Ahead of the moving source, consecutive crests are compressed together (λ' < λ), producing higher observed frequency.\n\nExam Tip: If v_s approaches v, wavefronts pile up into a high-pressure shock cone (Mach 1).",
-    updatedAt: 'Today at 4:15 PM',
-  },
-  {
-    id: 'note-2',
-    title: 'Binary Search Midpoint Overflow Protection',
-    subject: 'Computer Science',
-    content:
-      'Avoid writing: mid = (low + high) / 2;\n\nIn standard 32-bit signed integers, if low and high are large (e.g. > 10^9), the sum overflows into negative values!\n\nStandard robust formulation: mid = low + (high - low) / 2;\n\nKey requirement: Binary search strictly requires random access memory arrays (O(1)). On singly linked lists, finding midpoint requires O(N) sequential traversal.',
-    updatedAt: 'Yesterday',
-  },
-  {
-    id: 'note-3',
-    title: 'Matrix Coordinate Transformations & Basis Vectors',
-    subject: 'Mathematics',
-    content:
-      'A matrix transformation can be visualized simply as describing where the standard basis vectors i-hat (1, 0) and j-hat (0, 1) land in the transformed space.\n\nThe determinant represents the factor by which any unit area scales under the transformation.',
-    updatedAt: 'Sep 14, 2026',
-  },
-];
-
 export const NotesPage: React.FC = () => {
   const [notes, setNotes] = useState<StudentNote[]>(() => {
     const saved = localStorage.getItem('nexora_student_notes');
@@ -59,10 +32,10 @@ export const NotesPage: React.FC = () => {
       try {
         return JSON.parse(saved);
       } catch (e) {
-        return DEFAULT_STUDENT_NOTES;
+        return [];
       }
     }
-    return DEFAULT_STUDENT_NOTES;
+    return [];
   });
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'recent' | 'by-subject'>('all');
@@ -224,8 +197,8 @@ export const NotesPage: React.FC = () => {
       {filteredNotes.length === 0 ? (
         <EmptyState
           icon={<BookMarked className="w-8 h-8 text-nexora-muted" />}
-          title="No notes yet"
-          description="Create your first study note to organize your learning reflections."
+          title="No notes created yet"
+          description="Your personal notes taken during lessons or created here will be preserved in your study space."
           action={
             <Button
               variant="primary"
@@ -233,7 +206,7 @@ export const NotesPage: React.FC = () => {
               leftIcon={<Plus className="w-4 h-4" />}
               onClick={handleOpenCreateModal}
             >
-              Create Note
+              Create Your First Note
             </Button>
           }
         />

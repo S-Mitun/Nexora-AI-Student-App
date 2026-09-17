@@ -23,6 +23,26 @@ export interface InteractiveSimulation {
   controls: SimulationControl[];
 }
 
+export interface PersonalizedContext {
+  interest: string;
+  domain: string;
+  headline: string;
+  analogy_explanation: string;
+  real_world_application: string;
+  related_domains: string[];
+  relevance_score?: number;
+}
+
+export interface RecommendedTopic {
+  concept: string;
+  subject: string;
+  slug: string;
+  matched_interest: string;
+  headline: string;
+  summary: string;
+  target_url: string;
+}
+
 export interface ConceptExploreResult {
   concept: string;
   domain: string;
@@ -35,6 +55,8 @@ export interface ConceptExploreResult {
   quick_check_question: string;
   quick_check_options: string[];
   quick_check_answer_index: number;
+  personalized_context?: PersonalizedContext | null;
+  available_perspectives?: PersonalizedContext[];
 }
 
 export interface BackendHealth {

@@ -25,45 +25,6 @@ export interface StudyMaterial {
   size: string;
 }
 
-const DEFAULT_MATERIALS: StudyMaterial[] = [
-  {
-    id: 'mat-1',
-    name: 'Wave_Mechanics_and_Acoustics_Chapter_17.pdf',
-    type: 'PDF',
-    subject: 'Physics',
-    dateAdded: 'Sep 15, 2026',
-    status: 'Ready',
-    size: '4.8 MB',
-  },
-  {
-    id: 'mat-2',
-    name: 'Data_Structures_Divide_and_Conquer_Notes.docx',
-    type: 'DOCX',
-    subject: 'Computer Science',
-    dateAdded: 'Sep 16, 2026',
-    status: 'Ready',
-    size: '2.1 MB',
-  },
-  {
-    id: 'mat-3',
-    name: 'Signals_and_Fourier_Analysis_Lecture_04.pptx',
-    type: 'PPTX',
-    subject: 'Electrical Engineering',
-    dateAdded: 'Sep 17, 2026',
-    status: 'Ready',
-    size: '12.4 MB',
-  },
-  {
-    id: 'mat-4',
-    name: 'Differential_Calculus_Formula_Sheet.pdf',
-    type: 'PDF',
-    subject: 'Mathematics',
-    dateAdded: 'Sep 12, 2026',
-    status: 'Ready',
-    size: '1.5 MB',
-  },
-];
-
 export const MaterialsPage: React.FC = () => {
   const [materials, setMaterials] = useState<StudyMaterial[]>(() => {
     const saved = localStorage.getItem('nexora_student_materials');
@@ -71,10 +32,10 @@ export const MaterialsPage: React.FC = () => {
       try {
         return JSON.parse(saved);
       } catch (e) {
-        return DEFAULT_MATERIALS;
+        return [];
       }
     }
-    return DEFAULT_MATERIALS;
+    return [];
   });
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'PDF' | 'DOCX' | 'PPTX'>('all');
@@ -212,8 +173,8 @@ export const MaterialsPage: React.FC = () => {
       {filteredMaterials.length === 0 ? (
         <EmptyState
           icon={<FileText className="w-8 h-8 text-nexora-muted" />}
-          title="No materials yet"
-          description="Add your study materials to keep them organized here."
+          title="No materials uploaded yet"
+          description="Upload your syllabus, lecture notes, or textbooks (PDF, DOCX) to study with them."
           action={
             <Button
               variant="primary"
@@ -221,7 +182,7 @@ export const MaterialsPage: React.FC = () => {
               leftIcon={<Plus className="w-4 h-4" />}
               onClick={() => setIsModalOpen(true)}
             >
-              Add Material
+              Upload First Document
             </Button>
           }
         />

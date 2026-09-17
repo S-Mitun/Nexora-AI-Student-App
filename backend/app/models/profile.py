@@ -22,6 +22,10 @@ class UserProfile(Base, TimestampMixin):
     preferred_language: Mapped[str] = mapped_column(String(50), default="en")
     institution: Mapped[str] = mapped_column(String(255), nullable=True)
     interests: Mapped[str] = mapped_column(Text, default="[]", nullable=True)
+    custom_interests: Mapped[str] = mapped_column(Text, default="[]", nullable=True)
+    favorite_subjects: Mapped[str] = mapped_column(Text, default="[]", nullable=True)
+    learning_preferences: Mapped[str] = mapped_column(Text, default='["visual", "practical", "step_by_step"]', nullable=True)
+    preferred_learning_style: Mapped[str] = mapped_column(String(50), default="visual", nullable=True)
     enable_code_mixing: Mapped[bool] = mapped_column(Boolean, default=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 

@@ -18,16 +18,26 @@ import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
 
 export const SettingsPage: React.FC = () => {
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, updateProfile, signOut } = useAuth();
 
   const [theme, setTheme] = useState<'dark' | 'system'>('dark');
-  const [language, setLanguage] = useState(profile?.preferred_language || 'en');
+  const [language, setLanguage] = useState(
+    profile?.preferred_language || localStorage.getItem('nexora_preferred_language') || 'en'
+  );
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [studyReminders, setStudyReminders] = useState(true);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSaveSettings = (e: React.FormEvent) => {
+  React.useEffect(() => {
+    if (profile?.preferred_language) {
+      setLanguage(profile.preferred_language);
+    }
+  }, [profile?.preferred_language]);
+
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSaving(true);
     localStorage.setItem(
       'nexora_student_settings',
       JSON.stringify({
@@ -37,6 +47,10 @@ export const SettingsPage: React.FC = () => {
         studyReminders,
       })
     );
+    if (updateProfile) {
+      await updateProfile({ preferred_language: language });
+    }
+    setIsSaving(false);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
   };

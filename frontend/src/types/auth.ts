@@ -7,10 +7,24 @@ export interface StudentProfile {
   preferred_language: string;
   institution: string | null;
   interests: string[];
+  custom_interests?: string[];
+  favorite_subjects?: string[];
+  learning_preferences?: string[];
+  preferred_learning_style?: 'visual' | 'practical' | 'step_by_step' | string;
   enable_code_mixing: boolean;
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface StudentPreferences {
+  interests: string[];
+  custom_interests: string[];
+  favorite_subjects: string[];
+  learning_preferences: string[];
+  preferred_learning_style: 'visual' | 'practical' | 'step_by_step' | string;
+  preferred_language: string;
+  enable_code_mixing: boolean;
 }
 
 export interface AuthUser {

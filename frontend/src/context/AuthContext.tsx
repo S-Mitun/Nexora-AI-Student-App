@@ -76,6 +76,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       const data = await apiService.getProfile();
       setProfile(data);
+      if (data?.preferred_language) {
+        localStorage.setItem('nexora_preferred_language', data.preferred_language);
+      }
     } catch (err) {
       console.warn('[NEXORA] Could not load profile from backend API:', err);
     }
@@ -419,6 +422,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const updated = await apiService.updateProfile(updates);
       setProfile(updated);
+      if (updated?.preferred_language) {
+        localStorage.setItem('nexora_preferred_language', updated.preferred_language);
+      }
       return { error: null };
     } catch (err: any) {
       return { error: err };

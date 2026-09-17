@@ -20,6 +20,7 @@ import { Badge } from '../components/ui/Badge';
 import { Input } from '../components/ui/Input';
 import { Callout } from '../components/ui/Callout';
 import { Link } from 'react-router-dom';
+import { studentActivityService } from '../services/studentActivity';
 
 interface ConceptNode {
   id: string;
@@ -39,7 +40,7 @@ const KNOWLEDGE_GRAPH: Record<string, ConceptNode> = {
     id: 'doppler-effect',
     title: 'Doppler Effect',
     level: 'concept',
-    mastery: 85,
+    mastery: 0,
     prerequisites: ['wave-frequency', 'relative-motion'],
     downstream: ['sonic-boom', 'radar-speed-detection', 'astronomical-redshift'],
     summary: 'The perceived change in frequency of a wave when the source and observer are in relative motion.',
@@ -51,7 +52,7 @@ const KNOWLEDGE_GRAPH: Record<string, ConceptNode> = {
     id: 'wave-frequency',
     title: 'Wave Frequency & Wavelength',
     level: 'topic',
-    mastery: 100,
+    mastery: 0,
     prerequisites: ['periodic-motion'],
     downstream: ['doppler-effect', 'wave-interference'],
     summary: 'The number of complete wave cycles passing a stationary point per unit time (v = f * λ).',
@@ -63,7 +64,7 @@ const KNOWLEDGE_GRAPH: Record<string, ConceptNode> = {
     id: 'relative-motion',
     title: 'Relative Velocity & Reference Frames',
     level: 'topic',
-    mastery: 90,
+    mastery: 0,
     prerequisites: ['kinematics-1d'],
     downstream: ['doppler-effect', 'special-relativity'],
     summary: 'Calculating the velocity of an entity relative to a specified inertial or moving frame of reference.',
@@ -75,7 +76,7 @@ const KNOWLEDGE_GRAPH: Record<string, ConceptNode> = {
     id: 'binary-search',
     title: 'Binary Search Algorithm',
     level: 'concept',
-    mastery: 95,
+    mastery: 0,
     prerequisites: ['sorted-arrays', 'logarithmic-complexity'],
     downstream: ['binary-search-trees', 'b-trees', 'git-bisect'],
     summary: 'An efficient algorithm for finding an item from a sorted list of items by repeatedly halving the search space.',
@@ -87,7 +88,7 @@ const KNOWLEDGE_GRAPH: Record<string, ConceptNode> = {
     id: 'sorted-arrays',
     title: 'Ordered Arrays & Direct Indexing',
     level: 'topic',
-    mastery: 100,
+    mastery: 0,
     prerequisites: ['memory-allocation'],
     downstream: ['binary-search', 'two-pointer-technique'],
     summary: 'Contiguous memory buffers with elements arranged in monotonic ascending or descending order.',
@@ -99,7 +100,7 @@ const KNOWLEDGE_GRAPH: Record<string, ConceptNode> = {
     id: 'logarithmic-complexity',
     title: 'Logarithmic Time Complexity O(log N)',
     level: 'topic',
-    mastery: 80,
+    mastery: 0,
     prerequisites: ['big-o-notation'],
     downstream: ['binary-search', 'divide-and-conquer'],
     summary: 'Algorithms where the execution time increases proportionally to the logarithm of the input size.',
@@ -111,7 +112,7 @@ const KNOWLEDGE_GRAPH: Record<string, ConceptNode> = {
     id: 'sonic-boom',
     title: 'Mach Cone & Shock Wave Discontinuity',
     level: 'concept',
-    mastery: 30,
+    mastery: 0,
     prerequisites: ['doppler-effect'],
     downstream: ['hypersonic-aerodynamics'],
     summary: 'When a source velocity exceeds wave speed (v_s > v), wavefronts constructively overlap into a conical pressure shock wave.',
@@ -155,6 +156,17 @@ export const MindMapPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
 
   const selectedNode = KNOWLEDGE_GRAPH[selectedConceptId] || KNOWLEDGE_GRAPH['doppler-effect'];
+
+  const getNodeMastery = (node: ConceptNode): number => {
+    if (studentActivityService.isTopicCompleted(node.title)) return 100;
+    const attempts = studentActivityService.getPracticeAttempts().filter(
+      (p) => p.topic.toLowerCase() === node.title.toLowerCase()
+    );
+    if (attempts.length > 0) {
+      return Math.max(...attempts.map((a) => Math.round((a.score / Math.max(1, a.totalQuestions)) * 100)));
+    }
+    return 0;
+  };
 
   return (
     <div className="space-y-8 animate-fadeIn">
@@ -255,15 +267,21 @@ export const MindMapPage: React.FC = () => {
                                 <h4 className="text-sm font-semibold text-nexora-text">
                                   {node.title}
                                 </h4>
-                                {node.mastery >= 80 ? (
-                                  <Badge variant="success" size="sm">
-                                    {node.mastery}%
-                                  </Badge>
-                                ) : (
-                                  <Badge variant="warning" size="sm">
-                                    {node.mastery}%
-                                  </Badge>
-                                )}
+                                {(() => {
+                                  const m = getNodeMastery(node);
+                                  if (m > 0) {
+                                    return (
+                                      <Badge variant={m >= 80 ? 'success' : 'accent'} size="sm">
+                                        {m}%
+                                      </Badge>
+                                    );
+                                  }
+                                  return (
+                                    <Badge variant="neutral" size="sm">
+                                      Not Assessed
+                                    </Badge>
+                                  );
+                                })()}
                               </div>
 
                               <p className="text-xs text-nexora-text-muted mt-1.5 line-clamp-2">
@@ -300,8 +318,14 @@ export const MindMapPage: React.FC = () => {
                 <span className="text-[10px] uppercase font-bold tracking-wider text-nexora-primary bg-nexora-primary/10 px-2 py-0.5 rounded border border-nexora-primary/20">
                   Concept Telemetry
                 </span>
-                <span className="text-xs font-mono text-emerald-400">
-                  Mastery: {selectedNode.mastery}%
+                <span className="text-xs font-mono text-nexora-muted">
+                  {(() => {
+                    const m = getNodeMastery(selectedNode);
+                    if (m > 0) {
+                      return <span className="text-emerald-400 font-bold">Mastery: {m}%</span>;
+                    }
+                    return <span>Mastery: Not assessed yet</span>;
+                  })()}
                 </span>
               </div>
               <CardTitle className="text-lg mt-2">

@@ -34,6 +34,15 @@ async def lifespan(app: FastAPI):
                         conn.execute(text("ALTER TABLE profiles ADD COLUMN interests JSON"))
                     if "enable_code_mixing" not in existing_cols:
                         conn.execute(text("ALTER TABLE profiles ADD COLUMN enable_code_mixing BOOLEAN DEFAULT 0"))
+                    if "favorite_subjects" not in existing_cols:
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN favorite_subjects JSON"))
+                    if "preferred_learning_style" not in existing_cols:
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN preferred_learning_style VARCHAR(50) DEFAULT 'balanced'"))
+                    if "custom_interests" not in existing_cols:
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN custom_interests JSON"))
+                    if "learning_preferences" not in existing_cols:
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN learning_preferences JSON DEFAULT '[\"visual\", \"practical\", \"step_by_step\"]'"))
+                        conn.execute(text("UPDATE profiles SET learning_preferences = '[\"visual\", \"practical\", \"step_by_step\"]' WHERE learning_preferences IS NULL OR learning_preferences = '[]'"))
                     conn.commit()
         logger.info("Database schema synchronized successfully.")
     except Exception as e:

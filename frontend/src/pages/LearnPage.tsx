@@ -15,13 +15,17 @@ import {
   FolderKanban,
   FileText,
   HelpCircle,
+  Compass,
+  Sparkles,
 } from 'lucide-react';
 import { apiService } from '../services/api';
-import { ConceptExploreResult } from '../types/learning';
+import { ConceptExploreResult, PersonalizedContext } from '../types/learning';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { VisualContainer } from '../components/learning/VisualContainer';
+import { EmptyState } from '../components/ui/EmptyState';
+import { studentActivityService, ActiveCourseProgress } from '../services/studentActivity';
 
 export const LearnPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -31,52 +35,28 @@ export const LearnPage: React.FC = () => {
   // --- STATE FOR "MY LEARNING" VIEW ---
   const [learningFilter, setLearningFilter] = useState<'all' | 'in-progress' | 'completed'>('all');
 
-  const registeredCourses = [
-    {
-      id: 'course-cs',
-      subject: 'Data Structures & Algorithms',
-      slug: 'computer-science',
-      totalTopics: 12,
-      completedTopics: 5,
-      progress: 42,
-      currentTopic: 'Binary Search Algorithm',
-      lastLessonSlug: 'Binary Search',
-    },
-    {
-      id: 'course-phys',
-      subject: 'Wave Mechanics & Acoustics',
-      slug: 'physics',
-      totalTopics: 10,
-      completedTopics: 6,
-      progress: 60,
-      currentTopic: 'Doppler Effect',
-      lastLessonSlug: 'Doppler Effect',
-    },
-    {
-      id: 'course-math',
-      subject: 'Linear Algebra & Matrices',
-      slug: 'mathematics',
-      totalTopics: 8,
-      completedTopics: 2,
-      progress: 25,
-      currentTopic: 'Matrix Transformations',
-      lastLessonSlug: 'Matrix Transformations',
-    },
-    {
-      id: 'course-bio',
-      subject: 'Cellular Biology & Genetics',
-      slug: 'biology',
-      totalTopics: 6,
-      completedTopics: 1,
-      progress: 16,
-      currentTopic: 'Cellular Respiration',
-      lastLessonSlug: 'Cellular Respiration',
-    },
-  ];
+  // Genuine started courses derived from real student activity
+  const activeCourse = studentActivityService.getActiveCourse();
+  const registeredCourses = activeCourse
+    ? [
+        {
+          id: `course-${activeCourse.slug}`,
+          subject: activeCourse.courseTitle,
+          slug: activeCourse.slug,
+          totalTopics: activeCourse.totalTopics,
+          completedTopics: activeCourse.completedTopics,
+          progress: activeCourse.progressPercent,
+          currentTopic: activeCourse.currentTopic,
+          lastLessonSlug: activeCourse.lastLesson,
+        },
+      ]
+    : [];
 
   // --- STATE FOR "TOPIC / LESSON" VIEW ---
   const [loading, setLoading] = useState(false);
   const [conceptData, setConceptData] = useState<ConceptExploreResult | null>(null);
+  const [perspectives, setPerspectives] = useState<PersonalizedContext[]>([]);
+  const [activePerspective, setActivePerspective] = useState<PersonalizedContext | null>(null);
 
   // Simulation state for Doppler Effect
   const [sourceSpeed, setSourceSpeed] = useState<number>(40);
@@ -102,19 +82,32 @@ export const LearnPage: React.FC = () => {
   useEffect(() => {
     if (!queryParam) {
       setConceptData(null);
+      setActivePerspective(null);
+      setPerspectives([]);
       return;
     }
 
     let isMounted = true;
     setLoading(true);
+    const interestHint = searchParams.get('interest') || undefined;
+
     apiService
-      .exploreConcept(queryParam)
+      .exploreConcept(queryParam, undefined, interestHint)
       .then((data) => {
         if (isMounted) {
           setConceptData(data);
+          if (data.personalized_context) {
+            setActivePerspective(data.personalized_context);
+          }
+          if (data.available_perspectives && data.available_perspectives.length > 0) {
+            setPerspectives(data.available_perspectives);
+          }
           setLoading(false);
           setSelectedAnswer(null);
           setQuizSubmitted(false);
+
+          // Record genuine lesson view event
+          studentActivityService.recordLessonView(data.concept, data.concept, data.domain);
 
           // Restore student note for this topic
           const savedNote = localStorage.getItem(`nexora_note_${data.concept}`);
@@ -133,7 +126,7 @@ export const LearnPage: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [queryParam]);
+  }, [queryParam, searchParams]);
 
   // Doppler Simulation Canvas Loop
   useEffect(() => {
@@ -233,8 +226,15 @@ export const LearnPage: React.FC = () => {
   }, [conceptData, bsTarget]);
 
   const handleQuizSubmit = () => {
-    if (selectedAnswer === null) return;
+    if (selectedAnswer === null || !conceptData) return;
     setQuizSubmitted(true);
+    const isCorrect = selectedAnswer === conceptData.quick_check_answer_index;
+    studentActivityService.recordQuizAttempt(
+      conceptData.concept,
+      conceptData.domain,
+      isCorrect ? 1 : 0,
+      1
+    );
   };
 
   const handleSaveNote = () => {
@@ -318,48 +318,63 @@ export const LearnPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {filteredCourses.map((course) => (
-            <Card key={course.id} className="border-nexora-border/80 flex flex-col justify-between">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-mono text-nexora-muted uppercase tracking-wider">
-                    {course.totalTopics} Topics &bull; {course.completedTopics} Completed
-                  </span>
-                  <Badge variant={course.progress > 50 ? 'accent' : 'neutral'} size="sm">
-                    {course.progress}%
-                  </Badge>
-                </div>
-                <CardTitle className="text-lg text-white">{course.subject}</CardTitle>
-                <CardDescription className="text-xs">
-                  Current Lesson: <strong className="text-white">{course.currentTopic}</strong>
-                </CardDescription>
-              </CardHeader>
+        {filteredCourses.length === 0 ? (
+          <EmptyState
+            icon={<BookOpen className="w-8 h-8 text-nexora-muted" />}
+            title="You haven't started learning yet"
+            description="Select a subject from the curriculum to begin your personalized learning path."
+            action={
+              <Link to="/subjects">
+                <Button variant="primary" size="md">
+                  Explore Subjects
+                </Button>
+              </Link>
+            }
+          />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {filteredCourses.map((course) => (
+              <Card key={course.id} className="border-nexora-border/80 flex flex-col justify-between">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-mono text-nexora-muted uppercase tracking-wider">
+                      {course.totalTopics} Topics &bull; {course.completedTopics} Completed
+                    </span>
+                    <Badge variant={course.progress > 50 ? 'accent' : 'neutral'} size="sm">
+                      {course.progress}%
+                    </Badge>
+                  </div>
+                  <CardTitle className="text-lg text-white">{course.subject}</CardTitle>
+                  <CardDescription className="text-xs">
+                    Current Lesson: <strong className="text-white">{course.currentTopic}</strong>
+                  </CardDescription>
+                </CardHeader>
 
-              <CardContent className="py-2">
-                <div className="w-full h-2 bg-nexora-elevated rounded-full overflow-hidden mb-3">
-                  <div
-                    className="h-full bg-nexora-primary rounded-full"
-                    style={{ width: `${course.progress}%` }}
-                  />
-                </div>
-              </CardContent>
+                <CardContent className="py-2">
+                  <div className="w-full h-2 bg-nexora-elevated rounded-full overflow-hidden mb-3">
+                    <div
+                      className="h-full bg-nexora-primary rounded-full"
+                      style={{ width: `${course.progress}%` }}
+                    />
+                  </div>
+                </CardContent>
 
-              <CardFooter className="pt-3 border-t border-nexora-border/40 flex justify-between items-center">
-                <Link to={`/subjects/${course.slug}`}>
-                  <Button variant="outline" size="sm">
-                    View Modules
-                  </Button>
-                </Link>
-                <Link to={`/learn?q=${encodeURIComponent(course.lastLessonSlug)}`}>
-                  <Button variant="primary" size="sm" rightIcon={<ChevronRight className="w-3.5 h-3.5" />}>
-                    Continue Lesson
-                  </Button>
-                </Link>
-              </CardFooter>
-            </Card>
-          ))}
-        </div>
+                <CardFooter className="pt-3 border-t border-nexora-border/40 flex justify-between items-center">
+                  <Link to={`/subjects/${course.slug}`}>
+                    <Button variant="outline" size="sm">
+                      View Modules
+                    </Button>
+                  </Link>
+                  <Link to={`/learn?q=${encodeURIComponent(course.lastLessonSlug)}`}>
+                    <Button variant="primary" size="sm" rightIcon={<ChevronRight className="w-3.5 h-3.5" />}>
+                      Continue Lesson
+                    </Button>
+                  </Link>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -557,6 +572,9 @@ export const LearnPage: React.FC = () => {
             <div className="p-3.5 rounded-xl bg-nexora-bg border border-nexora-border font-mono text-xs text-indigo-300 leading-relaxed">
               {conceptData.technical_explanation}
             </div>
+            <p className="text-[11px] text-nexora-muted mt-2.5 italic">
+              Invariant curriculum standard: Mathematical equations and complexity bounds remain identical across all learning modes.
+            </p>
           </CardContent>
         </Card>
 
@@ -564,7 +582,7 @@ export const LearnPage: React.FC = () => {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-bold text-white flex items-center gap-2">
               <Award className="w-4 h-4 text-emerald-400" />
-              Practical Engineering Application
+              Standard Curriculum Application
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -574,6 +592,87 @@ export const LearnPage: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* 4b. Contextual Perspective By Interest (Master Prompt 04) */}
+      {activePerspective && (
+        <Card className="border-indigo-500/30 bg-gradient-to-br from-nexora-surface to-indigo-950/20 shadow-glow-sm">
+          <CardHeader className="pb-3 border-b border-nexora-border/40">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-nexora-accent bg-nexora-accent/10 px-2.5 py-0.5 rounded-full border border-nexora-accent/20 flex items-center gap-1.5">
+                    <Compass className="w-3 h-3" />
+                    Personalized Perspective: {activePerspective.interest}
+                  </span>
+                </div>
+                <CardTitle className="text-base text-white font-bold">
+                  {activePerspective.headline}
+                </CardTitle>
+                <CardDescription className="text-xs text-nexora-muted mt-0.5">
+                  {activePerspective.domain}
+                </CardDescription>
+              </div>
+
+              {/* Dynamic Perspective Switcher */}
+              {perspectives.length > 1 && (
+                <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Perspective switch">
+                  {perspectives.map((p) => {
+                    const isCurrent = activePerspective.interest === p.interest;
+                    return (
+                      <button
+                        key={p.interest}
+                        type="button"
+                        onClick={() => setActivePerspective(p)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
+                          isCurrent
+                            ? 'bg-nexora-primary border-nexora-primary text-white shadow-glow-sm'
+                            : 'bg-nexora-surface/70 border-nexora-border/60 text-nexora-muted hover:text-white hover:border-nexora-border'
+                        }`}
+                      >
+                        {p.interest}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </CardHeader>
+
+          <CardContent className="p-5 space-y-4">
+            <div>
+              <h4 className="text-xs font-semibold text-nexora-muted uppercase tracking-wider mb-1.5">
+                Relatable Intuition & Analogy
+              </h4>
+              <p className="text-xs sm:text-sm text-nexora-text leading-relaxed">
+                {activePerspective.analogy_explanation}
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-nexora-elevated/60 border border-nexora-border/60">
+              <h4 className="text-xs font-semibold text-emerald-400 mb-1">
+                Field Application: {activePerspective.domain}
+              </h4>
+              <p className="text-xs sm:text-sm text-nexora-subtext leading-relaxed">
+                {activePerspective.real_world_application}
+              </p>
+            </div>
+
+            {activePerspective.related_domains && activePerspective.related_domains.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[11px] text-nexora-muted mr-1">Related Fields:</span>
+                {activePerspective.related_domains.map((dom) => (
+                  <span
+                    key={dom}
+                    className="px-2 py-0.5 rounded-md text-[11px] bg-nexora-surface border border-nexora-border/60 text-nexora-subtext font-mono"
+                  >
+                    #{dom}
+                  </span>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* 5. Concept Check Question */}
       <Card className="border-nexora-border/80">

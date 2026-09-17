@@ -59,11 +59,11 @@ export const SubjectsPage: React.FC = () => {
   };
 
   // Curated subject educational metadata
-  const subjectMetadata: Record<string, { modules: number; progress: number; domain: 'cs' | 'sciences' }> = {
-    'computer-science': { modules: 5, progress: 42, domain: 'cs' },
-    physics: { modules: 4, progress: 75, domain: 'sciences' },
-    mathematics: { modules: 4, progress: 30, domain: 'sciences' },
-    biology: { modules: 3, progress: 15, domain: 'sciences' },
+  const subjectMetadata: Record<string, { modules: number; domain: 'cs' | 'sciences' }> = {
+    'computer-science': { modules: 5, domain: 'cs' },
+    physics: { modules: 4, domain: 'sciences' },
+    mathematics: { modules: 4, domain: 'sciences' },
+    biology: { modules: 3, domain: 'sciences' },
   };
 
   const filteredSubjects = subjects.filter((sub) => {
@@ -153,14 +153,14 @@ export const SubjectsPage: React.FC = () => {
                     <div className="w-12 h-12 rounded-xl bg-nexora-elevated flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
                       {getSubjectIcon(sub.icon)}
                     </div>
-                    <Badge variant={meta.progress > 50 ? 'accent' : 'neutral'} size="sm">
-                      {meta.progress}% Complete
+                    <Badge variant="neutral" size="sm">
+                      {meta.modules} Modules
                     </Badge>
                   </div>
                   <CardTitle className="text-lg group-hover:text-nexora-accent transition-colors">
                     {sub.name}
                   </CardTitle>
-                  <CardDescription className="text-xs line-clamp-2">
+                  <CardDescription className="line-clamp-2 text-xs">
                     {sub.description}
                   </CardDescription>
                 </CardHeader>
@@ -175,11 +175,9 @@ export const SubjectsPage: React.FC = () => {
                       <span>Foundational Topics</span>
                       <span className="font-semibold text-white">{sub.concept_count} Lessons</span>
                     </div>
-                    <div className="w-full h-1.5 bg-nexora-elevated rounded-full overflow-hidden mt-1">
-                      <div
-                        className="h-full bg-nexora-primary rounded-full"
-                        style={{ width: `${meta.progress}%` }}
-                      />
+                    <div className="flex justify-between text-[11px] text-nexora-muted pt-1 border-t border-nexora-border/40">
+                      <span>Course Track</span>
+                      <span className="text-nexora-accent font-medium">Standard Syllabus</span>
                     </div>
                   </div>
                 </CardContent>

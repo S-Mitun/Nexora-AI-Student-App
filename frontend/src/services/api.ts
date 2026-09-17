@@ -37,11 +37,30 @@ export const apiService = {
     return response.data;
   },
 
-  async exploreConcept(query: string, subjectHint?: string): Promise<ConceptExploreResult> {
+  async exploreConcept(
+    query: string,
+    subjectHint?: string,
+    interestHint?: string
+  ): Promise<ConceptExploreResult> {
     const response = await apiClient.post<ConceptExploreResult>('/api/v1/learning/explore', {
       query,
       subject_hint: subjectHint,
+      interest_hint: interestHint,
     });
+    return response.data;
+  },
+
+  async getRecommendations(): Promise<import('../types/learning').RecommendedTopic[]> {
+    const response = await apiClient.get<import('../types/learning').RecommendedTopic[]>(
+      '/api/v1/learning/recommendations'
+    );
+    return response.data;
+  },
+
+  async getPerspectives(conceptSlug: string): Promise<import('../types/learning').PersonalizedContext[]> {
+    const response = await apiClient.get<import('../types/learning').PersonalizedContext[]>(
+      `/api/v1/learning/perspectives/${encodeURIComponent(conceptSlug)}`
+    );
     return response.data;
   },
 
@@ -57,6 +76,30 @@ export const apiService = {
 
   async updateProfile(updates: Partial<StudentProfile>): Promise<StudentProfile> {
     const response = await apiClient.put<StudentProfile>('/api/v1/profile', updates);
+    return response.data;
+  },
+
+  async getPreferences(): Promise<import('../types/auth').StudentPreferences> {
+    const response = await apiClient.get<import('../types/auth').StudentPreferences>(
+      '/api/v1/profile/preferences'
+    );
+    return response.data;
+  },
+
+  async updatePreferences(
+    prefs: Partial<import('../types/auth').StudentPreferences>
+  ): Promise<import('../types/auth').StudentPreferences> {
+    const response = await apiClient.patch<import('../types/auth').StudentPreferences>(
+      '/api/v1/profile/preferences',
+      prefs
+    );
+    return response.data;
+  },
+
+  async resetPreferences(): Promise<import('../types/auth').StudentPreferences> {
+    const response = await apiClient.post<import('../types/auth').StudentPreferences>(
+      '/api/v1/profile/preferences/reset'
+    );
     return response.data;
   },
 };

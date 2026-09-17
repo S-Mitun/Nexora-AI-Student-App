@@ -15,6 +15,7 @@ import {
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { studentActivityService } from '../services/studentActivity';
 
 interface TopicItem {
   id: string;
@@ -58,14 +59,14 @@ const COURSES_DATA: Record<string, SubjectCourseData> = {
             id: 'cs-m1-1',
             title: 'Asymptotic Analysis & Big-O Notation',
             duration: '20 mins',
-            status: 'completed',
+            status: 'not-started',
             lessonSlug: 'Asymptotic Analysis',
           },
           {
             id: 'cs-m1-2',
             title: 'Memory Contiguity & Cache Locality',
             duration: '25 mins',
-            status: 'completed',
+            status: 'not-started',
             lessonSlug: 'Memory Allocation',
           },
         ],
@@ -79,7 +80,7 @@ const COURSES_DATA: Record<string, SubjectCourseData> = {
             id: 'cs-m2-1',
             title: 'Binary Search Algorithm',
             duration: '35 mins',
-            status: 'in-progress',
+            status: 'not-started',
             lessonSlug: 'Binary Search',
           },
           {
@@ -306,6 +307,18 @@ export const SubjectDetailPage: React.FC = () => {
 
   const course = COURSES_DATA[subjectSlug || 'computer-science'] || COURSES_DATA['computer-science'];
 
+  const getTopicStatus = (topic: TopicItem): TopicItem['status'] => {
+    if (studentActivityService.isTopicCompleted(topic.title)) return 'completed';
+    const active = studentActivityService.getActiveCourse();
+    if (active && active.currentTopic.toLowerCase() === topic.title.toLowerCase()) return 'in-progress';
+    return 'not-started';
+  };
+
+  const allTopics = course.modules.flatMap((m) => m.topics);
+  const totalTopicsCount = allTopics.length;
+  const completedTopicsCount = allTopics.filter((t) => getTopicStatus(t) === 'completed').length;
+  const progressPercent = totalTopicsCount > 0 ? Math.round((completedTopicsCount / totalTopicsCount) * 100) : 0;
+
   const getStatusIcon = (status: TopicItem['status']) => {
     switch (status) {
       case 'completed':
@@ -360,17 +373,16 @@ export const SubjectDetailPage: React.FC = () => {
           <div className="p-4 rounded-xl bg-nexora-bg border border-nexora-border/70 shrink-0 md:w-56 space-y-2">
             <div className="flex justify-between text-xs">
               <span className="text-nexora-muted">Course Progress</span>
-              <span className="font-bold text-white">{course.progressPercent}%</span>
+              <span className="font-bold text-white">{progressPercent}%</span>
             </div>
             <div className="w-full h-2 bg-nexora-elevated rounded-full overflow-hidden">
               <div
                 className="h-full bg-nexora-primary rounded-full"
-                style={{ width: `${course.progressPercent}%` }}
+                style={{ width: `${progressPercent}%` }}
               />
             </div>
             <p className="text-[10px] text-nexora-muted">
-              {course.modules.reduce((acc, m) => acc + m.topics.filter(t => t.status === 'completed').length, 0)} of{' '}
-              {course.modules.reduce((acc, m) => acc + m.topics.length, 0)} Lessons Completed
+              {completedTopicsCount} of {totalTopicsCount} Lessons Completed
             </p>
           </div>
         </div>
@@ -402,30 +414,33 @@ export const SubjectDetailPage: React.FC = () => {
               </CardHeader>
 
               <CardContent className="p-0 divide-y divide-nexora-border/40">
-                {mod.topics.map((topic) => (
-                  <div
-                    key={topic.id}
-                    onClick={() => navigate(`/learn?q=${encodeURIComponent(topic.title)}`)}
-                    className="p-4 flex items-center justify-between gap-4 hover:bg-nexora-elevated/50 transition-colors cursor-pointer group"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      {getStatusIcon(topic.status)}
-                      <div>
-                        <h4 className="text-xs sm:text-sm font-medium text-white group-hover:text-nexora-accent transition-colors truncate">
-                          {topic.title}
-                        </h4>
-                        <span className="text-[11px] text-nexora-muted">{topic.duration}</span>
+                {mod.topics.map((topic) => {
+                  const status = getTopicStatus(topic);
+                  return (
+                    <div
+                      key={topic.id}
+                      onClick={() => navigate(`/learn?q=${encodeURIComponent(topic.title)}`)}
+                      className="p-4 flex items-center justify-between gap-4 hover:bg-nexora-elevated/50 transition-colors cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        {getStatusIcon(status)}
+                        <div>
+                          <h4 className="text-xs sm:text-sm font-medium text-white group-hover:text-nexora-accent transition-colors truncate">
+                            {topic.title}
+                          </h4>
+                          <span className="text-[11px] text-nexora-muted">{topic.duration}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 shrink-0">
+                        {getStatusBadge(status)}
+                        <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
+                          Open Lesson <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                        </Button>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-3 shrink-0">
-                      {getStatusBadge(topic.status)}
-                      <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
-                        Open Lesson <ChevronRight className="w-3.5 h-3.5 ml-1" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </CardContent>
             </Card>
           ))}
