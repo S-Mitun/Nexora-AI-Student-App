@@ -26,8 +26,12 @@ import { Badge } from '../components/ui/Badge';
 import { VisualContainer } from '../components/learning/VisualContainer';
 import { EmptyState } from '../components/ui/EmptyState';
 import { studentActivityService, ActiveCourseProgress } from '../services/studentActivity';
+import { AcademicContentRenderer } from '../components/common/AcademicContentRenderer';
+
+import { useAuth } from '../context/AuthContext';
 
 export const LearnPage: React.FC = () => {
+  const { profile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const queryParam = searchParams.get('q');
@@ -36,7 +40,7 @@ export const LearnPage: React.FC = () => {
   const [learningFilter, setLearningFilter] = useState<'all' | 'in-progress' | 'completed'>('all');
 
   // Genuine started courses derived from real student activity
-  const activeCourse = studentActivityService.getActiveCourse();
+  const activeCourse = studentActivityService.getActiveCourse(profile?.education_category || profile?.education_level);
   const registeredCourses = activeCourse
     ? [
         {
@@ -282,11 +286,16 @@ export const LearnPage: React.FC = () => {
       <div className="space-y-8 animate-fadeIn">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-nexora-border/60">
           <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs font-semibold text-nexora-primary bg-nexora-primary/10 px-2.5 py-0.5 rounded-full border border-nexora-primary/20">
+                {profile?.grade_level || 'Class 10'} &bull; {profile?.academic_domain || 'Academic Workspace'}
+              </span>
+            </div>
             <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
               My Learning
             </h1>
             <p className="text-sm text-nexora-subtext mt-1">
-              Your active subjects, curriculum modules, and progress tracks.
+              Your calibrated academic curriculum modules, study materials, and progress tracks.
             </p>
           </div>
 
@@ -444,14 +453,10 @@ export const LearnPage: React.FC = () => {
         <h2 className="text-sm font-bold uppercase tracking-wider text-nexora-muted">
           Core Concept Summary
         </h2>
-        <p className="text-sm text-nexora-text leading-relaxed font-medium">
-          {conceptData.simple_explanation}
-        </p>
-        <div className="pt-2 border-t border-nexora-border/40">
-          <p className="text-xs text-nexora-subtext">
-            <strong className="text-white">Why it matters: </strong>
-            {conceptData.why_it_matters}
-          </p>
+        <AcademicContentRenderer content={conceptData.simple_explanation} className="text-sm text-nexora-text leading-relaxed font-medium" />
+        <div className="pt-2 border-t border-nexora-border/40 space-y-1">
+          <span className="text-xs text-white font-semibold">Why it matters:</span>
+          <AcademicContentRenderer content={conceptData.why_it_matters} compact />
         </div>
       </div>
 
@@ -569,8 +574,8 @@ export const LearnPage: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="p-3.5 rounded-xl bg-nexora-bg border border-nexora-border font-mono text-xs text-indigo-300 leading-relaxed">
-              {conceptData.technical_explanation}
+            <div className="p-3.5 rounded-xl bg-nexora-bg border border-nexora-border text-xs leading-relaxed">
+              <AcademicContentRenderer content={conceptData.technical_explanation} />
             </div>
             <p className="text-[11px] text-nexora-muted mt-2.5 italic">
               Invariant curriculum standard: Mathematical equations and complexity bounds remain identical across all learning modes.
@@ -586,9 +591,7 @@ export const LearnPage: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-xs sm:text-sm text-nexora-subtext leading-relaxed">
-              {conceptData.practical_application}
-            </p>
+            <AcademicContentRenderer content={conceptData.practical_application} compact />
           </CardContent>
         </Card>
       </div>
@@ -643,18 +646,14 @@ export const LearnPage: React.FC = () => {
               <h4 className="text-xs font-semibold text-nexora-muted uppercase tracking-wider mb-1.5">
                 Relatable Intuition & Analogy
               </h4>
-              <p className="text-xs sm:text-sm text-nexora-text leading-relaxed">
-                {activePerspective.analogy_explanation}
-              </p>
+              <AcademicContentRenderer content={activePerspective.analogy_explanation} compact />
             </div>
 
             <div className="p-3.5 rounded-xl bg-nexora-elevated/60 border border-nexora-border/60">
               <h4 className="text-xs font-semibold text-emerald-400 mb-1">
                 Field Application: {activePerspective.domain}
               </h4>
-              <p className="text-xs sm:text-sm text-nexora-subtext leading-relaxed">
-                {activePerspective.real_world_application}
-              </p>
+              <AcademicContentRenderer content={activePerspective.real_world_application} compact />
             </div>
 
             {activePerspective.related_domains && activePerspective.related_domains.length > 0 && (

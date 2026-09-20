@@ -533,100 +533,124 @@ class PersonalizationService:
         cls,
         student_interests: Optional[List[str]] = None,
         favorite_subjects: Optional[List[str]] = None,
+        education_category: Optional[str] = None,
     ) -> List[RecommendedTopic]:
         """
         Generates personalized topic exploration cards for the student dashboard.
         Tailors recommendations to student interests while preserving complete functionality
-        when student has no registered interests.
+        when student has no registered interests, strictly isolated by education level.
         """
         recommendations: List[RecommendedTopic] = []
+        cat = (education_category or "").lower().strip().replace("-", " ").replace("–", " ")
+
+        # Check for Primary or Secondary student to prevent inappropriate CS concepts
+        is_primary = any(k in cat for k in ["primary", "class 1 5", "k 5", "elementary"])
+        is_secondary = any(k in cat for k in ["secondary", "class 6 10", "middle", "6 to 10"])
+        is_higher_sec = any(k in cat for k in ["higher secondary", "class 11 12", "senior secondary", "11 to 12"])
 
         # If student has registered interests, build tailored recommendations
         if student_interests and len(student_interests) > 0:
             for interest in student_interests:
                 norm = cls.normalize_interest(interest)
                 if norm == "Gaming":
-                    recommendations.append(
-                        RecommendedTopic(
-                            concept="Binary Search",
-                            subject="Computer Science",
-                            slug="binary-search",
-                            matched_interest="Gaming",
-                            headline="Game World Spatial Partitioning & Hitboxes",
-                            summary="How game physics engines discard half the world at every step to render collision checks at 120 FPS.",
-                            target_url="/learn?q=Binary%20Search&interest=Gaming",
+                    if not is_primary and not is_secondary:
+                        recommendations.append(
+                            RecommendedTopic(
+                                concept="Binary Search",
+                                subject="Computer Science",
+                                slug="binary-search",
+                                matched_interest="Gaming",
+                                headline="Game World Spatial Partitioning & Hitboxes",
+                                summary="How game physics engines discard half the world at every step to render collision checks at 120 FPS.",
+                                target_url="/learn?q=Binary%20Search&interest=Gaming",
+                            )
                         )
-                    )
-                    recommendations.append(
-                        RecommendedTopic(
-                            concept="Convolutional Neural Network (CNN)",
-                            subject="Computer Science",
-                            slug="convolutional-neural-network",
-                            matched_interest="Gaming",
-                            headline="Real-time Shaders & Convolution Kernels",
-                            summary="Explore how 2D convolution filters power ambient occlusion and post-processing in GPU render pipelines.",
-                            target_url="/learn?q=Convolutional%20Neural%20Network&interest=Gaming",
+                    elif is_secondary:
+                        recommendations.append(
+                            RecommendedTopic(
+                                concept="Force and Pressure Dynamics",
+                                subject="General Science",
+                                slug="force-pressure-dynamics",
+                                matched_interest="Gaming",
+                                headline="Physics Engines & Collision Impact Forces",
+                                summary="How game ragdoll physics simulates push and pull forces ($F = ma$) in real-time virtual environments.",
+                                target_url="/learn?q=Force%20and%20Pressure%20Dynamics&interest=Gaming",
+                            )
                         )
-                    )
                 elif norm == "Cars":
-                    recommendations.append(
-                        RecommendedTopic(
-                            concept="Doppler Effect",
-                            subject="Physics",
-                            slug="doppler-effect",
-                            matched_interest="Cars",
-                            headline="Formula 1 Engine Pitch Shift & Telemetry",
-                            summary="Observe acoustic wave compression as an F1 car speeds past and how pit radar guns measure vehicle velocity.",
-                            target_url="/learn?q=Doppler%20Effect&interest=Cars",
+                    if is_primary:
+                        recommendations.append(
+                            RecommendedTopic(
+                                concept="Addition and Subtraction",
+                                subject="Primary Mathematics",
+                                slug="addition-and-subtraction",
+                                matched_interest="Cars",
+                                headline="Counting and Speed Metrics in Toy Cars",
+                                summary="Learn how grouping and calculating distances helps track car races and lap times.",
+                                target_url="/learn?q=Addition%20and%20Subtraction&interest=Cars",
+                            )
                         )
-                    )
-                    recommendations.append(
-                        RecommendedTopic(
-                            concept="Binary Search",
-                            subject="Computer Science",
-                            slug="binary-search",
-                            matched_interest="Cars",
-                            headline="Engine ECU Calibration Table Lookups",
-                            summary="How automotive control units execute logarithmic table lookups under microsecond deadlines at 8,000 RPM.",
-                            target_url="/learn?q=Binary%20Search&interest=Cars",
+                    elif is_secondary:
+                        recommendations.append(
+                            RecommendedTopic(
+                                concept="Force and Pressure Dynamics",
+                                subject="General Science",
+                                slug="force-pressure-dynamics",
+                                matched_interest="Cars",
+                                headline="Hydraulic Brakes & Fluid Pressure",
+                                summary="How braking pedal force is multiplied through hydraulic fluid pressure ($P = F/A$) to stop a car.",
+                                target_url="/learn?q=Force%20and%20Pressure%20Dynamics&interest=Cars",
+                            )
                         )
-                    )
-                elif norm == "Space":
-                    recommendations.append(
-                        RecommendedTopic(
-                            concept="Doppler Effect",
-                            subject="Physics",
-                            slug="doppler-effect",
-                            matched_interest="Space",
-                            headline="Cosmic Redshift & The Expanding Universe",
-                            summary="How astronomers measure spectral wavelength shifts in starlight to calculate the recession velocity of galaxies.",
-                            target_url="/learn?q=Doppler%20Effect&interest=Space",
+                    else:
+                        recommendations.append(
+                            RecommendedTopic(
+                                concept="Doppler Effect",
+                                subject="Physics",
+                                slug="doppler-effect",
+                                matched_interest="Cars",
+                                headline="Formula 1 Acoustic Telemetry & Engine Pitch",
+                                summary="Why high-revving racing engines drop in acoustic pitch as they pass the pit straight at 320 km/h.",
+                                target_url="/learn?q=Doppler%20Effect&interest=Cars",
+                            )
                         )
-                    )
-                elif norm == "Cricket":
-                    recommendations.append(
-                        RecommendedTopic(
-                            concept="Doppler Effect",
-                            subject="Physics",
-                            slug="doppler-effect",
-                            matched_interest="Cricket",
-                            headline="UltraEdge Micro-Acoustics & Ball Trajectory",
-                            summary="Understand how stump microphones isolate the frequency spike of edge deflections at 145 km/h.",
-                            target_url="/learn?q=Doppler%20Effect&interest=Cricket",
+                elif norm in ["Space", "Cricket", "Music"]:
+                    if is_primary:
+                        recommendations.append(
+                            RecommendedTopic(
+                                concept="Living and Non-Living Things",
+                                subject="Environmental Studies",
+                                slug="living-and-non-living-things",
+                                matched_interest=norm,
+                                headline="Natural Environments & Living Organisms",
+                                summary="Discover how plants, animals, and ecosystems thrive in our world.",
+                                target_url="/learn?q=Living%20and%20Non-Living%20Things",
+                            )
                         )
-                    )
-                elif norm == "Music":
-                    recommendations.append(
-                        RecommendedTopic(
-                            concept="Doppler Effect",
-                            subject="Physics",
-                            slug="doppler-effect",
-                            matched_interest="Music",
-                            headline="Leslie Rotary Speakers & Chorus Modulation",
-                            summary="How rotating speaker horns continuously shift acoustic pitch to create iconic chorus and vibrato effects.",
-                            target_url="/learn?q=Doppler%20Effect&interest=Music",
+                    elif is_secondary:
+                        recommendations.append(
+                            RecommendedTopic(
+                                concept="Force and Pressure Dynamics",
+                                subject="General Science",
+                                slug="force-pressure-dynamics",
+                                matched_interest=norm,
+                                headline="Atmospheric Pressure & Mechanical Forces",
+                                summary="Understand the fundamental dynamics of force and air pressure on earth and beyond.",
+                                target_url="/learn?q=Force%20and%20Pressure%20Dynamics",
+                            )
                         )
-                    )
+                    else:
+                        recommendations.append(
+                            RecommendedTopic(
+                                concept="Doppler Effect",
+                                subject="Physics",
+                                slug="doppler-effect",
+                                matched_interest=norm,
+                                headline="Acoustic & Wave Propagation Dynamics",
+                                summary="Explore how sound waves shift frequency relative to an observer in motion.",
+                                target_url=f"/learn?q=Doppler%20Effect&interest={norm}",
+                            )
+                        )
 
         # Ensure no duplicates by concept
         seen_concepts = set()
@@ -638,35 +662,99 @@ class PersonalizationService:
 
         # Standard curriculum fallback if student has no interests or fewer than 2 matches
         if len(deduped) < 2:
-            defaults = [
-                RecommendedTopic(
-                    concept="Doppler Effect",
-                    subject="Physics",
-                    slug="doppler-effect",
-                    matched_interest="Curriculum Core",
-                    headline="Wave Mechanics & Relative Source Velocity",
-                    summary="Observe wave compression and calculate observed frequencies for moving sound sources with an interactive wave canvas.",
-                    target_url="/learn?q=Doppler%20Effect",
-                ),
-                RecommendedTopic(
-                    concept="Binary Search",
-                    subject="Computer Science",
-                    slug="binary-search",
-                    matched_interest="Curriculum Core",
-                    headline="Logarithmic Divide-and-Conquer Search",
-                    summary="Step through logarithmic array bisection and observe how 1,000,000 elements can be searched in only 20 steps.",
-                    target_url="/learn?q=Binary%20Search",
-                ),
-                RecommendedTopic(
-                    concept="Convolutional Neural Network (CNN)",
-                    subject="Computer Science",
-                    slug="convolutional-neural-network",
-                    matched_interest="Curriculum Core",
-                    headline="Spatial Pattern Recognition with Matrix Kernels",
-                    summary="Learn how kernel filters slide across multidimensional inputs to extract edges, textures, and higher-order features.",
-                    target_url="/learn?q=Convolutional%20Neural%20Network",
-                ),
-            ]
+            if is_primary:
+                defaults = [
+                    RecommendedTopic(
+                        concept="Addition and Subtraction",
+                        subject="Primary Mathematics",
+                        slug="addition-and-subtraction",
+                        matched_interest="Curriculum Core",
+                        headline="Combining Numbers & Difference Calculations",
+                        summary="Step through foundational arithmetic with interactive counters and number lines ($3 + 4 = 7$).",
+                        target_url="/learn?q=Addition%20and%20Subtraction",
+                    ),
+                    RecommendedTopic(
+                        concept="Living and Non-Living Things",
+                        subject="Environmental Studies",
+                        slug="living-and-non-living-things",
+                        matched_interest="Curriculum Core",
+                        headline="Ecosystems, Plants & Natural Surroundings",
+                        summary="Discover how living organisms breathe, grow, and interact with the natural environment.",
+                        target_url="/learn?q=Living%20and%20Non-Living%20Things",
+                    ),
+                ]
+            elif is_secondary:
+                defaults = [
+                    RecommendedTopic(
+                        concept="Force and Pressure Dynamics",
+                        subject="General Science",
+                        slug="force-pressure-dynamics",
+                        matched_interest="Curriculum Core",
+                        headline="Newton's Laws & Fluid Pressure Mechanics",
+                        summary="Explore push and pull dynamics, contact forces, and fluid pressure formulas ($P = F / A$, $F = ma$).",
+                        target_url="/learn?q=Force%20and%20Pressure%20Dynamics",
+                    ),
+                    RecommendedTopic(
+                        concept="Linear Equations and Slope",
+                        subject="Secondary Mathematics",
+                        slug="linear-equations-slope",
+                        matched_interest="Curriculum Core",
+                        headline="Algebraic Slopes & Coordinate Geometry",
+                        summary="Understand standard and slope-intercept forms ($y = mx + c$) with interactive coordinate plots.",
+                        target_url="/learn?q=Linear%20Equations%20and%20Slope",
+                    ),
+                ]
+            elif is_higher_sec:
+                defaults = [
+                    RecommendedTopic(
+                        concept="Doppler Effect",
+                        subject="Physics",
+                        slug="doppler-effect",
+                        matched_interest="Curriculum Core",
+                        headline="Wave Mechanics & Relative Source Velocity",
+                        summary="Observe wave compression and calculate observed frequencies for moving sound and light sources.",
+                        target_url="/learn?q=Doppler%20Effect",
+                    ),
+                    RecommendedTopic(
+                        concept="Kinematics & Harmonic Motion",
+                        subject="Physics",
+                        slug="physics",
+                        matched_interest="Curriculum Core",
+                        headline="Vector Dynamics & Oscillations",
+                        summary="Differential equations of harmonic motion and energy conservation in oscillatory systems.",
+                        target_url="/learn?q=Physics",
+                    ),
+                ]
+            else:
+                defaults = [
+                    RecommendedTopic(
+                        concept="Doppler Effect",
+                        subject="Physics",
+                        slug="doppler-effect",
+                        matched_interest="Curriculum Core",
+                        headline="Wave Mechanics & Relative Source Velocity",
+                        summary="Observe wave compression and calculate observed frequencies for moving sound sources with an interactive wave canvas.",
+                        target_url="/learn?q=Doppler%20Effect",
+                    ),
+                    RecommendedTopic(
+                        concept="Binary Search",
+                        subject="Computer Science",
+                        slug="binary-search",
+                        matched_interest="Curriculum Core",
+                        headline="Logarithmic Divide-and-Conquer Search",
+                        summary="Step through logarithmic array bisection and observe how 1,000,000 elements can be searched in only 20 steps.",
+                        target_url="/learn?q=Binary%20Search",
+                    ),
+                    RecommendedTopic(
+                        concept="Convolutional Neural Network (CNN)",
+                        subject="Computer Science",
+                        slug="convolutional-neural-network",
+                        matched_interest="Curriculum Core",
+                        headline="Spatial Pattern Recognition with Matrix Kernels",
+                        summary="Learn how kernel filters slide across multidimensional inputs to extract edges, textures, and higher-order features.",
+                        target_url="/learn?q=Convolutional%20Neural%20Network",
+                    ),
+                ]
             for d in defaults:
                 if d.concept not in seen_concepts:
                     seen_concepts.add(d.concept)

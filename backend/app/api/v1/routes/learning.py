@@ -1,12 +1,14 @@
 import json
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List, Optional, Any, Dict
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
 from app.db.session import get_db
-from app.api.dependencies import get_optional_user
+from app.api.dependencies import get_optional_user, get_current_user
 from app.core.security import AuthenticatedUser
+from app.models.learning import Curriculum
 from app.models.profile import UserProfile
 from app.schemas.learning import (
+    CurriculumRead,
     SubjectRead,
     SubjectDetail,
     TopicRead,
@@ -34,17 +36,51 @@ router = APIRouter(prefix="/learning", tags=["Learning Engine & Curriculum"])
 
 
 # ==============================================================================
+# LEVEL 0 — CURRICULA & EDUCATIONAL BOARDS
+# ==============================================================================
+
+@router.get("/curricula", response_model=List[CurriculumRead])
+def list_curricula(
+    education_level: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Returns supported academic curricula and boards (e.g., CBSE, ICSE, State Board, University).
+    Decouples curriculum from fixed engineering/computer science assumptions.
+    """
+    CurriculumSeedService.seed_if_empty(db)
+    query = db.query(Curriculum).filter(Curriculum.is_active == True)
+    if education_level:
+        query = query.filter(Curriculum.education_level == education_level)
+    return query.order_by(Curriculum.name.asc()).all()
+
+
+# ==============================================================================
 # LEVEL 1 — SUBJECT ENDPOINTS
 # ==============================================================================
 
 @router.get("/subjects", response_model=List[SubjectRead])
-def list_subjects(db: Session = Depends(get_db)):
+def list_subjects(
+    curriculum_id: Optional[str] = None,
+    education_level: Optional[str] = None,
+    current_user: Optional[AuthenticatedUser] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
     """
-    Returns all active academic subjects with computed topic and concept counts.
-    Ensures starter curriculum is seeded if the database is unpopulated.
+    Returns active academic subjects matching the authoritative academic context.
+    Automatically resolves authenticated student's active level if education_level is omitted.
     """
     CurriculumSeedService.seed_if_empty(db)
-    subjects = CurriculumService.get_subjects(db)
+    target_level = education_level
+    enrolled_ids = set()
+    if current_user:
+        from app.services.learning.context_service import AcademicContextResolver
+        ctx = AcademicContextResolver.resolve_context(db, current_user.id)
+        if not target_level:
+            target_level = ctx.academic_level
+        enrolled_ids = set(ctx.enrolled_subject_ids)
+
+    subjects = CurriculumService.get_subjects(db, curriculum_id=curriculum_id, education_level=target_level)
 
     results = []
     for sub in subjects:
@@ -52,12 +88,17 @@ def list_subjects(db: Session = Depends(get_db)):
         results.append(
             SubjectRead(
                 id=sub.id,
+                curriculum_id=sub.curriculum_id,
                 name=sub.name,
                 slug=sub.slug,
                 description=sub.description,
                 icon=sub.icon,
                 category=sub.category,
                 difficulty_level=sub.difficulty_level,
+                education_level=getattr(sub, "education_level", "all-levels") or "all-levels",
+                academic_domain=getattr(sub, "academic_domain", "General") or "General",
+                is_system=getattr(sub, "is_system", True),
+                is_enrolled=sub.id in enrolled_ids,
                 order_index=sub.order_index,
                 is_active=sub.is_active,
                 topic_count=len(sub.topics),
@@ -551,9 +592,16 @@ def get_recommendations(
                 except Exception:
                     favorite_subjects = [s.strip() for s in profile.favorite_subjects.split(",") if s.strip()]
 
+            education_category = getattr(profile, "education_category", None) or getattr(profile, "education_level", None)
+        else:
+            education_category = None
+    else:
+        education_category = None
+
     return PersonalizationService.get_recommended_topics(
         student_interests=student_interests,
         favorite_subjects=favorite_subjects,
+        education_category=education_category,
     )
 
 
@@ -565,6 +613,290 @@ def get_perspectives(concept_slug: str):
     """
     clean_slug = concept_slug.replace("-", " ")
     return PersonalizationService.get_all_perspectives_for_concept(clean_slug)
+
+
+@router.get("/practice/sets", response_model=List[Any])
+def list_practice_sets(
+    academic_level: Optional[str] = Query(None),
+    subject_id: Optional[str] = Query(None),
+    concept_id: Optional[str] = Query(None),
+    lesson_id: Optional[str] = Query(None),
+    limit: int = 10,
+    db: Session = Depends(get_db),
+    current_user: Optional[AuthenticatedUser] = Depends(get_optional_user),
+):
+    """
+    Retrieves practice sets calibrated to the student's active academic context.
+    Returns honest empty array if no practice sets exist for the queried level/concept.
+    """
+    from app.models.learning import PracticeSet, PracticeQuestion
+    from app.schemas.practice import PracticeSetRead, PracticeQuestionRead
+
+    CurriculumSeedService.seed_if_empty(db)
+
+    target_level = academic_level
+    if not target_level and current_user:
+        ctx = AcademicContextResolver.resolve_context(db, current_user.id)
+        target_level = ctx.academic_level
+    elif not target_level:
+        return []
+
+    # Normalize tier (e.g. class-1-5 -> class_1_5)
+    normalized_level = target_level.replace("-", "_")
+
+    query = db.query(PracticeSet).filter(
+        PracticeSet.academic_level.in_([target_level, normalized_level]),
+        PracticeSet.is_active == True,
+    )
+
+    if subject_id:
+        query = query.filter(PracticeSet.subject_id == subject_id)
+    if concept_id:
+        query = query.filter(PracticeSet.concept_id == concept_id)
+    if lesson_id:
+        query = query.filter(PracticeSet.lesson_id == lesson_id)
+
+    sets = query.limit(limit).all()
+    results = []
+    for ps in sets:
+        read_obj = PracticeSetRead(
+            id=ps.id,
+            lesson_id=ps.lesson_id,
+            concept_id=ps.concept_id,
+            module_id=ps.module_id,
+            subject_id=ps.subject_id,
+            subject_name=ps.learning_module.concept.topic.subject.name if ps.learning_module and ps.learning_module.concept and ps.learning_module.concept.topic and ps.learning_module.concept.topic.subject else None,
+            academic_level=ps.academic_level,
+            title=ps.title,
+            description=ps.description,
+            difficulty=ps.difficulty,
+            questions_count=len(ps.questions),
+            questions=[
+                PracticeQuestionRead(
+                    id=q.id,
+                    practice_set_id=q.practice_set_id,
+                    lesson_id=q.lesson_id,
+                    concept_id=q.concept_id,
+                    question_text=q.question_text,
+                    question_type=q.question_type,
+                    options=q.options,
+                    correct_index=None,  # Hidden before submission
+                    explanation=None,
+                    difficulty=q.difficulty,
+                    points=q.points,
+                    order_index=q.order_index,
+                )
+                for q in ps.questions
+            ],
+        )
+        results.append(read_obj)
+    return results
+
+
+@router.get("/practice/sets/{set_id}", response_model=Any)
+def get_practice_set(
+    set_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Retrieves a single practice set with question bank.
+    """
+    from app.models.learning import PracticeSet
+    from app.schemas.practice import PracticeSetRead, PracticeQuestionRead
+
+    CurriculumSeedService.seed_if_empty(db)
+
+    ps = db.query(PracticeSet).filter(PracticeSet.id == set_id, PracticeSet.is_active == True).first()
+    if not ps:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Practice set not found.",
+        )
+
+    return PracticeSetRead(
+        id=ps.id,
+        lesson_id=ps.lesson_id,
+        concept_id=ps.concept_id,
+        module_id=ps.module_id,
+        subject_id=ps.subject_id,
+        subject_name=ps.learning_module.concept.topic.subject.name if ps.learning_module and ps.learning_module.concept and ps.learning_module.concept.topic and ps.learning_module.concept.topic.subject else None,
+        academic_level=ps.academic_level,
+        title=ps.title,
+        description=ps.description,
+        difficulty=ps.difficulty,
+        questions_count=len(ps.questions),
+        questions=[
+            PracticeQuestionRead(
+                id=q.id,
+                practice_set_id=q.practice_set_id,
+                lesson_id=q.lesson_id,
+                concept_id=q.concept_id,
+                question_text=q.question_text,
+                question_type=q.question_type,
+                options=q.options,
+                correct_index=None,
+                explanation=None,
+                difficulty=q.difficulty,
+                points=q.points,
+                order_index=q.order_index,
+            )
+            for q in ps.questions
+        ],
+    )
+
+
+@router.post("/practice/submit", response_model=Any)
+def submit_practice(
+    payload: Any = Body(...),
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+):
+    """
+    Submits student practice answers, grades the attempt, updates UserProgress,
+    records QuizAttempt, and logs event in AcademicActivityLog.
+    """
+    from app.models.learning import PracticeSet, PracticeQuestion
+    from app.models.progress import UserProgress, QuizAttempt, AcademicActivityLog
+
+    CurriculumSeedService.seed_if_empty(db)
+
+    if isinstance(payload, dict):
+        ps_id = payload.get("set_id") or payload.get("practice_set_id")
+        raw_answers = payload.get("answers", {})
+    else:
+        ps_id = getattr(payload, "set_id", None) or getattr(payload, "practice_set_id", None)
+        raw_answers = getattr(payload, "answers", {})
+
+    # Normalize answers map: dict of {question_id: selected_index}
+    answers_map = {}
+    if isinstance(raw_answers, list):
+        for item in raw_answers:
+            if isinstance(item, dict):
+                qid = item.get("question_id") or item.get("id")
+                ans = item.get("selected_index", -1)
+                if qid:
+                    answers_map[qid] = ans
+            else:
+                qid = getattr(item, "question_id", None)
+                ans = getattr(item, "selected_index", -1)
+                if qid:
+                    answers_map[qid] = ans
+    elif isinstance(raw_answers, dict):
+        answers_map = raw_answers
+
+    ps = db.query(PracticeSet).filter(PracticeSet.id == ps_id).first()
+    if not ps:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Practice set not found.",
+        )
+
+    questions = db.query(PracticeQuestion).filter(PracticeQuestion.practice_set_id == ps_id).all()
+    if not questions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No questions found in this practice set.",
+        )
+
+    score = 0
+    total_points = 0
+    correct_count = 0
+    results = []
+
+    for q in questions:
+        total_points += q.points
+        chosen = answers_map.get(q.id)
+        is_correct = chosen == q.correct_index
+        points_earned = q.points if is_correct else 0
+        if is_correct:
+            correct_count += 1
+            score += points_earned
+
+        results.append(
+            {
+                "question_id": q.id,
+                "question_text": q.question_text,
+                "selected_index": chosen if chosen is not None else -1,
+                "chosen_index": chosen if chosen is not None else -1,
+                "correct_index": q.correct_index,
+                "is_correct": is_correct,
+                "explanation": q.explanation,
+                "points_earned": points_earned,
+            }
+        )
+
+    accuracy_percent = (correct_count / len(questions)) * 100.0 if questions else 0.0
+
+    # Record QuizAttempt
+    attempt = QuizAttempt(
+        user_id=current_user.id,
+        academic_level=ps.academic_level,
+        concept_id=ps.concept_id or ps.id,
+        subject_id=ps.subject_id,
+        score=score,
+        total_questions=len(questions),
+        details={"accuracy": f"{accuracy_percent:.1f}%", "practice_set_id": ps.id},
+    )
+    db.add(attempt)
+
+    # Update or insert UserProgress
+    if ps.concept_id:
+        prog = (
+            db.query(UserProgress)
+            .filter(
+                UserProgress.user_id == current_user.id,
+                UserProgress.concept_id == ps.concept_id,
+                UserProgress.academic_level == ps.academic_level,
+            )
+            .first()
+        )
+        if not prog:
+            prog = UserProgress(
+                user_id=current_user.id,
+                academic_level=ps.academic_level,
+                concept_id=ps.concept_id,
+                subject_id=ps.subject_id,
+                module_id=ps.module_id,
+                lesson_id=ps.lesson_id,
+                status="practiced" if accuracy_percent >= 60 else "exploring",
+                mastery_score=accuracy_percent / 100.0,
+            )
+            db.add(prog)
+        else:
+            prog.status = "practiced" if accuracy_percent >= 60 else prog.status
+            prog.mastery_score = max(prog.mastery_score, accuracy_percent / 100.0)
+            prog.last_studied_at = datetime.utcnow()
+
+    # Log milestone activity
+    log = AcademicActivityLog(
+        user_id=current_user.id,
+        academic_level=ps.academic_level,
+        subject_id=ps.subject_id,
+        concept_id=ps.concept_id,
+        lesson_id=ps.lesson_id,
+        action_type="completed_practice",
+        title=f"Completed Practice: {ps.title} ({accuracy_percent:.0f}%)",
+        entity_type="practice",
+        entity_id=ps.id,
+        metadata_json={"accuracy": f"{accuracy_percent:.1f}%", "score": score},
+    )
+    db.add(log)
+    db.commit()
+
+    return {
+        "set_id": ps.id,
+        "practice_set_id": ps.id,
+        "academic_level": ps.academic_level,
+        "score": score,
+        "total_points": total_points,
+        "total_questions": len(questions),
+        "correct_count": correct_count,
+        "score_percentage": accuracy_percent,
+        "accuracy_percent": accuracy_percent,
+        "passed": accuracy_percent >= 60.0,
+        "results": results,
+        "breakdown": results,
+    }
 
 
 # Direct /api/v1/ curriculum aliases

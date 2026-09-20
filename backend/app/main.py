@@ -43,17 +43,156 @@ async def lifespan(app: FastAPI):
                     if "learning_preferences" not in existing_cols:
                         conn.execute(text("ALTER TABLE profiles ADD COLUMN learning_preferences JSON DEFAULT '[\"visual\", \"practical\", \"step_by_step\"]'"))
                         conn.execute(text("UPDATE profiles SET learning_preferences = '[\"visual\", \"practical\", \"step_by_step\"]' WHERE learning_preferences IS NULL OR learning_preferences = '[]'"))
+                    if "curriculum_id" not in existing_cols:
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN curriculum_id VARCHAR(36)"))
+                    if "grade_level" not in existing_cols:
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN grade_level VARCHAR(50) DEFAULT 'Class 10'"))
+                    if "academic_domain" not in existing_cols:
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN academic_domain VARCHAR(100) DEFAULT 'General Studies'"))
+                    if "education_category" not in existing_cols:
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN education_category VARCHAR(50) DEFAULT 'undergraduate'"))
+                    if "board_type" not in existing_cols:
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN board_type VARCHAR(50)"))
+                    if "stream" not in existing_cols:
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN stream VARCHAR(100)"))
+                    if "program" not in existing_cols:
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN program VARCHAR(100)"))
+                    if "state_region" not in existing_cols:
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN state_region VARCHAR(100)"))
+                    if "degree" not in existing_cols:
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN degree VARCHAR(100)"))
+                    if "department" not in existing_cols:
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN department VARCHAR(100)"))
+                    if "specialization" not in existing_cols:
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN specialization VARCHAR(100)"))
+                    if "academic_year" not in existing_cols:
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN academic_year VARCHAR(50)"))
+                    if "profile_completed" not in existing_cols:
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN profile_completed BOOLEAN DEFAULT 0"))
+                    conn.commit()
+
+                # Sync curricula table columns
+                cur_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(curricula)"))}
+                if cur_cols:
+                    if "board_type" not in cur_cols:
+                        conn.execute(text("ALTER TABLE curricula ADD COLUMN board_type VARCHAR(50) DEFAULT 'national_board'"))
+                    if "state_region" not in cur_cols:
+                        conn.execute(text("ALTER TABLE curricula ADD COLUMN state_region VARCHAR(100)"))
+                    if "stream" not in cur_cols:
+                        conn.execute(text("ALTER TABLE curricula ADD COLUMN stream VARCHAR(100)"))
+                    if "program" not in cur_cols:
+                        conn.execute(text("ALTER TABLE curricula ADD COLUMN program VARCHAR(100)"))
+                    conn.commit()
+
+                # Sync user_progress table columns
+                prog_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(user_progress)"))}
+                if prog_cols:
+                    if "academic_level" not in prog_cols:
+                        conn.execute(text("ALTER TABLE user_progress ADD COLUMN academic_level VARCHAR(50) DEFAULT 'undergraduate'"))
+                    if "subject_id" not in prog_cols:
+                        conn.execute(text("ALTER TABLE user_progress ADD COLUMN subject_id VARCHAR(36)"))
+                    if "module_id" not in prog_cols:
+                        conn.execute(text("ALTER TABLE user_progress ADD COLUMN module_id VARCHAR(36)"))
+                    if "lesson_id" not in prog_cols:
+                        conn.execute(text("ALTER TABLE user_progress ADD COLUMN lesson_id VARCHAR(36)"))
+                    conn.commit()
+
+                # Sync quiz_attempts table columns
+                quiz_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(quiz_attempts)"))}
+                if quiz_cols:
+                    if "academic_level" not in quiz_cols:
+                        conn.execute(text("ALTER TABLE quiz_attempts ADD COLUMN academic_level VARCHAR(50) DEFAULT 'undergraduate'"))
+                    if "subject_id" not in quiz_cols:
+                        conn.execute(text("ALTER TABLE quiz_attempts ADD COLUMN subject_id VARCHAR(36)"))
+                    conn.commit()
+
+                # Sync notes table columns
+                note_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(notes)"))}
+                if note_cols:
+                    if "academic_level" not in note_cols:
+                        conn.execute(text("ALTER TABLE notes ADD COLUMN academic_level VARCHAR(50) DEFAULT 'undergraduate'"))
+                    if "subject_id" not in note_cols:
+                        conn.execute(text("ALTER TABLE notes ADD COLUMN subject_id VARCHAR(36)"))
+                    if "module_id" not in note_cols:
+                        conn.execute(text("ALTER TABLE notes ADD COLUMN module_id VARCHAR(36)"))
+                    if "lesson_id" not in note_cols:
+                        conn.execute(text("ALTER TABLE notes ADD COLUMN lesson_id VARCHAR(36)"))
+                    if "source_reference" not in note_cols:
+                        conn.execute(text("ALTER TABLE notes ADD COLUMN source_reference VARCHAR(255)"))
                     conn.commit()
 
                 # Sync subjects table columns
                 subj_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(subjects)"))}
                 if subj_cols:
+                    if "curriculum_id" not in subj_cols:
+                        conn.execute(text("ALTER TABLE subjects ADD COLUMN curriculum_id VARCHAR(36)"))
                     if "category" not in subj_cols:
                         conn.execute(text("ALTER TABLE subjects ADD COLUMN category VARCHAR(100) DEFAULT 'Computer Science & Engineering'"))
                     if "difficulty_level" not in subj_cols:
                         conn.execute(text("ALTER TABLE subjects ADD COLUMN difficulty_level VARCHAR(50) DEFAULT 'all-levels'"))
                     if "is_active" not in subj_cols:
                         conn.execute(text("ALTER TABLE subjects ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+                    if "is_system" not in subj_cols:
+                        conn.execute(text("ALTER TABLE subjects ADD COLUMN is_system BOOLEAN DEFAULT 1"))
+                    if "education_level" not in subj_cols:
+                        conn.execute(text("ALTER TABLE subjects ADD COLUMN education_level VARCHAR(50) DEFAULT 'undergraduate'"))
+                    if "academic_domain" not in subj_cols:
+                        conn.execute(text("ALTER TABLE subjects ADD COLUMN academic_domain VARCHAR(100) DEFAULT 'General'"))
+                    if "created_by_user_id" not in subj_cols:
+                        conn.execute(text("ALTER TABLE subjects ADD COLUMN created_by_user_id VARCHAR(36)"))
+                    # Ensure legacy CSE courses are explicitly undergraduate
+                    conn.execute(text("UPDATE subjects SET education_level = 'undergraduate' WHERE (education_level = 'all-levels' OR education_level IS NULL) AND slug IN ('computer-science', 'data-structures-algorithms', 'operating-systems', 'database-management-systems', 'computer-networks', 'artificial-intelligence-machine-learning')"))
+                    conn.commit()
+
+                # Sync student_subjects table columns
+                ss_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(student_subjects)"))}
+                if ss_cols:
+                    if "academic_level" not in ss_cols:
+                        conn.execute(text("ALTER TABLE student_subjects ADD COLUMN academic_level VARCHAR(50) DEFAULT 'undergraduate'"))
+                    # Backfill legacy records from subjects.education_level if available
+                    conn.execute(text("""
+                        UPDATE student_subjects 
+                        SET academic_level = (
+                            SELECT CASE 
+                                WHEN subjects.education_level IN ('primary', 'class-1-5') THEN 'class_1_5'
+                                WHEN subjects.education_level IN ('secondary', 'class-6-10') THEN 'class_6_10'
+                                WHEN subjects.education_level IN ('higher_secondary', 'class-11-12') THEN 'class_11_12'
+                                ELSE 'undergraduate'
+                            END
+                            FROM subjects 
+                            WHERE subjects.id = student_subjects.subject_id
+                        )
+                        WHERE academic_level IS NULL OR academic_level = 'undergraduate'
+                    """))
+                    conn.commit()
+
+                # Sync documents table columns
+                doc_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(documents)"))}
+                if doc_cols:
+                    if "curriculum_id" not in doc_cols:
+                        conn.execute(text("ALTER TABLE documents ADD COLUMN curriculum_id VARCHAR(36)"))
+                    if "subject_id" not in doc_cols:
+                        conn.execute(text("ALTER TABLE documents ADD COLUMN subject_id VARCHAR(36)"))
+                    if "language" not in doc_cols:
+                        conn.execute(text("ALTER TABLE documents ADD COLUMN language VARCHAR(10) DEFAULT 'en'"))
+                    if "version" not in doc_cols:
+                        conn.execute(text("ALTER TABLE documents ADD COLUMN version INTEGER DEFAULT 1"))
+                    if "progress_percent" not in doc_cols:
+                        conn.execute(text("ALTER TABLE documents ADD COLUMN progress_percent INTEGER DEFAULT 0"))
+                    if "processing_stage" not in doc_cols:
+                        conn.execute(text("ALTER TABLE documents ADD COLUMN processing_stage VARCHAR(50) DEFAULT 'queued'"))
+                    if "error_message" not in doc_cols:
+                        conn.execute(text("ALTER TABLE documents ADD COLUMN error_message TEXT"))
+                    if "page_count" not in doc_cols:
+                        conn.execute(text("ALTER TABLE documents ADD COLUMN page_count INTEGER DEFAULT 0"))
+                    if "content_hash" not in doc_cols:
+                        conn.execute(text("ALTER TABLE documents ADD COLUMN content_hash VARCHAR(64)"))
+                    conn.commit()
+
+                # Sync document_chunks table columns
+                chunk_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(document_chunks)"))}
+                if chunk_cols and "page_number" not in chunk_cols:
+                    conn.execute(text("ALTER TABLE document_chunks ADD COLUMN page_number INTEGER DEFAULT 1"))
                     conn.commit()
 
                 # Sync topics table columns
@@ -71,6 +210,19 @@ async def lifespan(app: FastAPI):
                         conn.execute(text("ALTER TABLE concepts ADD COLUMN difficulty_level VARCHAR(50) DEFAULT 'intermediate'"))
                     if "is_active" not in con_cols:
                         conn.execute(text("ALTER TABLE concepts ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+                    if "has_simulation" not in con_cols:
+                        conn.execute(text("ALTER TABLE concepts ADD COLUMN has_simulation BOOLEAN DEFAULT 0"))
+                    if "has_visualization" not in con_cols:
+                        conn.execute(text("ALTER TABLE concepts ADD COLUMN has_visualization BOOLEAN DEFAULT 0"))
+                    if "has_practice" not in con_cols:
+                        conn.execute(text("ALTER TABLE concepts ADD COLUMN has_practice BOOLEAN DEFAULT 1"))
+                    if "has_lab" not in con_cols:
+                        conn.execute(text("ALTER TABLE concepts ADD COLUMN has_lab BOOLEAN DEFAULT 0"))
+                    if "has_mindmap" not in con_cols:
+                        conn.execute(text("ALTER TABLE concepts ADD COLUMN has_mindmap BOOLEAN DEFAULT 1"))
+                    if "learning_modes" not in con_cols:
+                        conn.execute(text("ALTER TABLE concepts ADD COLUMN learning_modes JSON DEFAULT '[\"learn\", \"ask\", \"practice\", \"notes\"]'"))
+                    conn.commit()
                     conn.commit()
 
                 # Sync learning_modules table columns
@@ -90,6 +242,17 @@ async def lifespan(app: FastAPI):
                         conn.execute(text("ALTER TABLE learning_modules ADD COLUMN order_index INTEGER DEFAULT 0"))
                     if "is_active" not in mod_cols:
                         conn.execute(text("ALTER TABLE learning_modules ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+                    conn.commit()
+
+                # Sync notes table columns
+                note_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(notes)"))}
+                if note_cols:
+                    if "tags" not in note_cols:
+                        conn.execute(text("ALTER TABLE notes ADD COLUMN tags JSON DEFAULT '[]'"))
+                    if "is_pinned" not in note_cols:
+                        conn.execute(text("ALTER TABLE notes ADD COLUMN is_pinned BOOLEAN DEFAULT 0"))
+                    if "is_archived" not in note_cols:
+                        conn.execute(text("ALTER TABLE notes ADD COLUMN is_archived BOOLEAN DEFAULT 0"))
                     conn.commit()
 
         # Seed starter curriculum if empty

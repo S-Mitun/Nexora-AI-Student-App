@@ -1,5 +1,6 @@
 import uuid
-from sqlalchemy import String, Text, Boolean
+from typing import Optional
+from sqlalchemy import String, Text, Boolean, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin
 
@@ -19,6 +20,19 @@ class UserProfile(Base, TimestampMixin):
     full_name: Mapped[str] = mapped_column(String(255), nullable=True)
     avatar_url: Mapped[str] = mapped_column(String(1024), nullable=True)
     education_level: Mapped[str] = mapped_column(String(100), default="undergraduate")
+    curriculum_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("curricula.id", ondelete="SET NULL"), nullable=True, index=True)
+    grade_level: Mapped[str] = mapped_column(String(50), default="Class 10")
+    academic_domain: Mapped[str] = mapped_column(String(100), default="General Studies")
+    education_category: Mapped[str] = mapped_column(String(50), default="undergraduate")
+    board_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    stream: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    program: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    state_region: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    degree: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    department: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    specialization: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    academic_year: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    profile_completed: Mapped[bool] = mapped_column(Boolean, default=False)
     preferred_language: Mapped[str] = mapped_column(String(50), default="en")
     institution: Mapped[str] = mapped_column(String(255), nullable=True)
     interests: Mapped[str] = mapped_column(Text, default="[]", nullable=True)
@@ -30,8 +44,10 @@ class UserProfile(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Relationships
+    enrolled_subjects = relationship("StudentSubject", back_populates="user", cascade="all, delete-orphan")
     documents = relationship("Document", back_populates="user", cascade="all, delete-orphan")
     notes = relationship("Note", back_populates="user", cascade="all, delete-orphan")
     chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
     progress_records = relationship("UserProgress", back_populates="user", cascade="all, delete-orphan")
     quiz_attempts = relationship("QuizAttempt", back_populates="user", cascade="all, delete-orphan")
+    activity_logs = relationship("AcademicActivityLog", back_populates="user", cascade="all, delete-orphan")

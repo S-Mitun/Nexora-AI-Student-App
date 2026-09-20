@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   BookMarked,
   Plus,
@@ -6,122 +6,170 @@ import {
   Trash2,
   Edit3,
   Calendar,
-  FolderKanban,
-  CheckCircle2,
+  Pin,
   X,
-  FileText,
   Save,
+  Loader2,
+  Tag,
 } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/Card';
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
-
-export interface StudentNote {
-  id: string;
-  title: string;
-  subject: string;
-  content: string;
-  updatedAt: string;
-}
+import { useAcademicContext } from '../context/AcademicContext';
+import { AcademicContentRenderer } from '../components/common/AcademicContentRenderer';
+import { apiService } from '../services/api';
+import { StudentNote } from '../types/learning';
 
 export const NotesPage: React.FC = () => {
-  const [notes, setNotes] = useState<StudentNote[]>(() => {
-    const saved = localStorage.getItem('nexora_student_notes');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return [];
-      }
-    }
-    return [];
-  });
+  const [notes, setNotes] = useState<StudentNote[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [activeFilter, setActiveFilter] = useState<'all' | 'recent' | 'by-subject'>('all');
-  const [selectedSubject, setSelectedSubject] = useState<string>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'pinned' | 'by-subject'>('all');
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  const { academicContext, enrolledSubjects } = useAcademicContext();
+  const currentTier = academicContext?.academic_level;
 
   // Modal / Editor State
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [modalTitle, setModalTitle] = useState('');
-  const [modalSubject, setModalSubject] = useState('Computer Science');
+  const [modalSubjectId, setModalSubjectId] = useState<string>('');
   const [modalContent, setModalContent] = useState('');
+  const [modalTags, setModalTags] = useState('');
+  const [modalIsPinned, setModalIsPinned] = useState(false);
 
-  // View note detail state
+  // View note detail modal
   const [viewingNote, setViewingNote] = useState<StudentNote | null>(null);
 
+  const loadNotes = useCallback(async () => {
+    if (!currentTier) {
+      setNotes([]);
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await apiService.getNotes({ academic_level: currentTier });
+      setNotes(data);
+    } catch (err: any) {
+      console.error('Failed to load notes from API:', err);
+      setError(err.response?.data?.detail || 'Failed to fetch personal notes.');
+      setNotes([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentTier]);
+
   useEffect(() => {
-    localStorage.setItem('nexora_student_notes', JSON.stringify(notes));
-  }, [notes]);
+    loadNotes();
+  }, [loadNotes]);
 
   const handleOpenCreateModal = () => {
     setEditingNoteId(null);
     setModalTitle('');
-    setModalSubject('Computer Science');
+    setModalSubjectId(enrolledSubjects[0]?.id || '');
     setModalContent('');
+    setModalTags('');
+    setModalIsPinned(false);
     setIsModalOpen(true);
   };
 
   const handleOpenEditModal = (note: StudentNote) => {
     setEditingNoteId(note.id);
     setModalTitle(note.title);
-    setModalSubject(note.subject);
+    setModalSubjectId(note.subject_id || '');
     setModalContent(note.content);
+    setModalTags(note.tags ? note.tags.join(', ') : '');
+    setModalIsPinned(note.is_pinned);
     setIsModalOpen(true);
   };
 
-  const handleSaveNote = (e: React.FormEvent) => {
+  const handleSaveNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!modalTitle.trim()) return;
 
-    if (editingNoteId) {
-      // Edit existing
-      setNotes(
-        notes.map((n) =>
-          n.id === editingNoteId
-            ? {
-                ...n,
-                title: modalTitle.trim(),
-                subject: modalSubject,
-                content: modalContent,
-                updatedAt: 'Just now',
-              }
-            : n
-        )
-      );
-    } else {
-      // Create new
-      const newNote: StudentNote = {
-        id: `note-${Date.now()}`,
-        title: modalTitle.trim(),
-        subject: modalSubject,
-        content: modalContent,
-        updatedAt: 'Just now',
-      };
-      setNotes([newNote, ...notes]);
+    setIsSaving(true);
+    try {
+      const parsedTags = modalTags
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+
+      if (editingNoteId) {
+        const updated = await apiService.updateNote(editingNoteId, {
+          title: modalTitle.trim(),
+          content: modalContent,
+          subject_id: modalSubjectId || null,
+          tags: parsedTags,
+          is_pinned: modalIsPinned,
+        });
+        setNotes((prev) => prev.map((n) => (n.id === editingNoteId ? updated : n)));
+      } else {
+        const created = await apiService.createNote({
+          title: modalTitle.trim(),
+          content: modalContent,
+          subject_id: modalSubjectId || null,
+          academic_level: currentTier,
+          tags: parsedTags,
+          is_pinned: modalIsPinned,
+        });
+        setNotes((prev) => [created, ...prev]);
+      }
+      setIsModalOpen(false);
+    } catch (err: any) {
+      console.error('Failed to save note:', err);
+      alert(err.response?.data?.detail || 'Could not save note.');
+    } finally {
+      setIsSaving(false);
     }
-
-    setIsModalOpen(false);
   };
 
-  const handleDelete = (id: string) => {
-    setNotes(notes.filter((n) => n.id !== id));
-    if (viewingNote?.id === id) setViewingNote(null);
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this study note?')) return;
+    try {
+      await apiService.deleteNote(id);
+      setNotes((prev) => prev.filter((n) => n.id !== id));
+      if (viewingNote?.id === id) setViewingNote(null);
+    } catch (err: any) {
+      console.error('Failed to delete note:', err);
+      alert('Failed to delete note.');
+    }
   };
 
-  // Unique subjects for subject filter
-  const allSubjects = Array.from(new Set(notes.map((n) => n.subject)));
+  const handleTogglePin = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const updated = await apiService.togglePinNote(id);
+      setNotes((prev) => prev.map((n) => (n.id === id ? updated : n)));
+      if (viewingNote?.id === id) setViewingNote(updated);
+    } catch (err: any) {
+      console.error('Failed to toggle pin:', err);
+    }
+  };
+
+  const getSubjectName = (subjectId?: string | null) => {
+    if (!subjectId) return 'General Notes';
+    const found = enrolledSubjects.find((s) => s.id === subjectId);
+    return found ? found.name : 'Study Note';
+  };
 
   const filteredNotes = notes.filter((note) => {
-    const matchesSubject =
-      selectedSubject === 'all' || note.subject.toLowerCase() === selectedSubject.toLowerCase();
-    const matchesSearch =
-      note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      note.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      note.subject.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSubject && matchesSearch;
+    if (activeFilter === 'pinned' && !note.is_pinned) return false;
+    if (selectedSubjectId !== 'all' && note.subject_id !== selectedSubjectId) return false;
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const titleMatch = note.title.toLowerCase().includes(q);
+      const contentMatch = note.content.toLowerCase().includes(q);
+      const tagsMatch = note.tags?.some((t) => t.toLowerCase().includes(q));
+      return titleMatch || contentMatch || tagsMatch;
+    }
+    return true;
   });
 
   return (
@@ -130,10 +178,10 @@ export const NotesPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-nexora-border/60">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
-            My Notes
+            Study Notes
           </h1>
           <p className="text-sm text-nexora-subtext mt-1">
-            Personal study reflections, lecture notes, and formula references.
+            Personal study notes, formula references, and concept reflections scoped to your current academic tier ({academicContext?.education_category || currentTier}).
           </p>
         </div>
 
@@ -153,30 +201,43 @@ export const NotesPage: React.FC = () => {
           <button
             onClick={() => {
               setActiveFilter('all');
-              setSelectedSubject('all');
+              setSelectedSubjectId('all');
             }}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shrink-0 ${
-              activeFilter === 'all' && selectedSubject === 'all'
+              activeFilter === 'all' && selectedSubjectId === 'all'
                 ? 'bg-nexora-primary text-white'
                 : 'text-nexora-muted hover:text-white'
             }`}
           >
             All Notes ({notes.length})
           </button>
-          {allSubjects.map((sub) => (
+          <button
+            onClick={() => {
+              setActiveFilter('pinned');
+              setSelectedSubjectId('all');
+            }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shrink-0 ${
+              activeFilter === 'pinned'
+                ? 'bg-nexora-primary text-white'
+                : 'text-nexora-muted hover:text-white'
+            }`}
+          >
+            Pinned ({notes.filter((n) => n.is_pinned).length})
+          </button>
+          {enrolledSubjects.map((sub) => (
             <button
-              key={sub}
+              key={sub.id}
               onClick={() => {
                 setActiveFilter('by-subject');
-                setSelectedSubject(sub);
+                setSelectedSubjectId(sub.id);
               }}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shrink-0 ${
-                selectedSubject === sub
+                selectedSubjectId === sub.id
                   ? 'bg-nexora-primary text-white'
                   : 'text-nexora-muted hover:text-white'
               }`}
             >
-              {sub}
+              {sub.name}
             </button>
           ))}
         </div>
@@ -187,18 +248,27 @@ export const NotesPage: React.FC = () => {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search notes..."
+            placeholder="Search notes or tags..."
             className="w-full bg-nexora-surface border border-nexora-border text-white text-xs rounded-xl pl-9 pr-3 py-2 placeholder-nexora-muted focus:outline-none focus:border-nexora-primary"
           />
         </div>
       </div>
 
-      {/* Notes Grid */}
-      {filteredNotes.length === 0 ? (
+      {/* Loading state */}
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center py-16 text-nexora-muted">
+          <Loader2 className="w-8 h-8 animate-spin text-nexora-primary mb-3" />
+          <p className="text-sm">Loading your personal study notes...</p>
+        </div>
+      ) : error ? (
+        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-sm text-center">
+          {error}
+        </div>
+      ) : filteredNotes.length === 0 ? (
         <EmptyState
           icon={<BookMarked className="w-8 h-8 text-nexora-muted" />}
-          title="No notes created yet"
-          description="Your personal notes taken during lessons or created here will be preserved in your study space."
+          title="No notes created yet for this academic level"
+          description="Your notes are strictly tied to your active academic context. Create your first note or key equation reference below."
           action={
             <Button
               variant="primary"
@@ -215,26 +285,52 @@ export const NotesPage: React.FC = () => {
           {filteredNotes.map((note) => (
             <Card
               key={note.id}
-              className="border-nexora-border/80 flex flex-col justify-between hover:border-nexora-primary/40 transition-colors group"
+              className="border-nexora-border/80 flex flex-col justify-between hover:border-nexora-primary/40 transition-colors group relative"
             >
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="text-[11px] font-semibold text-nexora-accent bg-nexora-elevated px-2 py-0.5 rounded-md">
-                    {note.subject}
+                  <span className="text-[11px] font-semibold text-nexora-accent bg-nexora-elevated px-2 py-0.5 rounded-md truncate max-w-[160px]">
+                    {getSubjectName(note.subject_id)}
                   </span>
-                  <span className="text-[10px] text-nexora-muted flex items-center gap-1">
-                    <Calendar className="w-3 h-3" /> {note.updatedAt}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={(e) => handleTogglePin(note.id, e)}
+                      className={`p-1 rounded-md transition-colors ${
+                        note.is_pinned
+                          ? 'text-amber-400 hover:text-amber-300'
+                          : 'text-nexora-muted hover:text-white'
+                      }`}
+                      title={note.is_pinned ? 'Unpin Note' : 'Pin Note'}
+                    >
+                      <Pin className={`w-3.5 h-3.5 ${note.is_pinned ? 'fill-current' : ''}`} />
+                    </button>
+                    <span className="text-[10px] text-nexora-muted flex items-center gap-1">
+                      <Calendar className="w-3 h-3" />
+                      {new Date(note.updated_at).toLocaleDateString()}
+                    </span>
+                  </div>
                 </div>
                 <CardTitle className="text-base text-white group-hover:text-nexora-primary transition-colors line-clamp-1">
                   {note.title}
                 </CardTitle>
+                {note.tags && note.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {note.tags.map((tag, idx) => (
+                      <span
+                        key={idx}
+                        className="text-[9px] bg-nexora-surface border border-nexora-border/60 text-nexora-subtext px-1.5 py-0.5 rounded"
+                      >
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </CardHeader>
 
               <CardContent className="py-2 flex-1">
-                <p className="text-xs text-nexora-subtext line-clamp-4 leading-relaxed whitespace-pre-line font-normal">
-                  {note.content}
-                </p>
+                <div className="line-clamp-4 overflow-hidden text-xs text-nexora-text">
+                  <AcademicContentRenderer content={note.content} compact />
+                </div>
               </CardContent>
 
               <CardFooter className="pt-3 border-t border-nexora-border/40 flex justify-between items-center">
@@ -273,10 +369,12 @@ export const NotesPage: React.FC = () => {
             <div className="flex items-start justify-between pb-3 border-b border-nexora-border/60">
               <div>
                 <span className="text-xs font-semibold text-nexora-accent bg-nexora-elevated px-2 py-0.5 rounded-md">
-                  {viewingNote.subject}
+                  {getSubjectName(viewingNote.subject_id)}
                 </span>
                 <h3 className="text-lg font-bold text-white mt-1.5">{viewingNote.title}</h3>
-                <p className="text-[11px] text-nexora-muted">Last edited: {viewingNote.updatedAt}</p>
+                <p className="text-[11px] text-nexora-muted">
+                  Updated: {new Date(viewingNote.updated_at).toLocaleString()}
+                </p>
               </div>
               <button
                 onClick={() => setViewingNote(null)}
@@ -286,8 +384,8 @@ export const NotesPage: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-4 rounded-xl bg-nexora-bg border border-nexora-border text-xs sm:text-sm text-nexora-text leading-relaxed whitespace-pre-line max-h-96 overflow-y-auto">
-              {viewingNote.content}
+            <div className="p-4 rounded-xl bg-nexora-bg border border-nexora-border text-xs sm:text-sm text-nexora-text leading-relaxed max-h-96 overflow-y-auto">
+              <AcademicContentRenderer content={viewingNote.content} />
             </div>
 
             <div className="flex justify-between items-center pt-2">
@@ -337,40 +435,67 @@ export const NotesPage: React.FC = () => {
                   required
                   value={modalTitle}
                   onChange={(e) => setModalTitle(e.target.value)}
-                  placeholder="e.g. Asymptotic Complexity Rules"
+                  placeholder="e.g. Newton's Laws & Hydraulic Lift Derivation"
                   className="w-full bg-nexora-bg border border-nexora-border rounded-xl px-3 py-2 text-xs sm:text-sm text-white placeholder-nexora-muted focus:outline-none focus:border-nexora-primary"
                 />
               </div>
 
               <div>
                 <label className="text-xs font-medium text-nexora-subtext block mb-1">
-                  Subject
+                  Subject Association
                 </label>
                 <select
-                  value={modalSubject}
-                  onChange={(e) => setModalSubject(e.target.value)}
+                  value={modalSubjectId}
+                  onChange={(e) => setModalSubjectId(e.target.value)}
                   className="w-full bg-nexora-bg border border-nexora-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-nexora-primary"
                 >
-                  <option value="Computer Science">Computer Science</option>
-                  <option value="Physics">Physics</option>
-                  <option value="Mathematics">Mathematics</option>
-                  <option value="Biology">Biology</option>
-                  <option value="Electrical Engineering">Electrical Engineering</option>
+                  <option value="">General Notes (No specific subject)</option>
+                  {enrolledSubjects.map((sub) => (
+                    <option key={sub.id} value={sub.id}>
+                      {sub.name}
+                    </option>
+                  ))}
                 </select>
               </div>
 
               <div>
                 <label className="text-xs font-medium text-nexora-subtext block mb-1">
-                  Content &amp; Key Takeaways
+                  Content (Supports LaTeX e.g. $F=ma$, and Markdown)
                 </label>
                 <textarea
                   rows={6}
                   required
                   value={modalContent}
                   onChange={(e) => setModalContent(e.target.value)}
-                  placeholder="Write your personal observations, equations, or reflections..."
-                  className="w-full bg-nexora-bg border border-nexora-border rounded-xl p-3 text-xs sm:text-sm text-white placeholder-nexora-muted focus:outline-none focus:border-nexora-primary"
+                  placeholder="Write your personal observations, equations ($E=mc^2$), and takeaways..."
+                  className="w-full bg-nexora-bg border border-nexora-border rounded-xl p-3 text-xs sm:text-sm text-white placeholder-nexora-muted focus:outline-none focus:border-nexora-primary font-mono"
                 />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-nexora-subtext block mb-1">
+                  Tags (comma separated)
+                </label>
+                <input
+                  type="text"
+                  value={modalTags}
+                  onChange={(e) => setModalTags(e.target.value)}
+                  placeholder="e.g. physics, formulas, exam-review"
+                  className="w-full bg-nexora-bg border border-nexora-border rounded-xl px-3 py-2 text-xs text-white placeholder-nexora-muted focus:outline-none focus:border-nexora-primary"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="modalIsPinned"
+                  checked={modalIsPinned}
+                  onChange={(e) => setModalIsPinned(e.target.checked)}
+                  className="rounded border-nexora-border text-nexora-primary focus:ring-0"
+                />
+                <label htmlFor="modalIsPinned" className="text-xs text-nexora-text cursor-pointer">
+                  Pin to top of study space
+                </label>
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-nexora-border/60">
@@ -386,9 +511,10 @@ export const NotesPage: React.FC = () => {
                   type="submit"
                   variant="primary"
                   size="sm"
-                  leftIcon={<Save className="w-3.5 h-3.5" />}
+                  disabled={isSaving}
+                  leftIcon={isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                 >
-                  Save Note
+                  {isSaving ? 'Saving...' : 'Save Note'}
                 </Button>
               </div>
             </form>

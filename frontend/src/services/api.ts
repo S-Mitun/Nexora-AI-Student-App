@@ -41,8 +41,39 @@ export const apiService = {
     return response.data;
   },
 
-  async getSubjects(): Promise<Subject[]> {
-    const response = await apiClient.get<Subject[]>('/api/v1/learning/subjects');
+  async getSubjects(params?: { curriculum_id?: string; education_level?: string }): Promise<Subject[]> {
+    const response = await apiClient.get<Subject[]>('/api/v1/learning/subjects', { params });
+    return response.data;
+  },
+
+  // --- ACADEMIC WORKSPACE & ENROLLMENT (PROMPT 06) ---
+  async getWorkspace(): Promise<import('../types/learning').WorkspaceOverview> {
+    const response = await apiClient.get<import('../types/learning').WorkspaceOverview>('/api/v1/workspace');
+    return response.data;
+  },
+
+  async enrollSubject(subjectId: string, enrollmentSource: string = 'student_selected'): Promise<import('../types/learning').StudentSubject> {
+    const response = await apiClient.post<import('../types/learning').StudentSubject>(
+      '/api/v1/workspace/enroll-subject',
+      { subject_id: subjectId, enrollment_source: enrollmentSource }
+    );
+    return response.data;
+  },
+
+  async unenrollSubject(subjectId: string): Promise<{ success: boolean; message: string }> {
+    const response = await apiClient.delete<{ success: boolean; message: string }>(
+      `/api/v1/workspace/enroll-subject/${encodeURIComponent(subjectId)}`
+    );
+    return response.data;
+  },
+
+  async getAcademicContext(params?: { active_subject?: string; active_concept?: string }): Promise<import('../types/context').AcademicContextResponse> {
+    const response = await apiClient.get<import('../types/context').AcademicContextResponse>('/api/v1/workspace/context', { params });
+    return response.data;
+  },
+
+  async getEnrolledSubjects(): Promise<Subject[]> {
+    const response = await apiClient.get<Subject[]>('/api/v1/workspace/enrolled-subjects');
     return response.data;
   },
 
@@ -136,4 +167,165 @@ export const apiService = {
     );
     return response.data;
   },
+
+  // --- CURRICULUM DECOUPLING ---
+  async getCurricula(educationLevel?: string): Promise<import('../types/learning').Curriculum[]> {
+    const params = educationLevel ? { education_level: educationLevel } : {};
+    const response = await apiClient.get<import('../types/learning').Curriculum[]>(
+      '/api/v1/learning/curricula',
+      { params }
+    );
+    return response.data;
+  },
+
+  // --- ASYNCHRONOUS DOCUMENT INGESTION & MATERIALS ---
+  async getDocuments(): Promise<import('../types/learning').StudyMaterialDocument[]> {
+    const response = await apiClient.get<import('../types/learning').StudyMaterialDocument[]>(
+      '/api/v1/documents'
+    );
+    return response.data;
+  },
+
+  async uploadDocument(formData: FormData): Promise<{
+    id: string;
+    title: string;
+    status: string;
+    processing_stage: string;
+    progress_percent: number;
+    message: string;
+    status_url: string;
+  }> {
+    const response = await apiClient.post('/api/v1/documents/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  async getDocumentStatus(id: string): Promise<{
+    id: string;
+    status: string;
+    processing_stage: string;
+    progress_percent: number;
+    error_message?: string;
+    updated_at: string;
+  }> {
+    const response = await apiClient.get(`/api/v1/documents/${encodeURIComponent(id)}/status`);
+    return response.data;
+  },
+
+  async deleteDocument(id: string): Promise<{ message: string; id: string }> {
+    const response = await apiClient.delete(`/api/v1/documents/${encodeURIComponent(id)}`);
+    return response.data;
+  },
+
+  // --- REAL STUDENT-OWNED NOTES (PROMPT 06) ---
+  async getNotes(params?: {
+    academic_level?: string;
+    subject_id?: string;
+    concept_id?: string;
+    tag?: string;
+    is_pinned?: boolean;
+  }): Promise<import('../types/learning').StudentNote[]> {
+    const response = await apiClient.get<import('../types/learning').StudentNote[]>('/api/v1/notes', { params });
+    return response.data;
+  },
+
+  async getNote(id: string): Promise<import('../types/learning').StudentNote> {
+    const response = await apiClient.get<import('../types/learning').StudentNote>(`/api/v1/notes/${encodeURIComponent(id)}`);
+    return response.data;
+  },
+
+  async createNote(note: {
+    title: string;
+    content: string;
+    subject_id?: string | null;
+    concept_id?: string | null;
+    lesson_id?: string | null;
+    academic_level?: string;
+    tags?: string[];
+    source_reference?: string | null;
+    is_pinned?: boolean;
+  }): Promise<import('../types/learning').StudentNote> {
+    const response = await apiClient.post<import('../types/learning').StudentNote>('/api/v1/notes', note);
+    return response.data;
+  },
+
+  async updateNote(
+    id: string,
+    updates: Partial<{
+      title: string;
+      content: string;
+      subject_id?: string | null;
+      concept_id?: string | null;
+      tags: string[];
+      source_reference?: string | null;
+      is_pinned: boolean;
+      is_archived: boolean;
+    }>
+  ): Promise<import('../types/learning').StudentNote> {
+    const response = await apiClient.put<import('../types/learning').StudentNote>(`/api/v1/notes/${encodeURIComponent(id)}`, updates);
+    return response.data;
+  },
+
+  async deleteNote(id: string): Promise<{ success: boolean; message: string; id: string }> {
+    const response = await apiClient.delete(`/api/v1/notes/${encodeURIComponent(id)}`);
+    return response.data;
+  },
+
+  async togglePinNote(id: string): Promise<import('../types/learning').StudentNote> {
+    const response = await apiClient.patch<import('../types/learning').StudentNote>(`/api/v1/notes/${encodeURIComponent(id)}/pin`);
+    return response.data;
+  },
+
+  // --- PRACTICE SETS & EVALUATION (PROMPT 06) ---
+  async getPracticeSets(params?: {
+    academic_level?: string;
+    subject_id?: string;
+    concept_id?: string;
+  }): Promise<import('../types/learning').PracticeSet[]> {
+    const response = await apiClient.get<import('../types/learning').PracticeSet[]>('/api/v1/learning/practice/sets', { params });
+    return response.data;
+  },
+
+  async getPracticeSet(setId: string): Promise<import('../types/learning').PracticeSet> {
+    const response = await apiClient.get<import('../types/learning').PracticeSet>(`/api/v1/learning/practice/sets/${encodeURIComponent(setId)}`);
+    return response.data;
+  },
+
+  async submitPractice(submission: {
+    set_id: string;
+    answers: { question_id: string; selected_index: number }[];
+  }): Promise<import('../types/learning').PracticeResult> {
+    const response = await apiClient.post<import('../types/learning').PracticeResult>('/api/v1/learning/practice/submit', submission);
+    return response.data;
+  },
+
+  // --- WORKSPACE ACTIVITY & PROGRESS (PROMPT 06) ---
+  async getWorkspaceActivity(limit: number = 20): Promise<import('../types/learning').AcademicActivityLog[]> {
+    const response = await apiClient.get<import('../types/learning').AcademicActivityLog[]>('/api/v1/workspace/activity', {
+      params: { limit },
+    });
+    return response.data;
+  },
+
+  async logWorkspaceActivity(activity: {
+    activity_type: string;
+    title: string;
+    description?: string;
+    subject_id?: string;
+    concept_id?: string;
+    lesson_id?: string;
+    meta?: Record<string, any>;
+  }): Promise<import('../types/learning').AcademicActivityLog> {
+    const response = await apiClient.post<import('../types/learning').AcademicActivityLog>('/api/v1/workspace/activity', activity);
+    return response.data;
+  },
+
+  async getWorkspaceProgress(): Promise<import('../types/learning').AcademicProgressOverview> {
+    const response = await apiClient.get<import('../types/learning').AcademicProgressOverview>('/api/v1/workspace/progress');
+    return response.data;
+  },
 };
+

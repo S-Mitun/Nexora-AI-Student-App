@@ -22,6 +22,8 @@ import { Badge } from '../components/ui/Badge';
 import { SkeletonCard } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
 
+import { AcademicContentRenderer } from '../components/common/AcademicContentRenderer';
+
 export const LessonPage: React.FC = () => {
   const { lessonSlug, moduleId } = useParams<{ lessonSlug: string; moduleId?: string }>();
   const navigate = useNavigate();
@@ -204,15 +206,15 @@ export const LessonPage: React.FC = () => {
             <h4 className="text-sm sm:text-base font-semibold text-white">
               {lesson.personalized_context.headline}
             </h4>
-            <p className="text-xs text-nexora-subtext leading-relaxed">
-              {lesson.personalized_context.analogy_explanation}
-            </p>
+            <div className="text-xs text-nexora-subtext leading-relaxed">
+              <AcademicContentRenderer content={lesson.personalized_context.analogy_explanation} compact />
+            </div>
           </div>
 
           {lesson.personalized_context.real_world_application && (
-            <div className="pt-2 border-t border-purple-500/20 flex items-start gap-2 text-xs text-purple-200/80">
-              <span className="font-semibold text-purple-300 shrink-0">Real-World Application:</span>
-              <span>{lesson.personalized_context.real_world_application}</span>
+            <div className="pt-2 border-t border-purple-500/20 flex flex-col gap-1 text-xs text-purple-200/80">
+              <span className="font-semibold text-purple-300">Real-World Application:</span>
+              <AcademicContentRenderer content={lesson.personalized_context.real_world_application} compact />
             </div>
           )}
         </div>
@@ -220,55 +222,7 @@ export const LessonPage: React.FC = () => {
 
       {/* Core Educational Reading Content */}
       <div className="p-6 sm:p-8 rounded-2xl bg-nexora-surface/80 border border-nexora-border/60 shadow-xl space-y-6">
-        <div className="prose prose-invert max-w-none text-nexora-subtext text-sm sm:text-base leading-relaxed space-y-4">
-          {lesson.content.split('\n\n').map((block, idx) => {
-            if (block.startsWith('### ')) {
-              return (
-                <h3 key={idx} className="text-lg sm:text-xl font-bold text-white pt-3 border-b border-nexora-border/40 pb-2">
-                  {block.replace('### ', '')}
-                </h3>
-              );
-            }
-            if (block.startsWith('```')) {
-              const lines = block.split('\n');
-              const code = lines.slice(1, lines.length - 1).join('\n');
-              return (
-                <pre key={idx} className="p-4 rounded-xl bg-nexora-bg/90 border border-nexora-border/80 text-xs sm:text-sm font-mono text-emerald-300 overflow-x-auto my-3">
-                  <code>{code}</code>
-                </pre>
-              );
-            }
-            if (block.startsWith('- ')) {
-              const items = block.split('\n');
-              return (
-                <ul key={idx} className="space-y-2 list-disc list-inside text-sm text-nexora-subtext my-2">
-                  {items.map((item, i) => (
-                    <li key={i} className="leading-relaxed">
-                      {item.replace(/^- \*\*(.*?)\*\*:?/, '$1: ').replace(/^- /, '')}
-                    </li>
-                  ))}
-                </ul>
-              );
-            }
-            if (block.match(/^\d+\. /)) {
-              const items = block.split('\n');
-              return (
-                <ol key={idx} className="space-y-2 list-decimal list-inside text-sm text-nexora-subtext my-2">
-                  {items.map((item, i) => (
-                    <li key={i} className="leading-relaxed">
-                      {item.replace(/^\d+\. \*\*(.*?)\*\*:?/, '$1: ').replace(/^\d+\. /, '')}
-                    </li>
-                  ))}
-                </ol>
-              );
-            }
-            return (
-              <p key={idx} className="text-sm sm:text-base text-nexora-subtext leading-relaxed">
-                {block}
-              </p>
-            );
-          })}
-        </div>
+        <AcademicContentRenderer content={lesson.content} />
       </div>
 
       {/* Lesson Navigation Controls */}

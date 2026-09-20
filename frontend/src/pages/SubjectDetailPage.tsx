@@ -19,6 +19,7 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { SkeletonCard } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
+import { AcademicContentRenderer } from '../components/common/AcademicContentRenderer';
 
 export const SubjectDetailPage: React.FC = () => {
   const { subjectSlug } = useParams<{ subjectSlug: string }>();
@@ -232,9 +233,9 @@ export const SubjectDetailPage: React.FC = () => {
                                 </h4>
                                 {getDifficultyBadge(concept.difficulty_level || concept.difficulty)}
                               </div>
-                              <p className="text-xs text-nexora-subtext line-clamp-2">
-                                {concept.short_description || concept.summary}
-                              </p>
+                              <div className="text-xs text-nexora-subtext line-clamp-2">
+                                <AcademicContentRenderer content={concept.short_description || concept.summary} compact />
+                              </div>
                             </div>
 
                             <div className="flex items-center gap-2 shrink-0">

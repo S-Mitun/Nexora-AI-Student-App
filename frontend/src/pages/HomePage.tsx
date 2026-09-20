@@ -16,11 +16,22 @@ import {
   FileText,
   TrendingUp,
   Compass,
-  Heart,
+  GraduationCap,
+  UploadCloud,
+  Sparkles,
+  Layers,
+  AlertCircle,
+  Building2,
+  MapPin,
+  School,
+  ExternalLink,
+  PlusCircle,
+  Trash2,
 } from 'lucide-react';
 import { apiService } from '../services/api';
-import { Subject, RecommendedTopic } from '../types/learning';
+import { Subject, RecommendedTopic, WorkspaceOverview } from '../types/learning';
 import { useAuth } from '../context/AuthContext';
+import { useAcademicContext } from '../context/AcademicContext';
 import {
   studentActivityService,
   ActiveCourseProgress,
@@ -33,13 +44,40 @@ import { Badge } from '../components/ui/Badge';
 import { SkeletonCard } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
 
-const EXAMPLE_QUERIES = [
-  { label: 'Doppler Effect', domain: 'Physics' },
-  { label: 'Binary Search', domain: 'Computer Science' },
-  { label: 'Wave Mechanics', domain: 'Physics' },
-  { label: 'Operating Systems Deadlock', domain: 'Computer Science' },
-  { label: 'Database Normalization', domain: 'Computer Science' },
-];
+const getExampleQueries = (category?: string, level?: string) => {
+  const norm = (category || level || '').toLowerCase();
+  if (norm.includes('primary') || norm.includes('class-1-5') || norm.includes('1-5')) {
+    return [
+      { label: 'Living and Non-Living Things', domain: 'Environmental Studies' },
+      { label: 'Addition & Basic Shapes', domain: 'Mathematics' },
+      { label: 'Parts of a Plant', domain: 'Science' },
+      { label: 'Alphabet & Story Reading', domain: 'Languages' },
+    ];
+  }
+  if (norm.includes('secondary') || norm.includes('class-6-10') || norm.includes('6-10')) {
+    return [
+      { label: "Force & Pressure Dynamics (F = ma)", domain: 'General Science' },
+      { label: 'Linear Equations (y = mx + c)', domain: 'Mathematics' },
+      { label: 'The Constitution & Rights', domain: 'Social Science' },
+      { label: 'Active and Passive Voice', domain: 'Languages' },
+    ];
+  }
+  if (norm.includes('higher') || norm.includes('11-12')) {
+    return [
+      { label: 'Wave Mechanics & Doppler Effect', domain: 'Physics' },
+      { label: 'Chemical Bonding & Kinetics', domain: 'Chemistry' },
+      { label: 'Cell Biology & Genetics', domain: 'Biology' },
+      { label: 'Calculus & Derivatives', domain: 'Mathematics' },
+    ];
+  }
+  return [
+    { label: 'Doppler Effect', domain: 'Physics' },
+    { label: 'Binary Search', domain: 'Computer Science' },
+    { label: 'Wave Mechanics', domain: 'Physics' },
+    { label: 'Operating Systems Deadlock', domain: 'Computer Science' },
+    { label: 'Database Normalization', domain: 'Computer Science' },
+  ];
+};
 
 export const HomePage: React.FC = () => {
   const { user, profile } = useAuth();
@@ -49,6 +87,11 @@ export const HomePage: React.FC = () => {
   const [loadingSubjects, setLoadingSubjects] = useState(true);
   const [recommendations, setRecommendations] = useState<RecommendedTopic[]>([]);
   const [loadingRecommendations, setLoadingRecommendations] = useState(true);
+
+  // Workspace Overview (Master Prompt 06)
+  const [workspace, setWorkspace] = useState<WorkspaceOverview | null>(null);
+  const [loadingWorkspace, setLoadingWorkspace] = useState(true);
+  const [enrollingId, setEnrollingId] = useState<string | null>(null);
 
   // Time-aware greeting
   const getGreeting = () => {
@@ -60,32 +103,70 @@ export const HomePage: React.FC = () => {
 
   const studentName = profile?.full_name || user?.email?.split('@')[0] || 'Student';
 
-  // Genuine student learning activity & active course
-  const [activeCourse, setActiveCourse] = useState<ActiveCourseProgress | null>(() =>
-    studentActivityService.getActiveCourse()
-  );
-  const [recentActivities, setRecentActivities] = useState<StudentActivityItem[]>(() =>
-    studentActivityService.getRecentActivities(3)
-  );
-  const [overallProgress, setOverallProgress] = useState<OverallStudentProgress>(() =>
-    studentActivityService.getOverallProgress()
-  );
+  const { academicContext, isReady } = useAcademicContext();
+  const activeLevel = academicContext?.academic_level || profile?.education_category || profile?.education_level;
+
+  // Genuine student learning activity & active course strictly from database
+  const [activeCourse, setActiveCourse] = useState<ActiveCourseProgress | null>(null);
+  const [recentActivities, setRecentActivities] = useState<StudentActivityItem[]>([]);
+  const [overallProgress, setOverallProgress] = useState<OverallStudentProgress>({
+    completedLessons: 0,
+    completedQuizzes: 0,
+    activeSubjects: 0,
+    overallProgressPercent: 0,
+    studyMinutes: 0,
+  });
+
+  const fetchWorkspaceData = () => {
+    apiService
+      .getWorkspace()
+      .then((data) => {
+        setWorkspace(data);
+        setLoadingWorkspace(false);
+        if (data?.enrolled_subjects && data.enrolled_subjects.length > 0) {
+          const firstSub = data.enrolled_subjects[0];
+          setActiveCourse({
+            subject: firstSub.name,
+            slug: firstSub.slug,
+            courseTitle: firstSub.name,
+            currentTopic: `${firstSub.topic_count || 1} Topics available`,
+            lastLesson: 'Course Syllabus',
+            completedTopics: 0,
+            totalTopics: firstSub.topic_count || 10,
+            progressPercent: 0,
+            targetUrl: `/subjects/${firstSub.slug}`,
+          });
+        } else {
+          setActiveCourse(null);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load workspace overview:', err);
+        setLoadingWorkspace(false);
+      });
+  };
 
   useEffect(() => {
     let isMounted = true;
-    apiService
-      .getSubjects()
-      .then((data) => {
-        if (isMounted) {
-          setSubjects(data);
-          setLoadingSubjects(false);
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setLoadingSubjects(false);
-        }
-      });
+    setLoadingSubjects(true);
+
+    fetchWorkspaceData();
+
+    if (activeLevel) {
+      apiService
+        .getSubjects({ education_level: activeLevel })
+        .then((data) => {
+          if (isMounted) {
+            setSubjects(data);
+            setLoadingSubjects(false);
+          }
+        })
+        .catch(() => {
+          if (isMounted) {
+            setLoadingSubjects(false);
+          }
+        });
+    }
 
     apiService
       .getRecommendations()
@@ -101,15 +182,67 @@ export const HomePage: React.FC = () => {
         }
       });
 
+    // Level-scoped workspace progress strictly from database
+    apiService
+      .getWorkspaceProgress()
+      .then((prog) => {
+        if (isMounted && prog) {
+          setOverallProgress({
+            completedLessons: prog.completed_lessons_count,
+            completedQuizzes: prog.completed_quizzes_count,
+            activeSubjects: prog.enrolled_subjects_count,
+            overallProgressPercent: prog.overall_progress_percent || 0,
+            studyMinutes: prog.study_minutes || 0,
+          });
+        }
+      })
+      .catch(() => {});
+
+    // Genuine level-scoped recent activity feed
+    apiService
+      .getWorkspaceActivity(3)
+      .then((acts) => {
+        if (isMounted) {
+          setRecentActivities(
+            (acts || []).map((a) => ({
+              id: a.id,
+              title: a.title,
+              subject: a.description || 'Academic Workspace',
+              timeAgo: new Date(a.created_at).toLocaleDateString(),
+              timestamp: a.created_at,
+              type: a.activity_type as any,
+            }))
+          );
+        }
+      })
+      .catch(() => {
+        if (isMounted) setRecentActivities([]);
+      });
+
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [activeLevel, isReady]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
     navigate(`/learn?q=${encodeURIComponent(query.trim())}`);
+  };
+
+  const handleUnenroll = async (subjectId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirm('Are you sure you want to unenroll from this subject?')) {
+      try {
+        setEnrollingId(subjectId);
+        await apiService.unenrollSubject(subjectId);
+        fetchWorkspaceData();
+      } catch (err) {
+        console.error('Failed to unenroll subject:', err);
+      } finally {
+        setEnrollingId(null);
+      }
+    }
   };
 
   const getSubjectIcon = (iconName: string) => {
@@ -127,31 +260,141 @@ export const HomePage: React.FC = () => {
     }
   };
 
+  const completeness = workspace?.profile_completeness || {
+    score: profile?.completeness_score || 0,
+    missing_fields: [],
+    is_complete: false,
+  };
+
+  const academic = workspace?.academic_identity;
+  const boardOrUniv = academic?.board_authority || academic?.curriculum_name || academic?.institution;
+
   return (
     <div className="space-y-8 animate-fadeIn">
-      {/* 1. Welcome Area */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-nexora-border/60">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
-            {getGreeting()}, {studentName}
-          </h1>
-          <p className="text-sm text-nexora-subtext mt-1">
-            Continue your structured learning journey across your registered courses.
-          </p>
+      {/* 1. Academic Workspace Header & Student Identity Banner */}
+      <div className="p-6 rounded-2xl bg-gradient-to-br from-nexora-surface via-nexora-surface/90 to-nexora-elevated/40 border border-nexora-border/80 shadow-xl relative overflow-hidden">
+        {/* Subtle decorative glow */}
+        <div className="absolute top-0 right-0 w-96 h-96 bg-nexora-primary/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold tracking-wide uppercase bg-nexora-primary/15 text-nexora-primary border border-nexora-primary/30 flex items-center gap-1.5">
+                <GraduationCap className="w-3.5 h-3.5" />
+                Personal Academic Workspace
+              </span>
+              {academic?.education_category && (
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-nexora-elevated text-nexora-subtext border border-nexora-border/60">
+                  {academic.education_category}
+                </span>
+              )}
+            </div>
+
+            <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+              {getGreeting()}, {studentName}
+            </h1>
+
+            {/* Academic Context Pills */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3 text-xs text-nexora-subtext">
+              {academic?.grade_level && (
+                <div className="flex items-center gap-1.5">
+                  <School className="w-3.5 h-3.5 text-nexora-accent" />
+                  <span className="text-white font-medium">{academic.grade_level}</span>
+                </div>
+              )}
+              {boardOrUniv && (
+                <div className="flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-nexora-primary" />
+                  <span className="text-white font-medium">{boardOrUniv}</span>
+                </div>
+              )}
+              {academic?.state_region && (
+                <div className="flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{academic.state_region}</span>
+                </div>
+              )}
+              {academic?.degree && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-nexora-muted">&bull;</span>
+                  <span>{academic.degree}</span>
+                </div>
+              )}
+              {academic?.department && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-nexora-muted">&bull;</span>
+                  <span>{academic.department}</span>
+                </div>
+              )}
+              {academic?.academic_domain && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-nexora-muted">&bull;</span>
+                  <span className="text-nexora-accent font-medium">{academic.academic_domain}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Profile Completeness Score Card */}
+          <div className="shrink-0 flex items-center gap-4 bg-nexora-bg/80 border border-nexora-border/70 p-4 rounded-xl">
+            <div className="relative w-12 h-12 flex items-center justify-center">
+              <svg className="w-12 h-12 transform -rotate-90" viewBox="0 0 36 36">
+                <path
+                  className="text-nexora-elevated"
+                  strokeWidth="3.5"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+                <path
+                  className={completeness.score === 100 ? 'text-emerald-400' : 'text-nexora-primary'}
+                  strokeDasharray={`${completeness.score}, 100`}
+                  strokeWidth="3.5"
+                  strokeLinecap="round"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+              </svg>
+              <span className="absolute text-xs font-bold text-white">
+                {completeness.score}%
+              </span>
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-white">
+                Academic Profile
+              </div>
+              <div className="text-[11px] text-nexora-subtext">
+                {completeness.is_complete ? 'Complete & Calibrated' : 'Profile in progress'}
+              </div>
+              <Link
+                to="/profile"
+                className="text-[11px] text-nexora-primary hover:underline font-medium mt-0.5 inline-block"
+              >
+                {completeness.is_complete ? 'Update Details' : 'Complete Profile &rarr;'}
+              </Link>
+            </div>
+          </div>
         </div>
 
-        {activeCourse ? (
-          <Link to={activeCourse.targetUrl}>
-            <Button variant="primary" size="sm" leftIcon={<Play className="w-3.5 h-3.5" />}>
-              Resume Learning
-            </Button>
-          </Link>
-        ) : (
-          <Link to="/subjects">
-            <Button variant="primary" size="sm" leftIcon={<BookOpen className="w-3.5 h-3.5" />}>
-              Start Learning
-            </Button>
-          </Link>
+        {/* Incomplete Profile Alert Banner */}
+        {!completeness.is_complete && completeness.missing_fields && completeness.missing_fields.length > 0 && (
+          <div className="mt-5 pt-4 border-t border-nexora-border/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-amber-500/10 border-amber-500/20 p-3.5 rounded-xl">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="text-xs">
+                <span className="text-white font-medium">Complete your academic identity:</span>{' '}
+                <span className="text-nexora-subtext">
+                  Add missing fields ({completeness.missing_fields.join(', ')}) so NEXORA can precisely calibrate curriculum, practice problems, and concept explanations to your specific board.
+                </span>
+              </div>
+            </div>
+            <Link to="/profile" className="shrink-0">
+              <Button variant="primary" size="sm" className="bg-amber-500 hover:bg-amber-600 text-black font-semibold text-xs py-1 px-3">
+                Complete Now
+              </Button>
+            </Link>
+          </div>
         )}
       </div>
 
@@ -182,7 +425,7 @@ export const HomePage: React.FC = () => {
 
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="text-nexora-muted font-medium">Suggested topics:</span>
-          {EXAMPLE_QUERIES.map((item, idx) => (
+          {getExampleQueries(profile?.education_category, profile?.education_level).map((item, idx) => (
             <button
               key={idx}
               onClick={() => navigate(`/learn?q=${encodeURIComponent(item.label)}`)}
@@ -194,7 +437,254 @@ export const HomePage: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. Continue Learning & Overall Progress Grid */}
+      {/* 3. My Enrolled Subjects (Master Prompt 06) */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-bold text-white tracking-tight">My Enrolled Subjects</h2>
+              {workspace?.enrolled_subjects && workspace.enrolled_subjects.length > 0 && (
+                <Badge variant="primary" size="sm">
+                  {workspace.enrolled_subjects.length} Enrolled
+                </Badge>
+              )}
+            </div>
+            <p className="text-xs text-nexora-muted mt-0.5">
+              Curriculum tracks you are actively studying in this academic session
+            </p>
+          </div>
+          <Link to="/subjects">
+            <Button variant="ghost" size="sm" rightIcon={<ChevronRight className="w-4 h-4" />}>
+              Manage &amp; Enroll Subjects
+            </Button>
+          </Link>
+        </div>
+
+        {loadingWorkspace ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3].map((i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </div>
+        ) : !workspace?.enrolled_subjects || workspace.enrolled_subjects.length === 0 ? (
+          <EmptyState
+            icon={<BookOpen className="w-8 h-8 text-nexora-muted" />}
+            title="No Enrolled Subjects Yet"
+            description="You are not enrolled in any subjects for your curriculum session. Enroll in subjects matching your syllabus or upload your course materials to organize your workspace."
+            action={
+              <Link to="/subjects">
+                <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                  Browse &amp; Enroll Subjects
+                </Button>
+              </Link>
+            }
+          />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {workspace.enrolled_subjects.map((sub) => (
+              <Card
+                key={sub.id}
+                variant="interactive"
+                onClick={() => navigate(`/subjects/${sub.slug}`)}
+                className="group flex flex-col justify-between"
+              >
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between">
+                    <div className="w-10 h-10 rounded-xl bg-nexora-elevated flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                      {getSubjectIcon(sub.icon)}
+                    </div>
+                    <Badge variant="accent" size="sm" hasDot>
+                      Enrolled
+                    </Badge>
+                  </div>
+                  <CardTitle className="text-base group-hover:text-nexora-accent transition-colors">
+                    {sub.name}
+                  </CardTitle>
+                  <CardDescription className="line-clamp-2 text-xs">
+                    {sub.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="py-2">
+                  <div className="p-3 rounded-xl bg-nexora-bg/60 border border-nexora-border/50 space-y-1.5">
+                    <div className="flex justify-between text-[11px] text-nexora-subtext">
+                      <span>Topics &bull; Concepts</span>
+                      <span className="font-semibold text-white">
+                        {sub.topic_count ?? 0} Topics &bull; {sub.concept_count ?? 0} Concepts
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-[11px] text-nexora-muted">
+                      <span>Category</span>
+                      <span className="text-nexora-accent font-medium truncate max-w-[150px]">
+                        {sub.category}
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter className="pt-2 border-t border-nexora-border/40 flex items-center justify-between">
+                  <button
+                    onClick={(e) => handleUnenroll(sub.id, e)}
+                    disabled={enrollingId === sub.id}
+                    className="text-[11px] text-red-400 hover:text-red-300 font-medium transition-colors flex items-center gap-1 cursor-pointer"
+                    title="Unenroll from subject"
+                  >
+                    <Trash2 className="w-3 h-3" /> Unenroll
+                  </button>
+                  <span className="text-xs font-semibold text-nexora-primary group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+                    Open Subject <ChevronRight className="w-3.5 h-3.5" />
+                  </span>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 4. Study Materials Hub Preview (Master Prompt 06) */}
+      <div className="p-6 rounded-2xl bg-nexora-surface/80 border border-nexora-border/80">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs font-semibold uppercase tracking-wider text-nexora-accent bg-nexora-accent/10 px-2 py-0.5 rounded-full border border-nexora-accent/20 flex items-center gap-1.5">
+                <FileText className="w-3 h-3" />
+                Material-Driven Learning Hub
+              </span>
+            </div>
+            <h2 className="text-xl font-bold text-white tracking-tight">
+              Study Materials &amp; Syllabus Ingestion
+            </h2>
+            <p className="text-xs text-nexora-muted">
+              Upload your textbooks, syllabi, notes, or lecture PDFs to power knowledge extraction and concept mapping.
+            </p>
+          </div>
+          <Link to="/materials">
+            <Button variant="primary" size="sm" leftIcon={<UploadCloud className="w-3.5 h-3.5" />}>
+              Upload Materials
+            </Button>
+          </Link>
+        </div>
+
+        {/* Statistics Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          <div className="p-3.5 rounded-xl bg-nexora-bg/70 border border-nexora-border/60">
+            <div className="text-xl font-bold text-white">
+              {workspace?.materials_summary?.total_count ?? 0}
+            </div>
+            <div className="text-[11px] text-nexora-subtext mt-0.5">Total Uploaded</div>
+          </div>
+          <div className="p-3.5 rounded-xl bg-nexora-bg/70 border border-nexora-border/60">
+            <div className="text-xl font-bold text-emerald-400">
+              {workspace?.materials_summary?.ready_count ?? 0}
+            </div>
+            <div className="text-[11px] text-nexora-subtext mt-0.5">Processed &amp; Indexed</div>
+          </div>
+          <div className="p-3.5 rounded-xl bg-nexora-bg/70 border border-nexora-border/60">
+            <div className="text-xl font-bold text-nexora-primary">
+              {workspace?.materials_summary?.processing_count ?? 0}
+            </div>
+            <div className="text-[11px] text-nexora-subtext mt-0.5">Currently Processing</div>
+          </div>
+          <div className="p-3.5 rounded-xl bg-nexora-bg/70 border border-nexora-border/60">
+            <div className="text-xl font-bold text-amber-400">
+              {workspace?.materials_summary?.failed_count ?? 0}
+            </div>
+            <div className="text-[11px] text-nexora-subtext mt-0.5">Needs Attention</div>
+          </div>
+        </div>
+
+        {/* Empty state or quick links */}
+        {(!workspace?.materials_summary?.recent_materials ||
+          workspace.materials_summary.recent_materials.length === 0) ? (
+          <div className="p-4 rounded-xl bg-nexora-bg/50 border border-dashed border-nexora-border/80 text-center">
+            <p className="text-xs text-nexora-subtext mb-2">
+              No study documents uploaded yet. Upload your PDF syllabus, lecture slides, or textbook chapters to enable asynchronous document ingestion and concept alignment.
+            </p>
+            <Link to="/materials">
+              <Button variant="outline" size="sm" leftIcon={<UploadCloud className="w-3.5 h-3.5" />}>
+                Go to Materials Page
+              </Button>
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <div className="text-xs font-semibold text-white mb-1">Recent Study Documents</div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {workspace.materials_summary.recent_materials.slice(0, 3).map((doc) => (
+                <div
+                  key={doc.id}
+                  onClick={() => navigate('/materials')}
+                  className="p-3 rounded-xl bg-nexora-bg/70 border border-nexora-border/60 hover:border-nexora-primary/50 transition-colors cursor-pointer flex items-start gap-2.5"
+                >
+                  <FileText className="w-4 h-4 text-nexora-primary shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-medium text-white truncate">{doc.title}</div>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <Badge
+                        variant={doc.status === 'completed' ? 'accent' : 'neutral'}
+                        size="sm"
+                      >
+                        {doc.status.toUpperCase()}
+                      </Badge>
+                      <span className="text-[10px] text-nexora-muted">{doc.source_type || 'Upload'}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 5. Concept-Aware Academic Learning Tools (Master Prompt 06) */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-xl font-bold text-white tracking-tight">Academic Learning Tools</h2>
+            <p className="text-xs text-nexora-muted">
+              10 multi-modal learning modalities aligned to your curriculum concepts
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {(workspace?.learning_tools || []).map((tool) => {
+            const isLive = tool.status === 'active';
+            return (
+              <div
+                key={tool.id}
+                onClick={() => {
+                  if (isLive && tool.route) {
+                    navigate(tool.route);
+                  }
+                }}
+                className={`p-4 rounded-xl border transition-all ${
+                  isLive
+                    ? 'bg-nexora-surface/90 border-nexora-border/80 hover:border-nexora-primary/60 cursor-pointer group hover:-translate-y-0.5'
+                    : 'bg-nexora-surface/40 border-nexora-border/40 opacity-75'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-bold text-white group-hover:text-nexora-accent transition-colors">
+                    {tool.name}
+                  </span>
+                  <Badge variant={isLive ? 'accent' : 'neutral'} size="sm">
+                    {isLive ? 'Live' : tool.phase_label}
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-nexora-subtext line-clamp-2 leading-snug">
+                  {tool.description}
+                </p>
+                {isLive && (
+                  <div className="mt-3 text-[11px] font-semibold text-nexora-primary flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                    Launch <ArrowRight className="w-3 h-3" />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 6. Continue Learning & Overall Progress Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Continue Learning Card */}
         {activeCourse ? (
@@ -269,7 +759,7 @@ export const HomePage: React.FC = () => {
             </CardContent>
             <CardFooter className="flex justify-between items-center pt-0">
               <span className="text-xs text-nexora-subtext">
-                Free structured curriculum tracks
+                Structured curriculum tracks
               </span>
               <Link to="/subjects">
                 <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
@@ -331,7 +821,7 @@ export const HomePage: React.FC = () => {
         </Card>
       </div>
 
-      {/* 4. Exploration Through Your Interests (Master Prompt 04) */}
+      {/* 7. Exploration Through Your Interests (Master Prompt 04) */}
       <div>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
@@ -402,16 +892,23 @@ export const HomePage: React.FC = () => {
         )}
       </div>
 
-      {/* 5. My Subjects */}
+      {/* 8. Reference Curriculum Library (Universal & Starter Subjects) */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-xl font-bold text-white tracking-tight">My Subjects</h2>
-            <p className="text-xs text-nexora-muted">Structured curriculum modules and course tracks</p>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-bold text-white tracking-tight">Reference Curriculum Library</h2>
+              <Badge variant="neutral" size="sm">
+                Universal Reference
+              </Badge>
+            </div>
+            <p className="text-xs text-nexora-muted mt-0.5">
+              Explore foundational syllabi across Natural Sciences, Mathematics, and Computer Science available on the platform
+            </p>
           </div>
           <Link to="/subjects">
             <Button variant="ghost" size="sm" rightIcon={<ChevronRight className="w-4 h-4" />}>
-              View All Subjects
+              View All Syllabi
             </Button>
           </Link>
         </div>
@@ -432,8 +929,15 @@ export const HomePage: React.FC = () => {
                 className="group flex flex-col justify-between"
               >
                 <CardHeader className="pb-2">
-                  <div className="w-10 h-10 rounded-xl bg-nexora-elevated flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                    {getSubjectIcon(sub.icon)}
+                  <div className="flex items-start justify-between">
+                    <div className="w-10 h-10 rounded-xl bg-nexora-elevated flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                      {getSubjectIcon(sub.icon)}
+                    </div>
+                    {sub.education_level && (
+                      <span className="text-[10px] text-nexora-muted font-medium px-2 py-0.5 rounded bg-nexora-bg border border-nexora-border/60">
+                        {sub.education_level}
+                      </span>
+                    )}
                   </div>
                   <CardTitle className="text-base group-hover:text-nexora-accent transition-colors">
                     {sub.name}
@@ -449,17 +953,17 @@ export const HomePage: React.FC = () => {
                       <span className="font-semibold text-white">{sub.concept_count} Lessons</span>
                     </div>
                     <div className="flex justify-between text-[11px] text-nexora-muted">
-                      <span>Track Status</span>
-                      <span className="text-nexora-accent font-medium">Available</span>
+                      <span>Category</span>
+                      <span className="text-nexora-accent font-medium truncate max-w-[140px]">{sub.category}</span>
                     </div>
                   </div>
                 </CardContent>
                 <CardFooter className="pt-2 border-t border-nexora-border/40">
                   <span className="text-[11px] text-nexora-muted">
-                    Full structured syllabus
+                    Full syllabus
                   </span>
                   <span className="text-xs font-semibold text-nexora-primary group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                    Open <ChevronRight className="w-3.5 h-3.5" />
+                    Explore <ChevronRight className="w-3.5 h-3.5" />
                   </span>
                 </CardFooter>
               </Card>
@@ -468,7 +972,7 @@ export const HomePage: React.FC = () => {
         )}
       </div>
 
-      {/* 5. Recent Activity */}
+      {/* 9. Recent Activity */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <div>

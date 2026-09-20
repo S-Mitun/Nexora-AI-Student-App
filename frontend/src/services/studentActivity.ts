@@ -259,14 +259,54 @@ export const studentActivityService = {
   },
 
   /**
-   * Retrieves the student's active course if they have started learning.
-   * Returns null if the student has not yet started any course.
+   * Clears the current active course from storage.
    */
-  getActiveCourse(): ActiveCourseProgress | null {
+  clearActiveCourse() {
+    try {
+      localStorage.removeItem(STORAGE_KEY_ACTIVE_COURSE);
+    } catch (e) {
+      console.error('Failed to clear active course:', e);
+    }
+  },
+
+  /**
+   * Clears all student activities and progress from storage.
+   */
+  clearActivities() {
+    try {
+      localStorage.removeItem(STORAGE_KEY_ACTIVITIES);
+      localStorage.removeItem(STORAGE_KEY_ACTIVE_COURSE);
+      localStorage.removeItem(STORAGE_KEY_COMPLETED_LESSONS);
+      localStorage.removeItem(STORAGE_KEY_PRACTICE_ATTEMPTS);
+    } catch (e) {
+      console.error('Failed to clear activities:', e);
+    }
+  },
+
+  /**
+   * Retrieves the student's active course if they have started learning.
+   * Returns null if the student has not yet started any course or if stored
+   * course belongs to an mismatched education tier.
+   */
+  getActiveCourse(educationCategory?: string): ActiveCourseProgress | null {
     try {
       const raw = localStorage.getItem(STORAGE_KEY_ACTIVE_COURSE);
       if (!raw) return null;
       const parsed: ActiveCourseProgress = JSON.parse(raw);
+
+      // Verify course matches the student's active education level
+      if (educationCategory) {
+        const cat = educationCategory.toLowerCase();
+        const isK12 = cat.includes('primary') || cat.includes('class-1-5') || cat.includes('class-6-10') || cat.includes('secondary');
+        const isCSE = /computer|data structure|algorithm|operating system|network|database|artificial intelligence/i.test(
+          parsed.subject || parsed.courseTitle || ''
+        );
+        if (isK12 && isCSE) {
+          localStorage.removeItem(STORAGE_KEY_ACTIVE_COURSE);
+          return null;
+        }
+      }
+
       // Recalculate completed topics from real completed lessons
       const completed = this.getCompletedLessons().filter((l) => l.subject === parsed.subject).length;
       parsed.completedTopics = completed;

@@ -103,6 +103,12 @@ class ConceptRead(ConceptBase):
     id: str
     topic_id: str
     module_count: int = 0
+    has_simulation: bool = False
+    has_visualization: bool = False
+    has_practice: bool = True
+    has_lab: bool = False
+    has_mindmap: bool = True
+    learning_modes: List[str] = Field(default_factory=lambda: ["learn", "ask", "practice", "notes"])
 
 
 class ConceptDetail(ConceptRead):
@@ -137,18 +143,35 @@ class TopicDetail(TopicRead):
 
 
 # ==============================================================================
-# 5. Subject Schemas (Level 1)
+# 5. Curriculum & Subject Schemas (Level 0 & 1)
 # ==============================================================================
+
+class CurriculumRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    code: str
+    name: str
+    board_authority: str
+    education_level: str
+    country: str = "India"
+    description: Optional[str] = None
+    is_active: bool = True
+
 
 class SubjectRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
+    curriculum_id: Optional[str] = None
     name: str
     slug: str
     description: Optional[str] = None
     icon: str = "BookOpen"
     category: str = "Computer Science & Engineering"
     difficulty_level: str = "all-levels"
+    education_level: str = "all-levels"
+    academic_domain: str = "General"
+    is_system: bool = True
+    is_enrolled: bool = False
     order_index: int = 0
     is_active: bool = True
     topic_count: int = 0
@@ -158,6 +181,22 @@ class SubjectRead(BaseModel):
 
 class SubjectDetail(SubjectRead):
     topics: List[TopicDetail] = Field(default_factory=list)
+    curriculum: Optional[CurriculumRead] = None
+
+
+class StudentSubjectRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    user_id: str
+    subject_id: str
+    enrollment_source: str = "student_selected"
+    is_active: bool = True
+    subject: Optional[SubjectRead] = None
+
+
+class StudentSubjectCreate(BaseModel):
+    subject_id: str
+    enrollment_source: str = "student_selected"
 
 
 # ==============================================================================

@@ -3,6 +3,25 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 
 
+class AcademicVectorMetadata(BaseModel):
+    """
+    Standardized Academic Retrieval Metadata Schema.
+    Scopes vector similarity searches to the student's authoritative academic context.
+    """
+    user_id: Optional[str] = None
+    source_id: Optional[str] = None
+    source_type: str = "user_upload"  # baseline, official_curriculum, user_upload, etc.
+    academic_level: Optional[str] = None
+    curriculum_id: Optional[str] = None
+    subject_id: Optional[str] = None
+    topic_id: Optional[str] = None
+    concept_id: Optional[str] = None
+    document_id: Optional[str] = None
+    chunk_index: Optional[int] = None
+    page_number: Optional[int] = None
+    language: str = "en"
+
+
 class VectorDocument(BaseModel):
     id: str
     text: str
@@ -19,6 +38,7 @@ class VectorStore(ABC):
     """
     Abstract Vector Database interface.
     Allows seamlessly switching between ChromaDB, pgvector, Pinecone, or Qdrant.
+    Supports scoping retrieval strictly using Academic Context metadata filters.
     """
 
     @abstractmethod

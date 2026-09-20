@@ -51,9 +51,10 @@ class SecurityContext:
         # 2. Local development token
         if clean_token.startswith("dev-student-"):
             user_id = clean_token.replace("dev-student-", "") or "00000000-0000-0000-0000-000000000001"
+            clean_uid = user_id.replace("-", "_")
             dev_user = AuthenticatedUser(
                 id=user_id,
-                email="student@nexora.dev",
+                email=f"student_{clean_uid}@nexora.dev" if user_id != "00000000-0000-0000-0000-000000000001" else "student@nexora.dev",
                 role="student",
                 is_authenticated=True,
                 provider="email",

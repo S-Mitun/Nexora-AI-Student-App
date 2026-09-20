@@ -20,7 +20,9 @@ import {
   EyeOff
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useAcademicContext } from '../context/AcademicContext';
 import { apiService } from '../services/api';
+import { studentActivityService } from '../services/studentActivity';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -64,10 +66,44 @@ const AVAILABLE_LEARNING_PREFERENCES = [
 const DEFAULT_LEARNING_PREFERENCES = ['visual', 'practical', 'step_by_step'];
 
 const EDUCATION_LEVELS = [
-  { id: 'high-school', label: 'High School (Grades 9-12)' },
-  { id: 'undergrad', label: 'Undergraduate (Engineering / Science)' },
-  { id: 'postgrad', label: 'Postgraduate / Research' },
-  { id: 'self-learner', label: 'Self-Taught / Lifelong Learner' },
+  { id: 'class-1-5', label: 'Class 1–5 (Primary Education)' },
+  { id: 'class-6-10', label: 'Class 6–10 (Secondary Education)' },
+  { id: 'class-11-12', label: 'Class 11–12 (Higher Secondary)' },
+  { id: 'undergraduate', label: 'Undergraduate (Collegiate / Degree)' },
+  { id: 'postgraduate', label: 'Postgraduate (Master\'s / Specialist)' },
+  { id: 'research', label: 'Research / Advanced Scholar (Ph.D.)' },
+  { id: 'custom', label: 'Custom / Self-Directed Learner' },
+];
+
+export const EDUCATION_CATEGORIES = [
+  { id: 'primary', label: 'Primary School', sub: 'Class 1–5', level: 'class-1-5' },
+  { id: 'middle', label: 'Middle School', sub: 'Class 6–8', level: 'class-6-10' },
+  { id: 'secondary', label: 'Secondary School', sub: 'Class 9–10', level: 'class-6-10' },
+  { id: 'higher_secondary', label: 'Higher Secondary', sub: 'Class 11–12', level: 'class-11-12' },
+  { id: 'undergraduate', label: 'Undergraduate', sub: 'B.Tech, B.Sc, B.Com', level: 'undergraduate' },
+  { id: 'postgraduate', label: 'Postgraduate', sub: 'M.Tech, M.S., M.Sc', level: 'postgraduate' },
+  { id: 'research', label: 'Research / Advanced', sub: 'Ph.D. & Scholar', level: 'research' },
+  { id: 'custom', label: 'Custom / Independent', sub: 'Self-Directed', level: 'custom' },
+];
+
+export const GRADE_OPTIONS_BY_CATEGORY: Record<string, string[]> = {
+  primary: ['Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5'],
+  middle: ['Class 6', 'Class 7', 'Class 8'],
+  secondary: ['Class 9', 'Class 10'],
+  higher_secondary: ['Class 11', 'Class 12'],
+  undergraduate: ['Year 1', 'Year 2', 'Year 3', 'Year 4'],
+  postgraduate: ['Year 1', 'Year 2'],
+  research: ['Doctoral Candidate', 'Postdoctoral Scholar', 'Independent Researcher'],
+  custom: ['Self-Directed Learner', 'Continuous Professional Study'],
+};
+
+const STANDARD_BOARDS = [
+  { id: 'cur-00000000-0000-0000-0000-000000000002', label: 'CBSE (Central Board of Secondary Education)' },
+  { id: 'cur-00000000-0000-0000-0000-000000000004', label: 'ICSE (Council for the Indian School Certificate Examinations)' },
+  { id: 'cur-00000000-0000-0000-0000-000000000005', label: 'Tamil Nadu State Board' },
+  { id: 'cur-00000000-0000-0000-0000-000000000006', label: 'University Engineering (Computer Science & IT)' },
+  { id: 'cur-00000000-0000-0000-0000-000000000007', label: 'University Natural Sciences (B.Sc / M.Sc)' },
+  { id: 'cur-00000000-0000-0000-0000-000000000009', label: 'Custom / Self-Directed Academic Study' },
 ];
 
 const LANGUAGES = [
@@ -89,10 +125,23 @@ export const ProfilePage: React.FC = () => {
     hasPasswordAuth,
     updatePassword
   } = useAuth();
+  const { refreshAcademicContext } = useAcademicContext();
 
   const [fullName, setFullName] = useState(authProfile?.full_name || user?.user_metadata?.full_name || '');
   const [institution, setInstitution] = useState(authProfile?.institution || '');
-  const [educationLevel, setEducationLevel] = useState(authProfile?.education_level || 'undergrad');
+  const [educationLevel, setEducationLevel] = useState(authProfile?.education_level || 'undergraduate');
+  const [educationCategory, setEducationCategory] = useState(authProfile?.education_category || 'undergraduate');
+  const [curriculumId, setCurriculumId] = useState(authProfile?.curriculum_id || 'cur-00000000-0000-0000-0000-000000000002');
+  const [gradeLevel, setGradeLevel] = useState(authProfile?.grade_level || 'Class 10');
+  const [academicDomain, setAcademicDomain] = useState(authProfile?.academic_domain || 'General Studies');
+  const [stateRegion, setStateRegion] = useState(authProfile?.state_region || '');
+  const [degree, setDegree] = useState(authProfile?.degree || '');
+  const [department, setDepartment] = useState(authProfile?.department || '');
+  const [specialization, setSpecialization] = useState(authProfile?.specialization || '');
+  const [academicYear, setAcademicYear] = useState(authProfile?.academic_year || '');
+  const [boardType, setBoardType] = useState(authProfile?.board_type || 'national');
+  const [stream, setStream] = useState(authProfile?.stream || '');
+  const [program, setProgram] = useState(authProfile?.program || '');
   const [primaryLanguage, setPrimaryLanguage] = useState(
     authProfile?.preferred_language || localStorage.getItem('nexora_preferred_language') || 'en'
   );
@@ -110,6 +159,17 @@ export const ProfilePage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  const calculateCompleteness = () => {
+    let score = 0;
+    if (fullName.trim()) score += 20;
+    if (educationCategory) score += 20;
+    if (gradeLevel.trim()) score += 20;
+    if (curriculumId) score += 20;
+    if (academicDomain.trim()) score += 20;
+    return score;
+  };
+  const completeness = calculateCompleteness();
 
   // Security password management state
   const [showPasswordForm, setShowPasswordForm] = useState(false);
@@ -167,6 +227,18 @@ export const ProfilePage: React.FC = () => {
       if (authProfile.full_name) setFullName(authProfile.full_name);
       if (authProfile.institution) setInstitution(authProfile.institution);
       if (authProfile.education_level) setEducationLevel(authProfile.education_level);
+      if (authProfile.education_category) setEducationCategory(authProfile.education_category);
+      if (authProfile.curriculum_id) setCurriculumId(authProfile.curriculum_id);
+      if (authProfile.grade_level) setGradeLevel(authProfile.grade_level);
+      if (authProfile.academic_domain) setAcademicDomain(authProfile.academic_domain);
+      if (authProfile.state_region) setStateRegion(authProfile.state_region);
+      if (authProfile.degree) setDegree(authProfile.degree);
+      if (authProfile.department) setDepartment(authProfile.department);
+      if (authProfile.specialization) setSpecialization(authProfile.specialization);
+      if (authProfile.academic_year) setAcademicYear(authProfile.academic_year);
+      if (authProfile.board_type) setBoardType(authProfile.board_type);
+      if (authProfile.stream) setStream(authProfile.stream);
+      if (authProfile.program) setProgram(authProfile.program);
       if (authProfile.preferred_language) {
         setPrimaryLanguage(authProfile.preferred_language);
       }
@@ -256,6 +328,19 @@ export const ProfilePage: React.FC = () => {
       full_name: fullName.trim() || undefined,
       institution: institution.trim() || undefined,
       education_level: educationLevel,
+      education_category: educationCategory,
+      curriculum_id: curriculumId,
+      board_type: boardType,
+      stream: stream.trim() || undefined,
+      program: program.trim() || undefined,
+      grade_level: gradeLevel,
+      academic_domain: academicDomain,
+      state_region: stateRegion.trim() || undefined,
+      degree: degree.trim() || undefined,
+      department: department.trim() || undefined,
+      specialization: specialization.trim() || undefined,
+      academic_year: academicYear.trim() || undefined,
+      profile_completed: true,
       preferred_language: primaryLanguage,
       interests,
       custom_interests: customInterests,
@@ -269,6 +354,13 @@ export const ProfilePage: React.FC = () => {
     if (error) {
       setSaveError(error.message || 'Failed to save profile updates.');
     } else {
+      // Prevent stale CSE active course from persisting if student switched to primary or secondary
+      const isK12 = educationCategory === 'primary' || educationCategory === 'secondary' || educationLevel.toLowerCase().includes('class');
+      if (isK12) {
+        studentActivityService.clearActiveCourse();
+      }
+      studentActivityService.clearActivities();
+      await refreshAcademicContext();
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 4000);
     }
@@ -327,6 +419,44 @@ export const ProfilePage: React.FC = () => {
         </div>
       )}
 
+      {/* Profile Completeness Status */}
+      <Card className="border-nexora-border/80 bg-gradient-to-r from-nexora-surface/90 to-nexora-bg/90">
+        <CardContent className="p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs ${
+                completeness === 100 
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                  : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+              }`}>
+                {completeness}%
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-white">
+                  {completeness === 100 ? 'Academic Profile Complete' : 'Complete Your Academic Profile'}
+                </h3>
+                <p className="text-xs text-nexora-muted">
+                  {completeness === 100 
+                    ? 'Your academic workspace is fully configured with your board and grade level.'
+                    : 'Configure your education category, board, and grade level to personalize your syllabus.'}
+                </p>
+              </div>
+            </div>
+            <Badge variant={completeness === 100 ? 'success' : 'warning'} size="sm">
+              {completeness === 100 ? 'Fully Verified' : `${100 - completeness}% Incomplete`}
+            </Badge>
+          </div>
+          <div className="w-full h-2 bg-nexora-elevated rounded-full overflow-hidden">
+            <div 
+              className={`h-full transition-all duration-500 rounded-full ${
+                completeness === 100 ? 'bg-emerald-500' : 'bg-amber-500'
+              }`}
+              style={{ width: `${completeness}%` }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       {/* 1. Basic Information */}
       <Card className="border-nexora-border/80">
         <CardHeader className="pb-3 border-b border-nexora-border/40">
@@ -377,47 +507,267 @@ export const ProfilePage: React.FC = () => {
             <Input 
               value={institution}
               onChange={(e) => setInstitution(e.target.value)}
-              placeholder="e.g. Department of Computer Science & Engineering"
+              placeholder="e.g. National Public School / Anna University / IIT Madras"
             />
           </div>
-
-
         </CardContent>
       </Card>
 
-      {/* 2. Education Level Calibration */}
+      {/* 2. Education Level Calibration & Curriculum */}
       <Card className="border-nexora-border/80">
         <CardHeader className="pb-3 border-b border-nexora-border/40">
           <CardTitle className="text-base flex items-center gap-2">
             <GraduationCap className="w-4 h-4 text-nexora-accent" />
-            Academic Depth & Rigor
+            Academic Level & Curriculum Board
           </CardTitle>
           <CardDescription>
-            Select your baseline so NEXORA provides appropriate mathematical rigor without overwhelming or condescending.
+            Configure your curriculum board, grade level, and academic domain so NEXORA grounds learning in your actual syllabus instead of generic engineering content.
           </CardDescription>
         </CardHeader>
 
-        <CardContent className="p-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {EDUCATION_LEVELS.map((level) => {
-              const isSelected = educationLevel === level.id;
-              return (
-                <div
-                  key={level.id}
-                  onClick={() => setEducationLevel(level.id)}
-                  className={`p-4 rounded-xl border cursor-pointer transition-all duration-200 flex items-center justify-between ${
-                    isSelected 
-                      ? 'bg-nexora-primary/10 border-nexora-primary shadow-glow-sm' 
-                      : 'bg-nexora-surface/40 border-nexora-border/60 hover:bg-nexora-surface-hover/50 hover:border-nexora-border'
+        <CardContent className="p-6 space-y-6">
+          {/* Education Category Grid */}
+          <div>
+            <label className="text-xs font-semibold text-nexora-text block mb-1">
+              1. Education Stage / Category
+            </label>
+            <p className="text-xs text-nexora-muted mb-3">
+              Select your current academic stage to unlock appropriate board standards.
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              {EDUCATION_CATEGORIES.map((cat) => {
+                const isSelected = educationCategory === cat.id;
+                return (
+                  <div
+                    key={cat.id}
+                    onClick={() => {
+                      setEducationCategory(cat.id);
+                      setEducationLevel(cat.level);
+                      const availableGrades = GRADE_OPTIONS_BY_CATEGORY[cat.id] || [];
+                      if (availableGrades.length > 0 && !availableGrades.includes(gradeLevel)) {
+                        setGradeLevel(availableGrades[0]);
+                      }
+                    }}
+                    className={`p-3 rounded-xl border cursor-pointer transition-all duration-200 flex flex-col justify-between ${
+                      isSelected 
+                        ? 'bg-nexora-primary/10 border-nexora-primary shadow-glow-sm' 
+                        : 'bg-nexora-surface/40 border-nexora-border/60 hover:bg-nexora-surface-hover/50 hover:border-nexora-border'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`text-xs font-semibold ${isSelected ? 'text-nexora-primary' : 'text-white'}`}>
+                        {cat.label}
+                      </span>
+                      {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-nexora-primary shrink-0" />}
+                    </div>
+                    <span className="text-[11px] text-nexora-muted">{cat.sub}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Dynamic Class / Grade Selector */}
+          <div className="pt-4 border-t border-nexora-border/50">
+            <label className="text-xs font-semibold text-nexora-text block mb-1">
+              2. Specific Class / Grade / Year
+            </label>
+            <p className="text-xs text-nexora-muted mb-2.5">
+              Select your specific level or type a custom grade below.
+            </p>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {(GRADE_OPTIONS_BY_CATEGORY[educationCategory] || []).map((grade) => {
+                const isSelected = gradeLevel === grade;
+                return (
+                  <button
+                    key={grade}
+                    type="button"
+                    onClick={() => setGradeLevel(grade)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-nexora-accent/15 border-nexora-accent text-nexora-accent font-semibold shadow-glow-sm'
+                        : 'bg-nexora-bg/80 border-nexora-border text-nexora-subtext hover:border-nexora-border/90 hover:text-white'
+                    }`}
+                  >
+                    {grade}
+                  </button>
+                );
+              })}
+            </div>
+            <Input 
+              value={gradeLevel}
+              onChange={(e) => setGradeLevel(e.target.value)}
+              placeholder="e.g. Class 8, Class 10, Year 2"
+            />
+          </div>
+
+          {/* Board Authority Type: National vs State for School Levels */}
+          {(educationCategory === 'primary' || educationCategory === 'middle' || educationCategory === 'secondary' || educationCategory === 'higher_secondary') && (
+            <div className="pt-4 border-t border-nexora-border/50 space-y-3">
+              <label className="text-xs font-semibold text-nexora-text block">
+                3. Board Authority Type
+              </label>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setBoardType('national')}
+                  className={`flex-1 py-2.5 px-3 rounded-xl border text-xs font-medium transition-all ${
+                    boardType === 'national'
+                      ? 'bg-nexora-primary/15 border-nexora-primary text-white font-semibold'
+                      : 'bg-nexora-surface/40 border-nexora-border/60 text-nexora-muted hover:text-white'
                   }`}
                 >
-                  <span className={`text-sm font-medium ${isSelected ? 'text-nexora-primary' : 'text-nexora-text'}`}>
-                    {level.label}
-                  </span>
-                  {isSelected && <CheckCircle2 className="w-4 h-4 text-nexora-primary shrink-0" />}
+                  National Board (CBSE / ICSE)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBoardType('state')}
+                  className={`flex-1 py-2.5 px-3 rounded-xl border text-xs font-medium transition-all ${
+                    boardType === 'state'
+                      ? 'bg-nexora-primary/15 border-nexora-primary text-white font-semibold'
+                      : 'bg-nexora-surface/40 border-nexora-border/60 text-nexora-muted hover:text-white'
+                  }`}
+                >
+                  State Board (Regional Syllabus)
+                </button>
+              </div>
+
+              {boardType === 'state' && (
+                <div className="pt-2 animate-fadeIn">
+                  <label className="text-xs font-medium text-nexora-text-muted block mb-1">
+                    State / Region
+                  </label>
+                  <Input
+                    value={stateRegion}
+                    onChange={(e) => setStateRegion(e.target.value)}
+                    placeholder="e.g. Tamil Nadu, Karnataka, Maharashtra, Kerala"
+                  />
                 </div>
-              );
-            })}
+              )}
+
+              {/* Stream Selector for Higher Secondary (Class 11-12) */}
+              {educationCategory === 'higher_secondary' && (
+                <div className="pt-2 animate-fadeIn">
+                  <label className="text-xs font-semibold text-nexora-text block mb-1.5">
+                    Academic Stream (Class 11–12)
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {['Science (PCM)', 'Science (PCB)', 'Commerce', 'Arts / Humanities'].map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setStream(s)}
+                        className={`py-2 px-2.5 rounded-lg border text-xs transition-all ${
+                          stream === s
+                            ? 'bg-nexora-accent/15 border-nexora-accent text-nexora-accent font-semibold'
+                            : 'bg-nexora-surface/40 border-nexora-border/60 text-nexora-muted hover:text-white'
+                        }`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Curriculum / Board Selection */}
+          <div className="pt-4 border-t border-nexora-border/50">
+            <label className="text-xs font-semibold text-nexora-text block mb-1">
+              4. Prescribed Educational Board / Curriculum Reference
+            </label>
+            <p className="text-xs text-nexora-muted mb-2.5">
+              Choose your governing curriculum board to align topics and exam patterns.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {STANDARD_BOARDS.map((board) => {
+                const isSelected = curriculumId === board.id;
+                return (
+                  <div
+                    key={board.id}
+                    onClick={() => setCurriculumId(board.id)}
+                    className={`p-3.5 rounded-xl border cursor-pointer transition-all duration-200 flex items-center justify-between ${
+                      isSelected 
+                        ? 'bg-indigo-500/15 border-indigo-500 shadow-glow-sm' 
+                        : 'bg-nexora-surface/40 border-nexora-border/60 hover:bg-nexora-surface-hover/50 hover:border-nexora-border'
+                    }`}
+                  >
+                    <span className={`text-xs sm:text-sm font-medium ${isSelected ? 'text-indigo-300' : 'text-nexora-text'}`}>
+                      {board.label}
+                    </span>
+                    {isSelected && <CheckCircle2 className="w-4 h-4 text-indigo-400 shrink-0" />}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Conditional Higher Ed Details */}
+          {(educationCategory === 'undergraduate' || educationCategory === 'postgraduate' || educationCategory === 'research') && (
+            <div className="pt-4 border-t border-nexora-border/50 space-y-4 animate-fadeIn">
+              <label className="text-xs font-semibold text-nexora-accent block">
+                Higher Education Degree & Specialization Details
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-nexora-text-muted block mb-1">
+                    Degree Program
+                  </label>
+                  <Input 
+                    value={degree}
+                    onChange={(e) => setDegree(e.target.value)}
+                    placeholder="e.g. B.Tech / B.Sc / M.S."
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-nexora-text-muted block mb-1">
+                    Department / Major
+                  </label>
+                  <Input 
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                    placeholder="e.g. Computer Science / Physics"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-nexora-text-muted block mb-1">
+                    Specialization / Focus
+                  </label>
+                  <Input 
+                    value={specialization}
+                    onChange={(e) => setSpecialization(e.target.value)}
+                    placeholder="e.g. Artificial Intelligence"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* State / Region if State Board */}
+          {curriculumId === 'cur-00000000-0000-0000-0000-000000000005' && (
+            <div className="pt-4 border-t border-nexora-border/50 animate-fadeIn">
+              <label className="text-xs font-medium text-nexora-text-muted block mb-1.5">
+                State / Regional Jurisdiction
+              </label>
+              <Input 
+                value={stateRegion}
+                onChange={(e) => setStateRegion(e.target.value)}
+                placeholder="e.g. Tamil Nadu, Karnataka, Maharashtra"
+              />
+            </div>
+          )}
+
+          {/* Academic Domain */}
+          <div className="pt-4 border-t border-nexora-border/50">
+            <label className="text-xs font-medium text-nexora-text-muted block mb-1.5">
+              Primary Academic Discipline / Domain
+            </label>
+            <Input 
+              value={academicDomain}
+              onChange={(e) => setAcademicDomain(e.target.value)}
+              placeholder="e.g. General Science & Mathematics, Computer Science & Engineering, Humanities"
+            />
           </div>
         </CardContent>
       </Card>

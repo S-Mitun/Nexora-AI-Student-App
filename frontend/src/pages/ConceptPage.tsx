@@ -18,6 +18,7 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { SkeletonCard } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
+import { AcademicContentRenderer } from '../components/common/AcademicContentRenderer';
 
 export const ConceptPage: React.FC = () => {
   const { conceptSlug } = useParams<{ conceptSlug: string }>();
@@ -139,9 +140,9 @@ export const ConceptPage: React.FC = () => {
           <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
             {concept.name}
           </h1>
-          <p className="text-sm sm:text-base text-nexora-subtext leading-relaxed">
-            {concept.summary}
-          </p>
+          <div className="text-sm sm:text-base text-nexora-subtext leading-relaxed">
+            <AcademicContentRenderer content={concept.summary} />
+          </div>
         </div>
       </div>
 
@@ -193,7 +194,7 @@ export const ConceptPage: React.FC = () => {
                   {mod.learning_objective && (
                     <div className="flex items-start gap-2 pt-2 text-xs text-nexora-subtext">
                       <Target className="w-3.5 h-3.5 text-nexora-primary shrink-0 mt-0.5" />
-                      <span>{mod.learning_objective}</span>
+                      <AcademicContentRenderer content={mod.learning_objective} compact />
                     </div>
                   )}
                 </CardHeader>

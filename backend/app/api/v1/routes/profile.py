@@ -53,12 +53,50 @@ def _model_to_dict(profile: UserProfile) -> dict:
     parsed_favorite_subjects = _parse_json_list(getattr(profile, "favorite_subjects", "[]"))
     parsed_learning_prefs = _parse_learning_preferences(profile)
 
+    # Compute completeness
+    missing = []
+    checks = 0
+    total = 5
+    if profile.full_name and profile.full_name.strip():
+        checks += 1
+    else:
+        missing.append("full_name")
+    if getattr(profile, "education_level", None) and getattr(profile, "education_category", None):
+        checks += 1
+    else:
+        missing.append("education_level")
+    if getattr(profile, "grade_level", None):
+        checks += 1
+    else:
+        missing.append("grade_level")
+    if getattr(profile, "curriculum_id", None):
+        checks += 1
+    else:
+        missing.append("curriculum_id")
+    if getattr(profile, "academic_domain", None):
+        checks += 1
+    else:
+        missing.append("academic_domain")
+    completeness_score = int((checks / total) * 100)
+
     return {
         "id": profile.id,
         "email": profile.email,
         "full_name": profile.full_name,
         "avatar_url": profile.avatar_url,
-        "education_level": profile.education_level or "undergrad",
+        "education_level": profile.education_level or "undergraduate",
+        "education_category": getattr(profile, "education_category", "undergraduate") or "undergraduate",
+        "curriculum_id": getattr(profile, "curriculum_id", None),
+        "grade_level": getattr(profile, "grade_level", "Class 10") or "Class 10",
+        "academic_domain": getattr(profile, "academic_domain", "General Studies") or "General Studies",
+        "state_region": getattr(profile, "state_region", None),
+        "degree": getattr(profile, "degree", None),
+        "department": getattr(profile, "department", None),
+        "specialization": getattr(profile, "specialization", None),
+        "academic_year": getattr(profile, "academic_year", None),
+        "profile_completed": getattr(profile, "profile_completed", False) or (completeness_score == 100),
+        "completeness_score": completeness_score,
+        "missing_fields": missing,
         "preferred_language": profile.preferred_language or "en",
         "institution": profile.institution,
         "interests": parsed_interests,
@@ -77,11 +115,15 @@ def _ensure_profile(db: Session, current_user: AuthenticatedUser) -> UserProfile
     """Retrieves or automatically provisions a student profile."""
     profile = db.query(UserProfile).filter(UserProfile.id == current_user.id).first()
     if not profile:
+        clean_uid = current_user.id.replace("-", "_")
         profile = UserProfile(
             id=current_user.id,
-            email=current_user.email or f"student_{current_user.id[:8]}@nexora.dev",
+            email=current_user.email or f"student_{clean_uid}@nexora.dev",
             full_name=current_user.email.split("@")[0].title() if current_user.email else "Nexora Student",
-            education_level="undergrad",
+            education_level="undergraduate",
+            curriculum_id=None,
+            grade_level="Class 10",
+            academic_domain="General Studies",
             preferred_language="en",
             interests=json.dumps([]),
             custom_interests=json.dumps([]),
@@ -128,6 +170,26 @@ def update_student_profile(
         profile.avatar_url = updates.avatar_url
     if updates.education_level is not None:
         profile.education_level = updates.education_level
+    if updates.education_category is not None:
+        profile.education_category = updates.education_category
+    if updates.curriculum_id is not None:
+        profile.curriculum_id = updates.curriculum_id
+    if updates.grade_level is not None:
+        profile.grade_level = updates.grade_level
+    if updates.academic_domain is not None:
+        profile.academic_domain = updates.academic_domain
+    if updates.state_region is not None:
+        profile.state_region = updates.state_region
+    if updates.degree is not None:
+        profile.degree = updates.degree
+    if updates.department is not None:
+        profile.department = updates.department
+    if updates.specialization is not None:
+        profile.specialization = updates.specialization
+    if updates.academic_year is not None:
+        profile.academic_year = updates.academic_year
+    if updates.profile_completed is not None:
+        profile.profile_completed = updates.profile_completed
     if updates.preferred_language is not None:
         lang = updates.preferred_language.strip().lower()
         if lang in {"en", "ta", "te", "hi"}:

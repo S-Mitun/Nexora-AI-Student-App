@@ -9,44 +9,83 @@ import {
   Cpu,
   Layers,
   Sparkles,
+  Info,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { EmptyState } from '../components/ui/EmptyState';
+import { useAcademicContext } from '../context/AcademicContext';
+
+interface LabTrack {
+  id: string;
+  title: string;
+  description: string;
+  applicableTiers: string[];
+  icon: React.ElementType;
+  status: string;
+  activeLessonLink: string;
+  activeLessonTitle: string;
+}
+
+const ALL_LAB_TRACKS: LabTrack[] = [
+  {
+    id: 'track-secondary-science',
+    title: 'Force & Pressure Dynamics Lab',
+    description:
+      'Interactive force vectors, contact dynamics, Pascal pressure distributions, and fluid displacement models.',
+    applicableTiers: ['class_6_10', 'secondary', 'middle'],
+    icon: FlaskConical,
+    status: 'In Development',
+    activeLessonLink: '/learn?q=Force%20and%20Pressure%20Dynamics',
+    activeLessonTitle: 'Force & Pressure Dynamics Visualizer',
+  },
+  {
+    id: 'track-physics',
+    title: 'Wave Mechanics & Kinematics Lab',
+    description:
+      'Acoustic wavefront compression, Doppler frequency shifts, and supersonic Mach shock cone geometries.',
+    applicableTiers: ['class_11_12', 'higher_secondary'],
+    icon: Zap,
+    status: 'In Development',
+    activeLessonLink: '/learn?q=Doppler%20Effect',
+    activeLessonTitle: 'Wave Mechanics Visual Model',
+  },
+  {
+    id: 'track-algorithms',
+    title: 'Algorithmic Convergence Lab',
+    description:
+      'Step-by-step space partition verification, logarithmic pointer convergence, and sorting complexity analysis.',
+    applicableTiers: ['undergraduate', 'postgraduate', 'research'],
+    icon: Cpu,
+    status: 'In Development',
+    activeLessonLink: '/learn?q=Binary%20Search',
+    activeLessonTitle: 'Binary Search Tree Visual Model',
+  },
+  {
+    id: 'track-systems',
+    title: 'Computer Systems & Concurrency Lab',
+    description:
+      'Virtual cache hierarchy exploration, page tables, and process deadlock condition simulation.',
+    applicableTiers: ['undergraduate', 'postgraduate'],
+    icon: Layers,
+    status: 'In Development',
+    activeLessonLink: '/learn?q=Operating%20Systems%20Deadlock',
+    activeLessonTitle: 'Deadlock Condition Model',
+  },
+];
 
 export const LabsPage: React.FC = () => {
-  const plannedLabTracks = [
-    {
-      id: 'track-physics',
-      title: 'Physics & Wave Mechanics Lab',
-      description:
-        'Parameter tuning for acoustic wavefront compression, supersonic Mach shock cones, and optical frequency shifts.',
-      icon: Zap,
-      status: 'Being Prepared',
-      activeLessonLink: '/learn?q=Doppler%20Effect',
-      activeLessonTitle: 'Doppler Effect Visual Model',
-    },
-    {
-      id: 'track-algorithms',
-      title: 'Algorithmic Convergence Lab',
-      description:
-        'Step-by-step space partition verification, logarithmic pointer convergence, and sorting complexity analysis.',
-      icon: Cpu,
-      status: 'Being Prepared',
-      activeLessonLink: '/learn?q=Binary%20Search',
-      activeLessonTitle: 'Binary Search Visual Model',
-    },
-    {
-      id: 'track-systems',
-      title: 'Computer Systems & Memory Lab',
-      description:
-        'Virtual cache hierarchy exploration, page tables, and process deadlock condition simulation.',
-      icon: Layers,
-      status: 'Being Prepared',
-      activeLessonLink: '/learn?q=Operating%20Systems%20Deadlock',
-      activeLessonTitle: 'Deadlock Condition Model',
-    },
-  ];
+  const { academicContext, enrolledSubjects } = useAcademicContext();
+  const currentTier = academicContext?.academic_level;
+  const displayCategory = academicContext?.education_category || currentTier;
+
+  // Filter lab tracks that genuinely match the student's active academic tier
+  const applicableTracks = currentTier
+    ? ALL_LAB_TRACKS.filter((track) =>
+        track.applicableTiers.some((tier) => tier === currentTier || tier === displayCategory)
+      )
+    : [];
 
   return (
     <div className="space-y-8 animate-fadeIn max-w-5xl mx-auto">
@@ -57,17 +96,27 @@ export const LabsPage: React.FC = () => {
             <span className="text-xs font-semibold text-nexora-accent uppercase tracking-wider">
               Practical Learning
             </span>
+            <span className="text-xs text-nexora-muted">&bull;</span>
+            <span className="text-xs text-nexora-subtext capitalize">
+              {academicContext?.grade_level || 'Academic Workspace'}
+            </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
-            Labs &amp; Experiments
+            Concept Simulations &amp; Labs
           </h1>
           <p className="text-sm text-nexora-subtext mt-1">
-            Explore interactive practical learning.
+            Virtual experiments and parameter-tuning models strictly scoped to your academic curriculum.
           </p>
         </div>
+
+        {academicContext?.curriculum_name && (
+          <Badge variant="neutral" size="sm" className="self-start sm:self-auto">
+            {academicContext.curriculum_name}
+          </Badge>
+        )}
       </div>
 
-      {/* Preparation Notice Card */}
+      {/* Preparation Notice */}
       <div className="p-6 rounded-2xl bg-nexora-surface border border-nexora-border/80 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-start gap-4">
           <div className="w-12 h-12 rounded-xl bg-nexora-elevated border border-nexora-border flex items-center justify-center text-cyan-400 shrink-0">
@@ -75,11 +124,11 @@ export const LabsPage: React.FC = () => {
           </div>
           <div className="space-y-1">
             <h3 className="text-base font-bold text-white">
-              Interactive labs are being prepared
+              Interactive Lab Blueprint
             </h3>
             <p className="text-xs text-nexora-subtext leading-relaxed max-w-2xl">
-              Virtual laboratory simulation environments are scheduled for future curriculum updates.
-              You can currently interact with active visual models directly inside each topic lesson.
+              Virtual laboratory simulation environments are scheduled for curriculum activation in Prompt 20.
+              Active visual models are accessible directly within individual concept lessons.
             </p>
           </div>
         </div>
@@ -90,59 +139,76 @@ export const LabsPage: React.FC = () => {
         </Link>
       </div>
 
-      {/* Planned Lab Tracks */}
-      <div className="space-y-4">
-        <div>
-          <h2 className="text-lg font-bold text-white tracking-tight">Curriculum Lab Tracks</h2>
-          <p className="text-xs text-nexora-muted">
-            Planned practical laboratories aligned with university course syllabi
-          </p>
-        </div>
+      {/* Context-Aware Content or Honest Empty State */}
+      {applicableTracks.length === 0 ? (
+        <Card className="border-nexora-border/80 p-8 text-center">
+          <EmptyState
+            icon={<FlaskConical className="w-10 h-10 text-nexora-muted mx-auto" />}
+            title="No simulations available for this academic context yet"
+            description={`Simulations and virtual laboratories for ${academicContext?.grade_level || 'your education level'} are not scheduled for starter exploration. You can study verified lesson material in your subjects.`}
+            action={
+              <Link to="/subjects">
+                <Button variant="primary" size="md">
+                  Explore Enrolled Subjects
+                </Button>
+              </Link>
+            }
+          />
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-bold text-white tracking-tight">Curriculum Lab Tracks</h2>
+            <p className="text-xs text-nexora-muted">
+              Practical laboratories aligned with your active academic curriculum ({academicContext?.grade_level})
+            </p>
+          </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {plannedLabTracks.map((track) => {
-            const Icon = track.icon;
-            return (
-              <Card key={track.id} className="border-nexora-border/80 flex flex-col justify-between">
-                <CardHeader>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="w-10 h-10 rounded-xl bg-nexora-elevated flex items-center justify-center text-indigo-400">
-                      <Icon className="w-5 h-5" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {applicableTracks.map((track) => {
+              const Icon = track.icon;
+              return (
+                <Card key={track.id} className="border-nexora-border/80 flex flex-col justify-between">
+                  <CardHeader>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="w-10 h-10 rounded-xl bg-nexora-elevated flex items-center justify-center text-cyan-400">
+                        <Icon className="w-5 h-5" />
+                      </div>
+                      <Badge variant="neutral" size="sm">
+                        <Clock className="w-3 h-3 mr-1" />
+                        {track.status}
+                      </Badge>
                     </div>
-                    <Badge variant="neutral" size="sm">
-                      <Clock className="w-3 h-3 mr-1" />
-                      {track.status}
-                    </Badge>
-                  </div>
-                  <CardTitle className="text-base text-white">{track.title}</CardTitle>
-                  <CardDescription className="text-xs line-clamp-3">
-                    {track.description}
-                  </CardDescription>
-                </CardHeader>
+                    <CardTitle className="text-base text-white">{track.title}</CardTitle>
+                    <CardDescription className="text-xs line-clamp-3">
+                      {track.description}
+                    </CardDescription>
+                  </CardHeader>
 
-                <CardContent className="pt-0">
-                  <div className="p-3 rounded-xl bg-nexora-bg border border-nexora-border/60 text-xs text-nexora-subtext space-y-1">
-                    <span className="text-[10px] text-nexora-muted uppercase font-bold tracking-wider block">
-                      Active Lesson Demo:
-                    </span>
-                    <span className="text-white font-medium block">
-                      {track.activeLessonTitle}
-                    </span>
-                  </div>
-                </CardContent>
+                  <CardContent className="pt-0">
+                    <div className="p-3 rounded-xl bg-nexora-bg border border-nexora-border/60 text-xs text-nexora-subtext space-y-1">
+                      <span className="text-[10px] text-nexora-muted uppercase font-bold tracking-wider block">
+                        Linked Lesson Model:
+                      </span>
+                      <span className="text-white font-medium block">
+                        {track.activeLessonTitle}
+                      </span>
+                    </div>
+                  </CardContent>
 
-                <CardFooter className="pt-3 border-t border-nexora-border/40">
-                  <Link to={track.activeLessonLink} className="w-full">
-                    <Button variant="outline" size="sm" className="w-full" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
-                      Open Lesson Visualizer
-                    </Button>
-                  </Link>
-                </CardFooter>
-              </Card>
-            );
-          })}
+                  <CardFooter className="pt-3 border-t border-nexora-border/40">
+                    <Link to={track.activeLessonLink} className="w-full">
+                      <Button variant="outline" size="sm" className="w-full" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                        Open Lesson Visualizer
+                      </Button>
+                    </Link>
+                  </CardFooter>
+                </Card>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
