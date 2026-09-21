@@ -1,12 +1,9 @@
 def test_list_subjects(client):
-    """Verifies that GET /api/v1/learning/subjects returns foundational subjects."""
+    """Verifies that GET /api/v1/learning/subjects returns empty [] without an active syllabus (Syllabus-First)."""
     response = client.get("/api/v1/learning/subjects")
     assert response.status_code == 200
     subjects = response.json()
-    assert len(subjects) >= 4
-    slugs = [s["slug"] for s in subjects]
-    assert "physics" in slugs
-    assert "computer-science" in slugs
+    assert subjects == []
 
 
 def test_explore_concept_endpoint(client):

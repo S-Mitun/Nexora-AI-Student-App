@@ -52,17 +52,6 @@ const ALL_LAB_TRACKS: LabTrack[] = [
     activeLessonTitle: 'Wave Mechanics Visual Model',
   },
   {
-    id: 'track-algorithms',
-    title: 'Algorithmic Convergence Lab',
-    description:
-      'Step-by-step space partition verification, logarithmic pointer convergence, and sorting complexity analysis.',
-    applicableTiers: ['undergraduate', 'postgraduate', 'research'],
-    icon: Cpu,
-    status: 'In Development',
-    activeLessonLink: '/learn?q=Binary%20Search',
-    activeLessonTitle: 'Binary Search Tree Visual Model',
-  },
-  {
     id: 'track-systems',
     title: 'Computer Systems & Concurrency Lab',
     description:
@@ -80,8 +69,8 @@ export const LabsPage: React.FC = () => {
   const currentTier = academicContext?.academic_level;
   const displayCategory = academicContext?.education_category || currentTier;
 
-  // Filter lab tracks that genuinely match the student's active academic tier
-  const applicableTracks = currentTier
+  // Filter lab tracks that genuinely match the student's active academic tier and enrolled syllabus
+  const applicableTracks = currentTier && enrolledSubjects && enrolledSubjects.length > 0
     ? ALL_LAB_TRACKS.filter((track) =>
         track.applicableTiers.some((tier) => tier === currentTier || tier === displayCategory)
       )
@@ -108,15 +97,9 @@ export const LabsPage: React.FC = () => {
             Virtual experiments and parameter-tuning models strictly scoped to your academic curriculum.
           </p>
         </div>
-
-        {academicContext?.curriculum_name && (
-          <Badge variant="neutral" size="sm" className="self-start sm:self-auto">
-            {academicContext.curriculum_name}
-          </Badge>
-        )}
       </div>
 
-      {/* Preparation Notice */}
+      {/* Blueprint Info Banner */}
       <div className="p-6 rounded-2xl bg-nexora-surface border border-nexora-border/80 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-start gap-4">
           <div className="w-12 h-12 rounded-xl bg-nexora-elevated border border-nexora-border flex items-center justify-center text-cyan-400 shrink-0">
@@ -144,12 +127,12 @@ export const LabsPage: React.FC = () => {
         <Card className="border-nexora-border/80 p-8 text-center">
           <EmptyState
             icon={<FlaskConical className="w-10 h-10 text-nexora-muted mx-auto" />}
-            title="No simulations available for this academic context yet"
-            description={`Simulations and virtual laboratories for ${academicContext?.grade_level || 'your education level'} are not scheduled for starter exploration. You can study verified lesson material in your subjects.`}
+            title="No curriculum-linked labs available"
+            description="Interactive simulations and virtual experiments are calibrated to active syllabus concepts. Upload your syllabus to view calibrated simulations and labs."
             action={
-              <Link to="/subjects">
+              <Link to="/materials?role=primary_syllabus">
                 <Button variant="primary" size="md">
-                  Explore Enrolled Subjects
+                  Upload Syllabus
                 </Button>
               </Link>
             }

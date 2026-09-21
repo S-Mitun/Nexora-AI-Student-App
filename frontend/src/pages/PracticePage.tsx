@@ -168,11 +168,11 @@ export const PracticePage: React.FC = () => {
         <Card className="border-nexora-border/80 p-8 text-center">
           <EmptyState
             icon={<HelpCircle className="w-10 h-10 text-nexora-muted mx-auto" />}
-            title="No practice sets calibrated for this level yet"
-            description={`Practice checks for ${academicContext?.grade_level || 'this academic tier'} are currently being aligned. You can explore baseline curriculum lessons.`}
+            title="No practice available yet"
+            description="Practice questions are calibrated and generated when your syllabus and learning units are activated."
             action={
-              <Button variant="primary" size="md" onClick={() => (window.location.href = '/subjects')}>
-                Browse Active Subjects
+              <Button variant="primary" size="md" onClick={() => (window.location.href = '/materials?role=primary_syllabus')}>
+                Upload Syllabus
               </Button>
             }
           />

@@ -62,10 +62,14 @@ class Subject(Base, TimestampMixin):
     academic_domain: Mapped[str] = mapped_column(String(100), default="General")
     is_system: Mapped[bool] = mapped_column(Boolean, default=True)
     created_by_user_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True)
+    user_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=True, index=True)
+    syllabus_version_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("syllabus_versions.id", ondelete="CASCADE"), nullable=True, index=True)
+    content_source: Mapped[str] = mapped_column(String(50), default="syllabus_extracted", nullable=True)
     order_index: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     curriculum: Mapped[Optional["Curriculum"]] = relationship("Curriculum", back_populates="subjects")
+    syllabus_version = relationship("SyllabusVersion", back_populates="subjects")
     topics: Mapped[List["Topic"]] = relationship("Topic", back_populates="subject", cascade="all, delete-orphan", order_by="Topic.order_index")
     student_enrollments: Mapped[List["StudentSubject"]] = relationship("StudentSubject", back_populates="subject", cascade="all, delete-orphan")
 
@@ -76,6 +80,7 @@ class Topic(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     subject_id: Mapped[str] = mapped_column(String(36), ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False, index=True)
+    content_source: Mapped[str] = mapped_column(String(50), default="syllabus_extracted", nullable=True)
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     slug: Mapped[str] = mapped_column(String(150), index=True, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -92,6 +97,7 @@ class Concept(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     topic_id: Mapped[str] = mapped_column(String(36), ForeignKey("topics.id", ondelete="CASCADE"), nullable=False, index=True)
+    content_source: Mapped[str] = mapped_column(String(50), default="syllabus_extracted", nullable=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(200), unique=True, index=True, nullable=False)
     summary: Mapped[str] = mapped_column(Text, nullable=False)
@@ -130,6 +136,7 @@ class LearningModule(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     concept_id: Mapped[str] = mapped_column(String(36), ForeignKey("concepts.id", ondelete="CASCADE"), nullable=False, index=True)
+    content_source: Mapped[str] = mapped_column(String(50), default="syllabus_extracted", nullable=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(255), default="", index=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -162,6 +169,7 @@ class Lesson(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     module_id: Mapped[str] = mapped_column(String(36), ForeignKey("learning_modules.id", ondelete="CASCADE"), nullable=False, index=True)
+    content_source: Mapped[str] = mapped_column(String(50), default="syllabus_extracted", nullable=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     content_type: Mapped[str] = mapped_column(String(50), default="explanation", nullable=False)

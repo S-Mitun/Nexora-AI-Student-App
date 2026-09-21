@@ -196,20 +196,24 @@ def test_google_and_email_auth_restore_same_language_and_preferences(client, db_
     user_uuid = "00000000-lang-1111-0000-000000000003"
     user_email = "multi_provider_student@nexora.dev"
 
-    token_google = SecurityContext.create_test_jwt(
-        user_id=user_uuid,
-        email=user_email,
-        provider="google",
-        identities=["google"]
-    )
     token_email = SecurityContext.create_test_jwt(
         user_id=user_uuid,
         email=user_email,
         provider="email",
-        identities=["google", "email"]
+        identities=["email"]
+    )
+    token_google = SecurityContext.create_test_jwt(
+        user_id=user_uuid,
+        email=user_email,
+        provider="google",
+        identities=["email", "google"]
     )
 
-    # 1. User sets language to Telugu ('te') and learning preferences to ['visual', 'step_by_step'] via Google session
+    # 1. User sets up initial profile via email signup
+    init_res = client.get("/api/v1/profile", headers={"Authorization": f"Bearer {token_email}"})
+    assert init_res.status_code == 200
+
+    # 2. User sets language to Telugu ('te') and learning preferences to ['visual', 'step_by_step'] via Google session
     put_res = client.put(
         "/api/v1/profile",
         json={
@@ -220,7 +224,7 @@ def test_google_and_email_auth_restore_same_language_and_preferences(client, db_
     )
     assert put_res.status_code == 200
 
-    # 2. User later logs in via Email/password session
+    # 3. User later logs in via Email/password session
     email_res = client.get("/api/v1/profile", headers={"Authorization": f"Bearer {token_email}"})
     assert email_res.status_code == 200
     email_data = email_res.json()

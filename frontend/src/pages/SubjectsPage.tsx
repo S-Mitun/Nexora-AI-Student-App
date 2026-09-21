@@ -235,19 +235,27 @@ export const SubjectsPage: React.FC = () => {
           title={
             activeCategoryFilter === 'enrolled'
               ? 'No subjects enrolled yet'
-              : 'No subjects found for this academic level'
+              : 'No active syllabus available'
           }
           description={
             activeCategoryFilter === 'enrolled'
-              ? 'Enroll in subjects from the curriculum above to build your active learning workspace.'
-              : `Curriculum subjects for ${academicContext?.grade_level || currentTier} are currently being mapped to standard syllabi.`
+              ? 'Enroll in subjects from your active syllabus to build your learning workspace.'
+              : 'Upload your syllabus to generate and activate your curriculum subjects.'
           }
           action={
             activeCategoryFilter === 'enrolled' ? (
               <Button variant="primary" size="sm" onClick={() => setActiveCategoryFilter('all')}>
                 Browse Available Subjects
               </Button>
-            ) : undefined
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => navigate('/materials?role=primary_syllabus')}
+              >
+                Upload Syllabus
+              </Button>
+            )
           }
         />
       ) : (

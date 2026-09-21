@@ -41,20 +41,55 @@ export const LoginPage: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isUnconfirmed, setIsUnconfirmed] = useState(false);
   const [resendSuccess, setResendSuccess] = useState<string | null>(null);
+  const [showCreateAccountAction, setShowCreateAccountAction] = useState(false);
 
   // Redirect destination after successful login
   const fromPath = (location.state as any)?.from?.pathname || '/';
 
-  // If already authenticated, redirect to app
+  // 1. Check URL hash and query string for OAuth redirect errors
   React.useEffect(() => {
-    if (isAuthenticated) {
+    const rawHash = window.location.hash.startsWith('#') ? window.location.hash.substring(1) : window.location.hash;
+    const rawSearch = window.location.search.startsWith('?') ? window.location.search.substring(1) : window.location.search;
+    const params = new URLSearchParams(rawHash || rawSearch);
+
+    const err = params.get('error');
+    const errDesc = params.get('error_description') || '';
+    const errCode = params.get('error_code') || '';
+
+    if (err || errDesc || errCode) {
+      const lowerDesc = decodeURIComponent(errDesc).toLowerCase();
+      const isAccountNotFound =
+        lowerDesc.includes('account_not_found') ||
+        lowerDesc.includes('account not found') ||
+        lowerDesc.includes('does not have a nexora account') ||
+        lowerDesc.includes('create an account first') ||
+        lowerDesc.includes('database error') ||
+        lowerDesc.includes('hook') ||
+        err === 'access_denied';
+
+      if (isAccountNotFound) {
+        setErrorMsg('Account not found. Create a NEXORA account first, then sign in with Google.');
+        setShowCreateAccountAction(true);
+      } else {
+        setErrorMsg('Authentication failed. Please check your credentials or network.');
+      }
+
+      // Clean the URL without refreshing to prevent sticky errors
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [location]);
+
+  // If already authenticated and no error, redirect to app
+  React.useEffect(() => {
+    if (isAuthenticated && !errorMsg) {
       navigate(fromPath, { replace: true });
     }
-  }, [isAuthenticated, navigate, fromPath]);
+  }, [isAuthenticated, navigate, fromPath, errorMsg]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+    setShowCreateAccountAction(false);
     setIsUnconfirmed(false);
     setResendSuccess(null);
 
@@ -87,11 +122,24 @@ export const LoginPage: React.FC = () => {
 
   const handleGoogleSignIn = async () => {
     setErrorMsg(null);
+    setShowCreateAccountAction(false);
     setGoogleLoading(true);
     const { error } = await signInWithGoogle();
     setGoogleLoading(false);
     if (error) {
-      setErrorMsg(error.message || 'Google authentication failed. Please try again.');
+      const msg = error.message || '';
+      const lower = msg.toLowerCase();
+      if (
+        lower.includes('account_not_found') ||
+        lower.includes('account not found') ||
+        lower.includes('does not have a nexora account') ||
+        lower.includes('create an account first')
+      ) {
+        setErrorMsg('Account not found. Create a NEXORA account first, then sign in with Google.');
+        setShowCreateAccountAction(true);
+      } else {
+        setErrorMsg(error.message || 'Google authentication failed. Please try again.');
+      }
     }
   };
 
@@ -143,6 +191,17 @@ export const LoginPage: React.FC = () => {
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <span>{errorMsg}</span>
+                  {showCreateAccountAction && (
+                    <div className="mt-2.5">
+                      <Link
+                        to="/signup"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-nexora-primary text-white font-semibold text-xs hover:bg-nexora-primary/80 transition-colors shadow-sm"
+                      >
+                        <span>Create Account</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </Link>
+                    </div>
+                  )}
                   {isUnconfirmed && (
                     <button
                       type="button"

@@ -19,6 +19,8 @@ class Document(Base, TimestampMixin):
     
     curriculum_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("curricula.id", ondelete="SET NULL"), nullable=True, index=True)
     subject_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("subjects.id", ondelete="SET NULL"), nullable=True, index=True)
+    syllabus_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("syllabi.id", ondelete="SET NULL"), nullable=True, index=True)
+    document_role: Mapped[str] = mapped_column(String(50), default="secondary_material", nullable=False, index=True)
     language: Mapped[str] = mapped_column(String(10), default="en")
     version: Mapped[int] = mapped_column(Integer, default=1)
     progress_percent: Mapped[int] = mapped_column(Integer, default=0)
@@ -32,6 +34,7 @@ class Document(Base, TimestampMixin):
     chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
     curriculum = relationship("Curriculum")
     subject = relationship("Subject")
+    syllabus = relationship("Syllabus")
 
 
 class DocumentChunk(Base, TimestampMixin):

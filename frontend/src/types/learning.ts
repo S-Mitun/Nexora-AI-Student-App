@@ -103,9 +103,37 @@ export interface LearningToolStatus {
   phase_label: string;
 }
 
+export interface SyllabusVersion {
+  id: string;
+  syllabus_id: string;
+  version_number: number;
+  document_id?: string | null;
+  raw_extracted_json?: any;
+  is_active: boolean;
+  activated_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Syllabus {
+  id: string;
+  user_id: string;
+  title: string;
+  academic_level: string;
+  institution?: string | null;
+  program_degree?: string | null;
+  academic_year?: string | null;
+  status: 'uploaded' | 'processing' | 'extracted' | 'confirmed' | 'archived' | string;
+  created_at: string;
+  updated_at: string;
+  active_version?: SyllabusVersion | null;
+  versions?: SyllabusVersion[];
+}
+
 export interface WorkspaceOverview {
   profile_completeness: ProfileCompleteness;
   academic_identity: AcademicIdentity;
+  active_syllabus?: Syllabus | null;
   enrolled_subjects: Subject[];
   materials_summary: MaterialsSummary;
   learning_tools: LearningToolStatus[];

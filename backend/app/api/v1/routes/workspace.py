@@ -24,62 +24,21 @@ from app.schemas.learning import SubjectRead, StudentSubjectRead, StudentSubject
 from app.schemas.documents import DocumentRead
 from app.schemas.context import AcademicContextResponse
 from app.services.learning.context_service import AcademicContextResolver
+from app.services.profile.completion_service import ProfileCompletionService
 
 workspace_router = APIRouter(tags=["Academic Workspace"])
 
 
 def compute_profile_completeness(profile: UserProfile) -> ProfileCompleteness:
-    """Calculates completion score and missing fields for a student's academic profile."""
-    missing = []
-    total_checks = 5
-    passed_checks = 0
-
-    # 1. Full name
-    if profile.full_name and profile.full_name.strip():
-        passed_checks += 1
-    else:
-        missing.append("full_name")
-
-    # 2. Education Level & Category
-    if profile.education_level and profile.education_category:
-        passed_checks += 1
-    else:
-        missing.append("education_level")
-
-    # 3. Grade / Class / Year
-    if profile.grade_level and profile.grade_level.strip():
-        passed_checks += 1
-    else:
-        missing.append("grade_level")
-
-    # 4. Curriculum / Board
-    if profile.curriculum_id:
-        passed_checks += 1
-    else:
-        missing.append("curriculum_id")
-
-    # 5. Domain / Stream / Degree
-    if profile.academic_domain and profile.academic_domain.strip():
-        passed_checks += 1
-    else:
-        missing.append("academic_domain")
-
-    # Higher Education conditional checks
-    is_higher_ed = profile.education_level in ["undergraduate", "postgraduate", "research"]
-    if is_higher_ed:
-        total_checks += 1
-        if (profile.degree and profile.degree.strip()) or (profile.institution and profile.institution.strip()):
-            passed_checks += 1
-        else:
-            missing.append("institution_or_degree")
-
-    score = int((passed_checks / total_checks) * 100)
-    is_complete = len(missing) == 0
-
+    """Canonical profile completion calculation wrapper using ProfileCompletionService."""
+    result = ProfileCompletionService.calculate_completion(profile)
     return ProfileCompleteness(
-        score=score,
-        is_complete=is_complete,
-        missing_fields=missing,
+        score=result.score,
+        completion_percentage=result.score,
+        is_complete=result.is_complete,
+        required_fields=result.required_fields,
+        completed_fields=result.completed_fields,
+        missing_fields=result.missing_fields,
     )
 
 
@@ -95,20 +54,28 @@ def get_academic_workspace(
     """
     # 1. Fetch Student Profile
     profile = db.query(UserProfile).filter(UserProfile.id == current_user.id).first()
+    if not profile and current_user.email:
+        profile = db.query(UserProfile).filter(UserProfile.email == current_user.email).first()
+
     if not profile:
+        if current_user.provider == "google":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Account not found. Create a NEXORA account first, then sign in with Google.",
+            )
         profile = UserProfile(
             id=current_user.id,
             email=current_user.email,
-            education_level="undergraduate",
-            education_category="undergraduate",
-            grade_level="Class 10",
-            academic_domain="General Studies",
+            education_level=None,
+            education_category=None,
+            grade_level=None,
+            academic_domain=None,
         )
         db.add(profile)
         db.commit()
         db.refresh(profile)
 
-    # 2. Compute Completeness
+    # 2. Compute Completeness using Single Canonical Service
     completeness = compute_profile_completeness(profile)
 
     # 3. Fetch Curriculum details if linked
@@ -120,15 +87,18 @@ def get_academic_workspace(
     academic_context = AcademicContextResolver.resolve_context(db, current_user.id)
 
     academic_identity = AcademicIdentity(
-        education_level=profile.education_level or "undergraduate",
-        education_category=profile.education_category or "undergraduate",
-        grade_level=profile.grade_level or "Class 10",
+        education_level=profile.education_level,
+        education_category=profile.education_category,
+        grade_level=profile.grade_level,
         curriculum_id=profile.curriculum_id,
         curriculum_name=curriculum.name if curriculum else None,
         curriculum_code=curriculum.code if curriculum else None,
         board_authority=curriculum.board_authority if curriculum else None,
-        academic_domain=profile.academic_domain or "General Studies",
+        board_type=profile.board_type or (curriculum.board_type if curriculum else None),
+        academic_domain=profile.academic_domain,
         state_region=profile.state_region,
+        stream=profile.stream or (curriculum.stream if curriculum else None),
+        program=profile.program or (curriculum.program if curriculum else None),
         institution=profile.institution,
         degree=profile.degree,
         department=profile.department,
@@ -265,16 +235,56 @@ def get_academic_workspace(
         ),
     ]
 
-    starter_subjects_available = (
-        db.query(Subject)
-        .filter(Subject.is_system == True, Subject.is_active == True)
-        .count()
+    from app.models.syllabus import Syllabus, SyllabusVersion
+    from app.schemas.syllabus import SyllabusRead, SyllabusVersionRead
+
+    active_syl_model = (
+        db.query(Syllabus)
+        .filter(
+            Syllabus.user_id == current_user.id,
+            Syllabus.academic_level == academic_context.academic_level,
+            Syllabus.status.in_(["confirmed", "extracted"]),
+        )
+        .first()
     )
+
+    active_syllabus_read = None
+    if active_syl_model:
+        active_ver = (
+            db.query(SyllabusVersion)
+            .filter(
+                SyllabusVersion.syllabus_id == active_syl_model.id,
+                SyllabusVersion.is_active == True,
+            )
+            .first()
+        )
+        active_syllabus_read = SyllabusRead(
+            id=active_syl_model.id,
+            user_id=active_syl_model.user_id,
+            title=active_syl_model.title,
+            academic_level=active_syl_model.academic_level,
+            institution=active_syl_model.institution,
+            program_degree=active_syl_model.program_degree,
+            academic_year=active_syl_model.academic_year,
+            status=active_syl_model.status,
+            created_at=active_syl_model.created_at,
+            updated_at=active_syl_model.updated_at,
+            active_version=SyllabusVersionRead.model_validate(active_ver) if active_ver else None,
+            versions=[SyllabusVersionRead.model_validate(v) for v in active_syl_model.versions],
+        )
+
+    # Absolute Rule: No active syllabus = empty curriculum workspace
+    if not active_syllabus_read:
+        enrolled_subjects = []
+        starter_subjects_available = 0
+    else:
+        starter_subjects_available = len(enrolled_subjects)
 
     return WorkspaceOverview(
         profile_completeness=completeness,
         academic_identity=academic_identity,
         academic_context=academic_context,
+        active_syllabus=active_syllabus_read,
         enrolled_subjects=enrolled_subjects,
         materials_summary=materials_summary,
         learning_tools=learning_tools,

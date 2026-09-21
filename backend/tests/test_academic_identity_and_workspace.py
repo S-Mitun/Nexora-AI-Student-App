@@ -16,8 +16,8 @@ def student_b_headers():
 
 def test_curriculum_and_education_level_subjects_isolation(client):
     """Verifies that subjects are properly categorized and filtered by education level."""
-    # Secondary school filter
-    sec_res = client.get("/api/v1/learning/subjects?education_level=class-6-10")
+    # Secondary school filter (reference templates)
+    sec_res = client.get("/api/v1/learning/subjects?education_level=class-6-10&include_reference=true")
     assert sec_res.status_code == 200
     sec_subjects = sec_res.json()
     sec_slugs = [s["slug"] for s in sec_subjects]
@@ -31,8 +31,8 @@ def test_curriculum_and_education_level_subjects_isolation(client):
     assert "database-management-systems" not in sec_slugs
     assert "computer-networks" not in sec_slugs
 
-    # Undergraduate filter
-    ug_res = client.get("/api/v1/learning/subjects?education_level=undergraduate")
+    # Undergraduate filter (reference templates)
+    ug_res = client.get("/api/v1/learning/subjects?education_level=undergraduate&include_reference=true")
     assert ug_res.status_code == 200
     ug_subjects = ug_res.json()
     ug_slugs = [s["slug"] for s in ug_subjects]
@@ -73,8 +73,11 @@ def test_academic_profile_fields_and_completeness(client, student_a_headers):
     assert updated["completeness_score"] == 100
 
 
-def test_subject_enrollment_and_workspace(client, student_a_headers):
+def test_subject_enrollment_and_workspace(client, student_a_headers, create_active_syllabus):
     """Verifies enrolling in subjects and reflecting them in the Academic Workspace."""
+    # Create an active syllabus for student A
+    create_active_syllabus(user_id="student-uuid-aaa-001", academic_level="class_6_10", title="CBSE Class 8 Science")
+
     # Align student profile to Class 6-10
     client.put(
         "/api/v1/profile",
@@ -82,8 +85,8 @@ def test_subject_enrollment_and_workspace(client, student_a_headers):
         headers=student_a_headers,
     )
 
-    # Get CBSE science subject
-    subjects_res = client.get("/api/v1/learning/subjects?education_level=class-6-10")
+    # Get CBSE science subject (reference template)
+    subjects_res = client.get("/api/v1/learning/subjects?education_level=class-6-10&include_reference=true")
     science_subj = next(s for s in subjects_res.json() if "science" in s["slug"])
 
     # 1. Enroll in science
@@ -109,8 +112,8 @@ def test_subject_enrollment_and_workspace(client, student_a_headers):
     assert "academic_identity" in workspace
     assert "materials_summary" in workspace
     assert "learning_tools" in workspace
+    assert workspace["active_syllabus"] is not None
     assert any(s["id"] == science_subj["id"] for s in workspace["enrolled_subjects"])
-    assert workspace["starter_subjects_available"] >= 5
 
     # 4. Unenroll from subject
     unenroll_res = client.delete(
@@ -125,8 +128,10 @@ def test_subject_enrollment_and_workspace(client, student_a_headers):
     assert not any(s["id"] == science_subj["id"] for s in after_unenroll.json())
 
 
-def test_student_workspace_isolation(client, student_a_headers, student_b_headers):
+def test_student_workspace_isolation(client, student_a_headers, student_b_headers, create_active_syllabus):
     """Verifies that Student A's enrolled subjects are isolated from Student B."""
+    create_active_syllabus(user_id="student-uuid-aaa-001", academic_level="class_6_10", title="Student A Syllabus")
+
     client.put(
         "/api/v1/profile",
         json={"education_level": "class-6-10", "grade_level": "Class 8", "education_category": "middle"},
@@ -138,7 +143,7 @@ def test_student_workspace_isolation(client, student_a_headers, student_b_header
         headers=student_b_headers,
     )
 
-    subjects_res = client.get("/api/v1/learning/subjects?education_level=class-6-10")
+    subjects_res = client.get("/api/v1/learning/subjects?education_level=class-6-10&include_reference=true")
     math_subj = next(s for s in subjects_res.json() if "mathematics" in s["slug"])
 
     # Student A enrolls in Mathematics
@@ -148,7 +153,7 @@ def test_student_workspace_isolation(client, student_a_headers, student_b_header
         headers=student_a_headers,
     )
 
-    # Student B checks enrolled subjects
+    # Student B checks enrolled subjects (Student B has no active syllabus and no enrollments)
     res_b = client.get("/api/v1/workspace/enrolled-subjects", headers=student_b_headers)
     assert res_b.status_code == 200
     assert not any(s["id"] == math_subj["id"] for s in res_b.json())

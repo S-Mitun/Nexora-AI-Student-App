@@ -68,10 +68,10 @@ class AcademicContextResolver:
             profile = UserProfile(
                 id=user_id,
                 email=f"student_{clean_id}@nexora.dev",
-                education_level="undergraduate",
-                education_category="undergraduate",
-                grade_level="Class 10",
-                academic_domain="General Studies",
+                education_level=None,
+                education_category=None,
+                grade_level=None,
+                academic_domain=None,
             )
             db.add(profile)
             db.commit()
@@ -169,14 +169,14 @@ class AcademicContextResolver:
             context_id=canonical_context_id,
             context_fingerprint=context_fingerprint,
             academic_level=canonical_level,
-            education_category=profile.education_category or "undergraduate",
+            education_category=profile.education_category or canonical_level,
             curriculum_id=profile.curriculum_id,
             curriculum_code=curriculum.code if curriculum else None,
             curriculum_name=curriculum.name if curriculum else None,
             board_authority=curriculum.board_authority if curriculum else None,
             board_type=profile.board_type or (curriculum.board_type if curriculum else None),
-            grade_level=profile.grade_level or "Class 10",
-            academic_domain=profile.academic_domain or "General Studies",
+            grade_level=profile.grade_level,
+            academic_domain=profile.academic_domain,
             state_region=profile.state_region or (curriculum.state_region if curriculum else None),
             stream=profile.stream or (curriculum.stream if curriculum else None),
             program=profile.program or (curriculum.program if curriculum else None),

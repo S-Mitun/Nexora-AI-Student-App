@@ -131,7 +131,7 @@ class MockAIProvider(AIProvider):
                 break
         
         if not matched_key:
-            matched_key = "binary search"  # Sensible default foundational concept
+            raise KeyError(f"Concept query not found in known concepts and no active syllabus grounding exists: '{prompt}'")
             
         data = self.KNOWN_CONCEPTS[matched_key]
         return response_model.model_validate(data)

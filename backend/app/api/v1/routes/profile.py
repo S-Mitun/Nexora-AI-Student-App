@@ -12,6 +12,7 @@ from app.schemas.profile import (
     StudentPreferencesUpdate,
 )
 from app.services.learning.personalization_service import PersonalizationService
+from app.services.profile.completion_service import ProfileCompletionService, ProfileCompletionResult
 
 router = APIRouter(prefix="/profile", tags=["Student Profile Management"])
 
@@ -47,56 +48,37 @@ def _parse_learning_preferences(profile: UserProfile) -> list:
 
 
 def _model_to_dict(profile: UserProfile) -> dict:
-    """Helper to convert UserProfile model to dict with parsed JSON interests and preferences."""
+    """Helper to convert UserProfile model to dict with parsed JSON interests and canonical completeness."""
     parsed_interests = _parse_json_list(profile.interests)
     parsed_custom = _parse_json_list(getattr(profile, "custom_interests", "[]"))
     parsed_favorite_subjects = _parse_json_list(getattr(profile, "favorite_subjects", "[]"))
     parsed_learning_prefs = _parse_learning_preferences(profile)
 
-    # Compute completeness
-    missing = []
-    checks = 0
-    total = 5
-    if profile.full_name and profile.full_name.strip():
-        checks += 1
-    else:
-        missing.append("full_name")
-    if getattr(profile, "education_level", None) and getattr(profile, "education_category", None):
-        checks += 1
-    else:
-        missing.append("education_level")
-    if getattr(profile, "grade_level", None):
-        checks += 1
-    else:
-        missing.append("grade_level")
-    if getattr(profile, "curriculum_id", None):
-        checks += 1
-    else:
-        missing.append("curriculum_id")
-    if getattr(profile, "academic_domain", None):
-        checks += 1
-    else:
-        missing.append("academic_domain")
-    completeness_score = int((checks / total) * 100)
+    # Canonical Single Source of Truth Profile Completeness
+    completeness = ProfileCompletionService.calculate_completion(profile)
 
     return {
         "id": profile.id,
         "email": profile.email,
         "full_name": profile.full_name,
         "avatar_url": profile.avatar_url,
-        "education_level": profile.education_level or "undergraduate",
-        "education_category": getattr(profile, "education_category", "undergraduate") or "undergraduate",
+        "education_level": profile.education_level,
+        "education_category": getattr(profile, "education_category", None),
+        "board_type": getattr(profile, "board_type", None),
+        "stream": getattr(profile, "stream", None),
+        "program": getattr(profile, "program", None),
         "curriculum_id": getattr(profile, "curriculum_id", None),
-        "grade_level": getattr(profile, "grade_level", "Class 10") or "Class 10",
-        "academic_domain": getattr(profile, "academic_domain", "General Studies") or "General Studies",
+        "grade_level": getattr(profile, "grade_level", None),
+        "academic_domain": getattr(profile, "academic_domain", None),
         "state_region": getattr(profile, "state_region", None),
         "degree": getattr(profile, "degree", None),
         "department": getattr(profile, "department", None),
         "specialization": getattr(profile, "specialization", None),
         "academic_year": getattr(profile, "academic_year", None),
-        "profile_completed": getattr(profile, "profile_completed", False) or (completeness_score == 100),
-        "completeness_score": completeness_score,
-        "missing_fields": missing,
+        "profile_completed": getattr(profile, "profile_completed", False) or completeness.is_complete,
+        "completeness_score": completeness.score,
+        "missing_fields": completeness.missing_fields,
+        "profile_completeness": completeness,
         "preferred_language": profile.preferred_language or "en",
         "institution": profile.institution,
         "interests": parsed_interests,
@@ -112,18 +94,43 @@ def _model_to_dict(profile: UserProfile) -> dict:
 
 
 def _ensure_profile(db: Session, current_user: AuthenticatedUser) -> UserProfile:
-    """Retrieves or automatically provisions a student profile."""
+    """
+    Retrieves or provisions a student profile.
+    Rejects unknown Google accounts to enforce prior NEXORA account requirement.
+    Guarantees same user UUID preservation for legitimate accounts.
+    """
     profile = db.query(UserProfile).filter(UserProfile.id == current_user.id).first()
+
+    # If not found by ID but email is present, check by email (same user identity rule)
+    if not profile and current_user.email:
+        profile = db.query(UserProfile).filter(UserProfile.email == current_user.email).first()
+
     if not profile:
+        # If user authenticated via Google OAuth without prior NEXORA account, reject immediately!
+        # Do NOT silently create a profile after OAuth creation.
+        if current_user.provider == "google":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Account not found. Create a NEXORA account first, then sign in with Google.",
+            )
+
         clean_uid = current_user.id.replace("-", "_")
         profile = UserProfile(
             id=current_user.id,
             email=current_user.email or f"student_{clean_uid}@nexora.dev",
             full_name=current_user.email.split("@")[0].title() if current_user.email else "Nexora Student",
-            education_level="undergraduate",
+            education_level=None,
+            education_category=None,
             curriculum_id=None,
-            grade_level="Class 10",
-            academic_domain="General Studies",
+            grade_level=None,
+            academic_domain=None,
+            board_type=None,
+            stream=None,
+            program=None,
+            degree=None,
+            department=None,
+            specialization=None,
+            academic_year=None,
             preferred_language="en",
             interests=json.dumps([]),
             custom_interests=json.dumps([]),
@@ -164,38 +171,43 @@ def update_student_profile(
     """
     profile = _ensure_profile(db, current_user)
 
-    if updates.full_name is not None:
+    fields_set = updates.model_fields_set
+    if "full_name" in fields_set:
         profile.full_name = updates.full_name
-    if updates.avatar_url is not None:
+    if "avatar_url" in fields_set:
         profile.avatar_url = updates.avatar_url
-    if updates.education_level is not None:
+    if "education_level" in fields_set:
         profile.education_level = updates.education_level
-    if updates.education_category is not None:
+    if "education_category" in fields_set:
         profile.education_category = updates.education_category
-    if updates.curriculum_id is not None:
+    if "board_type" in fields_set:
+        profile.board_type = updates.board_type
+    if "stream" in fields_set:
+        profile.stream = updates.stream
+    if "program" in fields_set:
+        profile.program = updates.program
+    if "curriculum_id" in fields_set:
         profile.curriculum_id = updates.curriculum_id
-    if updates.grade_level is not None:
+    if "grade_level" in fields_set:
         profile.grade_level = updates.grade_level
-    if updates.academic_domain is not None:
+    if "academic_domain" in fields_set:
         profile.academic_domain = updates.academic_domain
-    if updates.state_region is not None:
+    if "state_region" in fields_set:
         profile.state_region = updates.state_region
-    if updates.degree is not None:
+    if "degree" in fields_set:
         profile.degree = updates.degree
-    if updates.department is not None:
+    if "department" in fields_set:
         profile.department = updates.department
-    if updates.specialization is not None:
+    if "specialization" in fields_set:
         profile.specialization = updates.specialization
-    if updates.academic_year is not None:
+    if "academic_year" in fields_set:
         profile.academic_year = updates.academic_year
-    if updates.profile_completed is not None:
-        profile.profile_completed = updates.profile_completed
-    if updates.preferred_language is not None:
+    if "institution" in fields_set:
+        profile.institution = updates.institution
+    if "preferred_language" in fields_set and updates.preferred_language is not None:
         lang = updates.preferred_language.strip().lower()
         if lang in {"en", "ta", "te", "hi"}:
             profile.preferred_language = lang
-    if updates.institution is not None:
-        profile.institution = updates.institution
     if updates.interests is not None:
         clean_canon, clean_cust = PersonalizationService.validate_and_clean_interests(
             updates.interests,
@@ -232,6 +244,10 @@ def update_student_profile(
 
     if updates.enable_code_mixing is not None:
         profile.enable_code_mixing = updates.enable_code_mixing
+
+    # Re-evaluate canonical completeness and update profile_completed flag
+    completeness = ProfileCompletionService.calculate_completion(profile)
+    profile.profile_completed = completeness.is_complete
 
     db.commit()
     db.refresh(profile)

@@ -72,7 +72,6 @@ const getExampleQueries = (category?: string, level?: string) => {
   }
   return [
     { label: 'Doppler Effect', domain: 'Physics' },
-    { label: 'Binary Search', domain: 'Computer Science' },
     { label: 'Wave Mechanics', domain: 'Physics' },
     { label: 'Operating Systems Deadlock', domain: 'Computer Science' },
     { label: 'Database Normalization', domain: 'Computer Science' },
@@ -88,7 +87,7 @@ export const HomePage: React.FC = () => {
   const [recommendations, setRecommendations] = useState<RecommendedTopic[]>([]);
   const [loadingRecommendations, setLoadingRecommendations] = useState(true);
 
-  // Workspace Overview (Master Prompt 06)
+  // Workspace Overview (Master Prompt 06 & 01R)
   const [workspace, setWorkspace] = useState<WorkspaceOverview | null>(null);
   const [loadingWorkspace, setLoadingWorkspace] = useState(true);
   const [enrollingId, setEnrollingId] = useState<string | null>(null);
@@ -123,16 +122,17 @@ export const HomePage: React.FC = () => {
       .then((data) => {
         setWorkspace(data);
         setLoadingWorkspace(false);
-        if (data?.enrolled_subjects && data.enrolled_subjects.length > 0) {
+        // Syllabus-First: only establish an active course if user has an active syllabus and enrolled subjects
+        if (data?.active_syllabus && data?.enrolled_subjects && data.enrolled_subjects.length > 0) {
           const firstSub = data.enrolled_subjects[0];
           setActiveCourse({
             subject: firstSub.name,
             slug: firstSub.slug,
             courseTitle: firstSub.name,
-            currentTopic: `${firstSub.topic_count || 1} Topics available`,
-            lastLesson: 'Course Syllabus',
+            currentTopic: `${firstSub.topic_count || 0} Topics available`,
+            lastLesson: firstSub.name,
             completedTopics: 0,
-            totalTopics: firstSub.topic_count || 10,
+            totalTopics: firstSub.topic_count || 1,
             progressPercent: 0,
             targetUrl: `/subjects/${firstSub.slug}`,
           });
@@ -261,9 +261,9 @@ export const HomePage: React.FC = () => {
   };
 
   const completeness = workspace?.profile_completeness || {
-    score: profile?.completeness_score || 0,
-    missing_fields: [],
-    is_complete: false,
+    score: (profile as any)?.profile_completeness?.score ?? profile?.completeness_score ?? 0,
+    missing_fields: (profile as any)?.profile_completeness?.missing_fields ?? profile?.missing_fields ?? [],
+    is_complete: (profile as any)?.profile_completeness?.is_complete ?? (profile?.completeness_score === 100),
   };
 
   const academic = workspace?.academic_identity;
@@ -326,7 +326,7 @@ export const HomePage: React.FC = () => {
                   <span>{academic.department}</span>
                 </div>
               )}
-              {academic?.academic_domain && (
+              {academic?.academic_domain && academic.academic_domain !== 'General Studies' && (
                 <div className="flex items-center gap-1.5">
                   <span className="text-nexora-muted">&bull;</span>
                   <span className="text-nexora-accent font-medium">{academic.academic_domain}</span>
@@ -398,6 +398,32 @@ export const HomePage: React.FC = () => {
         )}
       </div>
 
+      {/* 1b. Syllabus-First Mandatory Academic Workspace State (Master Prompt 01R) */}
+      {!loadingWorkspace && !workspace?.active_syllabus && (
+        <div className="p-6 rounded-2xl bg-gradient-to-r from-nexora-surface to-indigo-950/30 border border-nexora-primary/30 shadow-glow-sm">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-nexora-primary bg-nexora-primary/10 px-2.5 py-0.5 rounded-full border border-nexora-primary/20">
+                  Your Academic Workspace
+                </span>
+              </div>
+              <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                No active syllabus has been added yet.
+              </h2>
+              <p className="text-xs sm:text-sm text-nexora-subtext mt-1 max-w-xl">
+                Upload your syllabus to build your learning workspace. NEXORA extracts your subjects, units, and lessons directly from your prescribed curriculum.
+              </p>
+            </div>
+            <Link to="/materials?role=primary_syllabus" className="shrink-0">
+              <Button variant="primary" size="md" rightIcon={<ArrowRight className="w-4 h-4" />}>
+                Upload Syllabus
+              </Button>
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* 2. Educational Search & Concept Exploration */}
       <div className="p-6 rounded-2xl bg-nexora-surface/80 border border-nexora-border/80">
         <h2 className="text-base font-semibold text-white mb-1">
@@ -414,7 +440,7 @@ export const HomePage: React.FC = () => {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search concepts or topics (e.g. Doppler Effect, Binary Search, Deadlock)..."
+              placeholder="Search concepts or topics in your syllabus..."
               className="w-full bg-nexora-bg border border-nexora-border text-white text-xs sm:text-sm rounded-xl pl-10 pr-4 py-2.5 placeholder-nexora-muted focus:outline-none focus:border-nexora-primary focus:ring-1 focus:ring-nexora-primary"
             />
           </div>
@@ -423,18 +449,25 @@ export const HomePage: React.FC = () => {
           </Button>
         </form>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-nexora-muted font-medium">Suggested topics:</span>
-          {getExampleQueries(profile?.education_category, profile?.education_level).map((item, idx) => (
-            <button
-              key={idx}
-              onClick={() => navigate(`/learn?q=${encodeURIComponent(item.label)}`)}
-              className="px-2.5 py-1 rounded-lg bg-nexora-bg/90 border border-nexora-border text-nexora-subtext hover:text-white hover:border-nexora-primary/50 transition-colors cursor-pointer"
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        {workspace?.active_syllabus ? (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-nexora-muted font-medium">Suggested topics:</span>
+            {getExampleQueries(profile?.education_category, profile?.education_level).map((item, idx) => (
+              <button
+                key={idx}
+                onClick={() => navigate(`/learn?q=${encodeURIComponent(item.label)}`)}
+                className="px-2.5 py-1 rounded-lg bg-nexora-bg/90 border border-nexora-border text-nexora-subtext hover:text-white hover:border-nexora-primary/50 transition-colors cursor-pointer"
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="text-xs text-nexora-muted flex items-center gap-2 py-1">
+            <Sparkles className="w-3.5 h-3.5 text-nexora-primary" />
+            <span>Upload and activate your syllabus to populate curriculum topics and lessons for exploration.</span>
+          </div>
+        )}
       </div>
 
       {/* 3. My Enrolled Subjects (Master Prompt 06) */}
@@ -466,15 +499,19 @@ export const HomePage: React.FC = () => {
               <SkeletonCard key={i} />
             ))}
           </div>
-        ) : !workspace?.enrolled_subjects || workspace.enrolled_subjects.length === 0 ? (
+        ) : !workspace?.active_syllabus || !workspace?.enrolled_subjects || workspace.enrolled_subjects.length === 0 ? (
           <EmptyState
             icon={<BookOpen className="w-8 h-8 text-nexora-muted" />}
-            title="No Enrolled Subjects Yet"
-            description="You are not enrolled in any subjects for your curriculum session. Enroll in subjects matching your syllabus or upload your course materials to organize your workspace."
+            title="No curriculum available"
+            description={
+              !workspace?.active_syllabus
+                ? "No active syllabus has been added yet. Upload your syllabus to build your learning workspace and populate subjects."
+                : "You have not enrolled in any subjects from your active syllabus yet."
+            }
             action={
-              <Link to="/subjects">
+              <Link to={!workspace?.active_syllabus ? "/materials?role=primary_syllabus" : "/subjects"}>
                 <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
-                  Browse &amp; Enroll Subjects
+                  {!workspace?.active_syllabus ? "Upload Syllabus" : "Browse Available Subjects"}
                 </Button>
               </Link>
             }
@@ -857,6 +894,25 @@ export const HomePage: React.FC = () => {
               <SkeletonCard key={i} />
             ))}
           </div>
+        ) : recommendations.length === 0 ? (
+          <EmptyState
+            icon={<Compass className="w-8 h-8 text-nexora-muted" />}
+            title="No concepts available yet"
+            description={
+              !workspace?.active_syllabus
+                ? "Upload your syllabus to activate and explore personalized concepts."
+                : "No concepts currently matched. Complete your interests in Profile to personalize learning examples."
+            }
+            action={
+              !workspace?.active_syllabus ? (
+                <Link to="/materials?role=primary_syllabus">
+                  <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                    Upload Syllabus
+                  </Button>
+                </Link>
+              ) : undefined
+            }
+          />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {recommendations.map((rec) => (
@@ -897,18 +953,18 @@ export const HomePage: React.FC = () => {
         <div className="flex items-center justify-between mb-4">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold text-white tracking-tight">Reference Curriculum Library</h2>
+              <h2 className="text-xl font-bold text-white tracking-tight">Active Curriculum Subjects</h2>
               <Badge variant="neutral" size="sm">
-                Universal Reference
+                Syllabus Grounded
               </Badge>
             </div>
             <p className="text-xs text-nexora-muted mt-0.5">
-              Explore foundational syllabi across Natural Sciences, Mathematics, and Computer Science available on the platform
+              Subjects extracted from your active syllabus curriculum
             </p>
           </div>
           <Link to="/subjects">
             <Button variant="ghost" size="sm" rightIcon={<ChevronRight className="w-4 h-4" />}>
-              View All Syllabi
+              Manage Subjects
             </Button>
           </Link>
         </div>
@@ -919,6 +975,19 @@ export const HomePage: React.FC = () => {
               <SkeletonCard key={i} />
             ))}
           </div>
+        ) : !workspace?.active_syllabus || subjects.length === 0 ? (
+          <EmptyState
+            icon={<BookOpen className="w-8 h-8 text-nexora-muted" />}
+            title="No curriculum available"
+            description="No active syllabus has been added yet. Upload your syllabus to build your learning workspace."
+            action={
+              <Link to="/materials?role=primary_syllabus">
+                <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                  Upload Syllabus
+                </Button>
+              </Link>
+            }
+          />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {subjects.map((sub) => (

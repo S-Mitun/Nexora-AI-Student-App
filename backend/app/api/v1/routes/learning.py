@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.api.dependencies import get_optional_user, get_current_user
 from app.core.security import AuthenticatedUser
-from app.models.learning import Curriculum
+from app.models.learning import Curriculum, Subject, Topic, Concept, LearningModule, Lesson
 from app.models.profile import UserProfile
 from app.schemas.learning import (
     CurriculumRead,
@@ -23,8 +23,9 @@ from app.schemas.learning import (
     ConceptExploreRequest,
     ConceptExploreResponse,
 )
-from app.services.learning.curriculum_service import CurriculumService, CurriculumSeedService
+from app.services.learning.curriculum_service import CurriculumService
 from app.services.learning.concept_service import ConceptService
+from app.services.learning.context_service import AcademicContextResolver
 from app.services.learning.personalization_service import (
     PersonalizationService,
     RecommendedTopic,
@@ -48,11 +49,65 @@ def list_curricula(
     Returns supported academic curricula and boards (e.g., CBSE, ICSE, State Board, University).
     Decouples curriculum from fixed engineering/computer science assumptions.
     """
-    CurriculumSeedService.seed_if_empty(db)
     query = db.query(Curriculum).filter(Curriculum.is_active == True)
     if education_level:
         query = query.filter(Curriculum.education_level == education_level)
     return query.order_by(Curriculum.name.asc()).all()
+
+
+def _verify_subject_access(
+    db: Session,
+    subject: Optional[Subject],
+    current_user: Optional[AuthenticatedUser],
+    include_reference: bool = False,
+) -> None:
+    """
+    Enforces Rule 2 & 3:
+    Legacy/default/demo curriculum is quarantined and MUST NOT be reachable from normal runtime.
+    Unless explicitly migrated into an active syllabus version, access is denied (404 Not Found).
+    Reference templates are only accessible when include_reference is explicitly True.
+    """
+    if not subject:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Requested curriculum entity not found.",
+        )
+
+    if include_reference:
+        return
+
+    # Quarantined system reference templates / subjects without active syllabus version return 404
+    if getattr(subject, "is_system", False) or not subject.syllabus_version_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Curriculum content is not part of an active syllabus.",
+        )
+
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Curriculum content not found for current session.",
+        )
+
+    from app.models.syllabus import Syllabus, SyllabusVersion
+    is_authorized = (
+        db.query(SyllabusVersion)
+        .join(Syllabus, SyllabusVersion.syllabus_id == Syllabus.id)
+        .filter(
+            Syllabus.user_id == current_user.id,
+            Syllabus.status.in_(["confirmed", "extracted"]),
+            SyllabusVersion.id == subject.syllabus_version_id,
+            SyllabusVersion.is_active == True,
+        )
+        .first()
+        is not None
+    )
+
+    if not is_authorized:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Curriculum content is not part of your active syllabus.",
+        )
 
 
 # ==============================================================================
@@ -63,24 +118,56 @@ def list_curricula(
 def list_subjects(
     curriculum_id: Optional[str] = None,
     education_level: Optional[str] = None,
+    include_reference: bool = False,
     current_user: Optional[AuthenticatedUser] = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
     """
-    Returns active academic subjects matching the authoritative academic context.
-    Automatically resolves authenticated student's active level if education_level is omitted.
+    Returns active academic subjects matching the authoritative syllabus context.
+    If no active syllabus is confirmed for the user and include_reference is False, returns [].
     """
-    CurriculumSeedService.seed_if_empty(db)
     target_level = education_level
     enrolled_ids = set()
+    user_id = current_user.id if current_user else None
+    active_version_id = None
+
     if current_user:
+        from app.models.syllabus import Syllabus, SyllabusVersion
         from app.services.learning.context_service import AcademicContextResolver
         ctx = AcademicContextResolver.resolve_context(db, current_user.id)
         if not target_level:
             target_level = ctx.academic_level
         enrolled_ids = set(ctx.enrolled_subject_ids)
 
-    subjects = CurriculumService.get_subjects(db, curriculum_id=curriculum_id, education_level=target_level)
+        active_syl = (
+            db.query(Syllabus)
+            .filter(
+                Syllabus.user_id == current_user.id,
+                Syllabus.academic_level == target_level,
+                Syllabus.status.in_(["confirmed", "extracted"]),
+            )
+            .first()
+        )
+        if active_syl:
+            active_ver = (
+                db.query(SyllabusVersion)
+                .filter(
+                    SyllabusVersion.syllabus_id == active_syl.id,
+                    SyllabusVersion.is_active == True,
+                )
+                .first()
+            )
+            if active_ver:
+                active_version_id = active_ver.id
+
+    subjects = CurriculumService.get_subjects(
+        db,
+        curriculum_id=curriculum_id,
+        education_level=target_level,
+        user_id=user_id if active_version_id else None,
+        syllabus_version_id=active_version_id,
+        include_reference=include_reference,
+    )
 
     results = []
     for sub in subjects:
@@ -109,18 +196,24 @@ def list_subjects(
 
 
 @router.get("/subjects/{subject_identifier}", response_model=SubjectDetail)
-def get_subject_detail(subject_identifier: str, db: Session = Depends(get_db)):
+def get_subject_detail(
+    subject_identifier: str,
+    include_reference: bool = Query(False),
+    current_user: Optional[AuthenticatedUser] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
     """
     Retrieves full details for a subject by UUID or unique slug,
     including its syllabus topics and nested concepts.
     """
-    CurriculumSeedService.seed_if_empty(db)
     sub = CurriculumService.get_subject(db, subject_identifier)
     if not sub:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Subject '{subject_identifier}' not found in curriculum.",
         )
+
+    _verify_subject_access(db, sub, current_user, include_reference=include_reference)
 
     topic_details = []
     for top in sub.topics:
@@ -176,16 +269,22 @@ def get_subject_detail(subject_identifier: str, db: Session = Depends(get_db)):
 
 
 @router.get("/subjects/{subject_identifier}/topics", response_model=List[TopicRead])
-def list_subject_topics(subject_identifier: str, db: Session = Depends(get_db)):
+def list_subject_topics(
+    subject_identifier: str,
+    include_reference: bool = Query(False),
+    current_user: Optional[AuthenticatedUser] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
     """Returns all topics belonging to a specific subject."""
-    CurriculumSeedService.seed_if_empty(db)
-    topics = CurriculumService.get_topics_for_subject(db, subject_identifier)
-    if not topics and not CurriculumService.get_subject(db, subject_identifier):
+    sub = CurriculumService.get_subject(db, subject_identifier)
+    if not sub:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Subject '{subject_identifier}' not found.",
         )
+    _verify_subject_access(db, sub, current_user, include_reference=include_reference)
 
+    topics = CurriculumService.get_topics_for_subject(db, subject_identifier)
     results = []
     for top in topics:
         results.append(
@@ -208,15 +307,21 @@ def list_subject_topics(subject_identifier: str, db: Session = Depends(get_db)):
 # ==============================================================================
 
 @router.get("/topics/{topic_identifier}", response_model=TopicDetail)
-def get_topic_detail(topic_identifier: str, db: Session = Depends(get_db)):
+def get_topic_detail(
+    topic_identifier: str,
+    include_reference: bool = Query(False),
+    current_user: Optional[AuthenticatedUser] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
     """Retrieves full topic details including nested concepts."""
-    CurriculumSeedService.seed_if_empty(db)
     top = CurriculumService.get_topic(db, topic_identifier)
     if not top:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Topic '{topic_identifier}' not found in curriculum.",
         )
+
+    _verify_subject_access(db, top.subject, current_user, include_reference=include_reference)
 
     concept_reads = [
         ConceptRead(
@@ -252,15 +357,22 @@ def get_topic_detail(topic_identifier: str, db: Session = Depends(get_db)):
 
 
 @router.get("/topics/{topic_identifier}/concepts", response_model=List[ConceptRead])
-def list_topic_concepts(topic_identifier: str, db: Session = Depends(get_db)):
+def list_topic_concepts(
+    topic_identifier: str,
+    include_reference: bool = Query(False),
+    current_user: Optional[AuthenticatedUser] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
     """Returns all concepts belonging to a specific topic."""
-    CurriculumSeedService.seed_if_empty(db)
-    concepts = CurriculumService.get_concepts_for_topic(db, topic_identifier)
-    if not concepts and not CurriculumService.get_topic(db, topic_identifier):
+    top = CurriculumService.get_topic(db, topic_identifier)
+    if not top:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Topic '{topic_identifier}' not found.",
         )
+
+    _verify_subject_access(db, top.subject, current_user, include_reference=include_reference)
+    concepts = CurriculumService.get_concepts_for_topic(db, topic_identifier)
 
     return [
         ConceptRead(
@@ -285,16 +397,95 @@ def list_topic_concepts(topic_identifier: str, db: Session = Depends(get_db)):
 # LEVEL 3 — CONCEPT ENDPOINTS
 # ==============================================================================
 
+@router.get("/concepts", response_model=List[ConceptRead])
+def list_concepts(
+    education_level: Optional[str] = Query(None),
+    include_reference: bool = Query(False),
+    current_user: Optional[AuthenticatedUser] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns active concepts matching the authoritative syllabus context.
+    If no active syllabus is confirmed for the user and include_reference is False, returns [].
+    """
+    target_level = education_level
+    active_version_id = None
+    if current_user:
+        ctx = AcademicContextResolver.resolve_context(db, current_user.id)
+        if not target_level:
+            target_level = ctx.academic_level
+        from app.models.syllabus import Syllabus, SyllabusVersion
+        active_syl = (
+            db.query(Syllabus)
+            .filter(
+                Syllabus.user_id == current_user.id,
+                Syllabus.academic_level == target_level,
+                Syllabus.status.in_(["confirmed", "extracted"]),
+            )
+            .first()
+        )
+        if active_syl:
+            active_ver = (
+                db.query(SyllabusVersion)
+                .filter(SyllabusVersion.syllabus_id == active_syl.id, SyllabusVersion.is_active == True)
+                .first()
+            )
+            if active_ver:
+                active_version_id = active_ver.id
+
+    if not active_version_id and not include_reference:
+        return []
+
+    query = db.query(Concept).filter(Concept.is_active == True)
+    if active_version_id:
+        query = (
+            query.join(Topic, Concept.topic_id == Topic.id)
+            .join(Subject, Topic.subject_id == Subject.id)
+            .filter(Subject.syllabus_version_id == active_version_id)
+        )
+    elif include_reference:
+        query = (
+            query.join(Topic, Concept.topic_id == Topic.id)
+            .join(Subject, Topic.subject_id == Subject.id)
+            .filter(Subject.is_system == True)
+        )
+
+    concepts = query.order_by(Concept.order_index.asc()).all()
+    return [
+        ConceptRead(
+            id=con.id,
+            topic_id=con.topic_id,
+            name=con.name,
+            slug=con.slug,
+            summary=con.summary,
+            short_description=con.short_description,
+            difficulty=con.difficulty,
+            difficulty_level=con.difficulty_level,
+            order_index=con.order_index,
+            is_active=con.is_active,
+            module_count=len(con.learning_modules),
+        )
+        for con in concepts
+    ]
+
+
 @router.get("/concepts/{concept_identifier}", response_model=ConceptDetail)
-def get_concept_detail(concept_identifier: str, db: Session = Depends(get_db)):
+def get_concept_detail(
+    concept_identifier: str,
+    include_reference: bool = Query(False),
+    current_user: Optional[AuthenticatedUser] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
     """Retrieves full concept details including its structured learning modules."""
-    CurriculumSeedService.seed_if_empty(db)
     con = CurriculumService.get_concept(db, concept_identifier)
     if not con:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Concept '{concept_identifier}' not found in curriculum.",
         )
+
+    root_sub = con.topic.subject if con.topic and con.topic.subject else None
+    _verify_subject_access(db, root_sub, current_user, include_reference=include_reference)
 
     modules = [
         LearningModuleSummary(
@@ -340,16 +531,24 @@ def get_concept_detail(concept_identifier: str, db: Session = Depends(get_db)):
 
 
 @router.get("/concepts/{concept_identifier}/modules", response_model=List[LearningModuleSummary])
-def list_concept_modules(concept_identifier: str, db: Session = Depends(get_db)):
+def list_concept_modules(
+    concept_identifier: str,
+    include_reference: bool = Query(False),
+    current_user: Optional[AuthenticatedUser] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
     """Returns all learning modules for a concept."""
-    CurriculumSeedService.seed_if_empty(db)
-    modules = CurriculumService.get_modules_for_concept(db, concept_identifier)
-    if not modules and not CurriculumService.get_concept(db, concept_identifier):
+    con = CurriculumService.get_concept(db, concept_identifier)
+    if not con:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Concept '{concept_identifier}' not found.",
         )
 
+    root_sub = con.topic.subject if con.topic and con.topic.subject else None
+    _verify_subject_access(db, root_sub, current_user, include_reference=include_reference)
+
+    modules = CurriculumService.get_modules_for_concept(db, concept_identifier)
     return [
         LearningModuleSummary(
             id=m.id,
@@ -373,16 +572,97 @@ def list_concept_modules(concept_identifier: str, db: Session = Depends(get_db))
 # LEVEL 4 — LEARNING MODULE ENDPOINTS
 # ==============================================================================
 
+@router.get("/modules", response_model=List[LearningModuleSummary])
+def list_learning_modules(
+    education_level: Optional[str] = Query(None),
+    include_reference: bool = Query(False),
+    current_user: Optional[AuthenticatedUser] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns active learning modules matching the authoritative syllabus context.
+    If no active syllabus is confirmed for the user and include_reference is False, returns [].
+    """
+    target_level = education_level
+    active_version_id = None
+    if current_user:
+        ctx = AcademicContextResolver.resolve_context(db, current_user.id)
+        if not target_level:
+            target_level = ctx.academic_level
+        from app.models.syllabus import Syllabus, SyllabusVersion
+        active_syl = (
+            db.query(Syllabus)
+            .filter(
+                Syllabus.user_id == current_user.id,
+                Syllabus.academic_level == target_level,
+                Syllabus.status.in_(["confirmed", "extracted"]),
+            )
+            .first()
+        )
+        if active_syl:
+            active_ver = (
+                db.query(SyllabusVersion)
+                .filter(SyllabusVersion.syllabus_id == active_syl.id, SyllabusVersion.is_active == True)
+                .first()
+            )
+            if active_ver:
+                active_version_id = active_ver.id
+
+    if not active_version_id and not include_reference:
+        return []
+
+    query = db.query(LearningModule).filter(LearningModule.is_active == True)
+    if active_version_id:
+        query = (
+            query.join(Concept, LearningModule.concept_id == Concept.id)
+            .join(Topic, Concept.topic_id == Topic.id)
+            .join(Subject, Topic.subject_id == Subject.id)
+            .filter(Subject.syllabus_version_id == active_version_id)
+        )
+    elif include_reference:
+        query = (
+            query.join(Concept, LearningModule.concept_id == Concept.id)
+            .join(Topic, Concept.topic_id == Topic.id)
+            .join(Subject, Topic.subject_id == Subject.id)
+            .filter(Subject.is_system == True)
+        )
+
+    mods = query.order_by(LearningModule.order_index.asc()).all()
+    return [
+        LearningModuleSummary(
+            id=m.id,
+            concept_id=m.concept_id,
+            title=m.title,
+            slug=m.slug or m.id,
+            description=m.description,
+            learning_objective=m.learning_objective,
+            difficulty_level=m.difficulty_level,
+            estimated_minutes=m.estimated_minutes,
+            order_index=m.order_index,
+            lesson_count=len(m.lessons),
+            prerequisites=m.prerequisites if isinstance(m.prerequisites, list) else [],
+        )
+        for m in mods
+    ]
+
+
 @router.get("/modules/{module_identifier}", response_model=LearningModuleDetail)
-def get_module_detail(module_identifier: str, db: Session = Depends(get_db)):
+def get_module_detail(
+    module_identifier: str,
+    include_reference: bool = Query(False),
+    current_user: Optional[AuthenticatedUser] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
     """Retrieves full learning module detail with syllabus lessons and parent breadcrumbs."""
-    CurriculumSeedService.seed_if_empty(db)
     mod = CurriculumService.get_module(db, module_identifier)
     if not mod:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Learning module '{module_identifier}' not found.",
         )
+
+    root_sub = mod.concept.topic.subject if mod.concept and mod.concept.topic and mod.concept.topic.subject else None
+    _verify_subject_access(db, root_sub, current_user, include_reference=include_reference)
 
     lessons = [
         LessonRead(
@@ -431,16 +711,24 @@ def get_module_detail(module_identifier: str, db: Session = Depends(get_db)):
 
 
 @router.get("/modules/{module_identifier}/lessons", response_model=List[LessonRead])
-def list_module_lessons(module_identifier: str, db: Session = Depends(get_db)):
+def list_module_lessons(
+    module_identifier: str,
+    include_reference: bool = Query(False),
+    current_user: Optional[AuthenticatedUser] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
     """Returns all lessons belonging to a learning module."""
-    CurriculumSeedService.seed_if_empty(db)
-    lessons = CurriculumService.get_lessons_for_module(db, module_identifier)
-    if not lessons and not CurriculumService.get_module(db, module_identifier):
+    mod = CurriculumService.get_module(db, module_identifier)
+    if not mod:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Learning module '{module_identifier}' not found.",
         )
 
+    root_sub = mod.concept.topic.subject if mod.concept and mod.concept.topic and mod.concept.topic.subject else None
+    _verify_subject_access(db, root_sub, current_user, include_reference=include_reference)
+
+    lessons = CurriculumService.get_lessons_for_module(db, module_identifier)
     return [
         LessonRead(
             id=les.id,
@@ -461,9 +749,83 @@ def list_module_lessons(module_identifier: str, db: Session = Depends(get_db)):
 # LEVEL 5 — LESSON / CONTENT ENDPOINTS
 # ==============================================================================
 
+@router.get("/lessons", response_model=List[LessonRead])
+def list_lessons(
+    education_level: Optional[str] = Query(None),
+    include_reference: bool = Query(False),
+    current_user: Optional[AuthenticatedUser] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns active lessons matching the authoritative syllabus context.
+    If no active syllabus is confirmed for the user and include_reference is False, returns [].
+    """
+    target_level = education_level
+    active_version_id = None
+    if current_user:
+        ctx = AcademicContextResolver.resolve_context(db, current_user.id)
+        if not target_level:
+            target_level = ctx.academic_level
+        from app.models.syllabus import Syllabus, SyllabusVersion
+        active_syl = (
+            db.query(Syllabus)
+            .filter(
+                Syllabus.user_id == current_user.id,
+                Syllabus.academic_level == target_level,
+                Syllabus.status.in_(["confirmed", "extracted"]),
+            )
+            .first()
+        )
+        if active_syl:
+            active_ver = (
+                db.query(SyllabusVersion)
+                .filter(SyllabusVersion.syllabus_id == active_syl.id, SyllabusVersion.is_active == True)
+                .first()
+            )
+            if active_ver:
+                active_version_id = active_ver.id
+
+    if not active_version_id and not include_reference:
+        return []
+
+    query = db.query(Lesson).filter(Lesson.is_active == True)
+    if active_version_id:
+        query = (
+            query.join(LearningModule, Lesson.module_id == LearningModule.id)
+            .join(Concept, LearningModule.concept_id == Concept.id)
+            .join(Topic, Concept.topic_id == Topic.id)
+            .join(Subject, Topic.subject_id == Subject.id)
+            .filter(Subject.syllabus_version_id == active_version_id)
+        )
+    elif include_reference:
+        query = (
+            query.join(LearningModule, Lesson.module_id == LearningModule.id)
+            .join(Concept, LearningModule.concept_id == Concept.id)
+            .join(Topic, Concept.topic_id == Topic.id)
+            .join(Subject, Topic.subject_id == Subject.id)
+            .filter(Subject.is_system == True)
+        )
+
+    lessons = query.order_by(Lesson.order_index.asc()).all()
+    return [
+        LessonRead(
+            id=les.id,
+            module_id=les.module_id,
+            title=les.title,
+            slug=les.slug,
+            content_type=les.content_type,
+            order_index=les.order_index,
+            estimated_minutes=les.estimated_minutes,
+            is_active=les.is_active,
+        )
+        for les in lessons
+    ]
+
+
 @router.get("/lessons/{lesson_identifier}", response_model=LessonDetailRead)
 def get_lesson_detail(
     lesson_identifier: str,
+    include_reference: bool = Query(False),
     current_user: Optional[AuthenticatedUser] = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
@@ -471,7 +833,6 @@ def get_lesson_detail(
     Retrieves full lesson content, breadcrumb context, and previous/next navigation pointers.
     Integrates with Prompt 04 to contextualize examples using student profile interests.
     """
-    CurriculumSeedService.seed_if_empty(db)
     lookup = CurriculumService.get_lesson(db, lesson_identifier)
     if not lookup:
         raise HTTPException(
@@ -484,6 +845,8 @@ def get_lesson_detail(
     concept = module.concept if module else None
     topic = concept.topic if concept else None
     subject = topic.subject if topic else None
+
+    _verify_subject_access(db, subject, current_user, include_reference=include_reference)
 
     # Prompt 04 Personalization Integration:
     # If the student has selected interests in their profile, attach a personalized perspective
@@ -558,6 +921,14 @@ async def explore_concept(
             interest_hint=payload.interest_hint,
         )
         return result
+    except KeyError as ke:
+        logger.warning(f"Concept '{payload.query}' not found in active syllabus curriculum: {str(ke)}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Concept '{payload.query}' not found in active syllabus curriculum and no grounded learning content exists.",
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error decomposing concept '{payload.query}': {str(e)}")
         raise HTTPException(
@@ -573,28 +944,40 @@ def get_recommendations(
 ):
     """
     Returns curated, interest-relatable topic recommendations for the student dashboard.
-    Falls back gracefully to curriculum standard foundations if no interests are selected.
+    Strictly scoped to active syllabus: returns [] if no active syllabus exists.
     """
+    if not current_user:
+        return []
+
+    from app.models.syllabus import Syllabus
+    active_syl = (
+        db.query(Syllabus)
+        .filter(
+            Syllabus.user_id == current_user.id,
+            Syllabus.status.in_(["confirmed", "extracted"]),
+        )
+        .first()
+    )
+    if not active_syl:
+        return []
+
     student_interests = []
     favorite_subjects = []
 
-    if current_user:
-        profile = db.query(UserProfile).filter(UserProfile.id == current_user.id).first()
-        if profile:
-            if profile.interests:
-                try:
-                    student_interests = json.loads(profile.interests)
-                except Exception:
-                    student_interests = [i.strip() for i in profile.interests.split(",") if i.strip()]
-            if getattr(profile, "favorite_subjects", None):
-                try:
-                    favorite_subjects = json.loads(profile.favorite_subjects)
-                except Exception:
-                    favorite_subjects = [s.strip() for s in profile.favorite_subjects.split(",") if s.strip()]
+    profile = db.query(UserProfile).filter(UserProfile.id == current_user.id).first()
+    if profile:
+        if profile.interests:
+            try:
+                student_interests = json.loads(profile.interests)
+            except Exception:
+                student_interests = [i.strip() for i in profile.interests.split(",") if i.strip()]
+        if getattr(profile, "favorite_subjects", None):
+            try:
+                favorite_subjects = json.loads(profile.favorite_subjects)
+            except Exception:
+                favorite_subjects = [s.strip() for s in profile.favorite_subjects.split(",") if s.strip()]
 
-            education_category = getattr(profile, "education_category", None) or getattr(profile, "education_level", None)
-        else:
-            education_category = None
+        education_category = getattr(profile, "education_category", None) or getattr(profile, "education_level", None)
     else:
         education_category = None
 
@@ -615,12 +998,44 @@ def get_perspectives(concept_slug: str):
     return PersonalizationService.get_all_perspectives_for_concept(clean_slug)
 
 
+@router.get("/simulations", response_model=List[Any])
+def list_simulations(
+    education_level: Optional[str] = Query(None),
+    include_reference: bool = Query(False),
+    current_user: Optional[AuthenticatedUser] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns simulations tied to the student's active syllabus concepts.
+    Returns [] when no active syllabus exists.
+    """
+    if not include_reference:
+        if not current_user:
+            return []
+        from app.models.syllabus import Syllabus
+        ctx = AcademicContextResolver.resolve_context(db, current_user.id)
+        target_level = education_level or ctx.academic_level
+        active_syl = (
+            db.query(Syllabus)
+            .filter(
+                Syllabus.user_id == current_user.id,
+                Syllabus.academic_level == target_level,
+                Syllabus.status.in_(["confirmed", "extracted"]),
+            )
+            .first()
+        )
+        if not active_syl:
+            return []
+    return []
+
+
 @router.get("/practice/sets", response_model=List[Any])
 def list_practice_sets(
     academic_level: Optional[str] = Query(None),
     subject_id: Optional[str] = Query(None),
     concept_id: Optional[str] = Query(None),
     lesson_id: Optional[str] = Query(None),
+    include_reference: bool = Query(False),
     limit: int = 10,
     db: Session = Depends(get_db),
     current_user: Optional[AuthenticatedUser] = Depends(get_optional_user),
@@ -632,14 +1047,29 @@ def list_practice_sets(
     from app.models.learning import PracticeSet, PracticeQuestion
     from app.schemas.practice import PracticeSetRead, PracticeQuestionRead
 
-    CurriculumSeedService.seed_if_empty(db)
-
     target_level = academic_level
     if not target_level and current_user:
         ctx = AcademicContextResolver.resolve_context(db, current_user.id)
         target_level = ctx.academic_level
     elif not target_level:
         return []
+
+    # Before an active syllabus exists, return empty unless include_reference=True
+    if not include_reference:
+        if not current_user:
+            return []
+        from app.models.syllabus import Syllabus
+        active_syl = (
+            db.query(Syllabus)
+            .filter(
+                Syllabus.user_id == current_user.id,
+                Syllabus.academic_level == target_level,
+                Syllabus.status.in_(["confirmed", "extracted"]),
+            )
+            .first()
+        )
+        if not active_syl:
+            return []
 
     # Normalize tier (e.g. class-1-5 -> class_1_5)
     normalized_level = target_level.replace("-", "_")
@@ -704,8 +1134,6 @@ def get_practice_set(
     from app.models.learning import PracticeSet
     from app.schemas.practice import PracticeSetRead, PracticeQuestionRead
 
-    CurriculumSeedService.seed_if_empty(db)
-
     ps = db.query(PracticeSet).filter(PracticeSet.id == set_id, PracticeSet.is_active == True).first()
     if not ps:
         raise HTTPException(
@@ -757,8 +1185,6 @@ def submit_practice(
     """
     from app.models.learning import PracticeSet, PracticeQuestion
     from app.models.progress import UserProgress, QuizAttempt, AcademicActivityLog
-
-    CurriculumSeedService.seed_if_empty(db)
 
     if isinstance(payload, dict):
         ps_id = payload.get("set_id") or payload.get("practice_set_id")

@@ -32,6 +32,9 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_database():
     Base.metadata.create_all(bind=engine)
+    with TestingSessionLocal() as session:
+        from app.services.learning.curriculum_service import CurriculumSeedService
+        CurriculumSeedService.seed_if_empty(session)
     yield
     Base.metadata.drop_all(bind=engine)
 
@@ -61,3 +64,32 @@ def client(db_session):
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def create_active_syllabus(db_session):
+    def _create(user_id: str, academic_level: str = "class_6_10", title: str = "Test Active Syllabus"):
+        import uuid
+        from app.models.syllabus import Syllabus, SyllabusVersion
+        syl_id = f"syl-{uuid.uuid4().hex[:8]}"
+        ver_id = f"ver-{uuid.uuid4().hex[:8]}"
+        syl = Syllabus(
+            id=syl_id,
+            user_id=user_id,
+            title=title,
+            academic_level=academic_level,
+            status="confirmed",
+        )
+        db_session.add(syl)
+        ver = SyllabusVersion(
+            id=ver_id,
+            syllabus_id=syl_id,
+            version_number=1,
+            is_active=True,
+            raw_extracted_json={"modules": []},
+        )
+        db_session.add(ver)
+        db_session.commit()
+        return syl, ver
+    return _create
+

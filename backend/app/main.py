@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from app.core.config import settings
 from app.core.logging import logger
 from app.db.base import Base
-from app.db.session import engine
+from app.db.session import engine, SessionLocal
 from app.api.v1.router import api_v1_router
 from app.api.v1.routes.health import get_health
 
@@ -46,11 +46,13 @@ async def lifespan(app: FastAPI):
                     if "curriculum_id" not in existing_cols:
                         conn.execute(text("ALTER TABLE profiles ADD COLUMN curriculum_id VARCHAR(36)"))
                     if "grade_level" not in existing_cols:
-                        conn.execute(text("ALTER TABLE profiles ADD COLUMN grade_level VARCHAR(50) DEFAULT 'Class 10'"))
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN grade_level VARCHAR(50)"))
                     if "academic_domain" not in existing_cols:
-                        conn.execute(text("ALTER TABLE profiles ADD COLUMN academic_domain VARCHAR(100) DEFAULT 'General Studies'"))
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN academic_domain VARCHAR(100)"))
                     if "education_category" not in existing_cols:
-                        conn.execute(text("ALTER TABLE profiles ADD COLUMN education_category VARCHAR(50) DEFAULT 'undergraduate'"))
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN education_category VARCHAR(50)"))
+                    # Clear out fake default 'General Studies'
+                    conn.execute(text("UPDATE profiles SET academic_domain = NULL WHERE academic_domain = 'General Studies'"))
                     if "board_type" not in existing_cols:
                         conn.execute(text("ALTER TABLE profiles ADD COLUMN board_type VARCHAR(50)"))
                     if "stream" not in existing_cols:
@@ -244,6 +246,33 @@ async def lifespan(app: FastAPI):
                         conn.execute(text("ALTER TABLE learning_modules ADD COLUMN is_active BOOLEAN DEFAULT 1"))
                     conn.commit()
 
+                # Sync documents table columns
+                doc_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(documents)"))}
+                if doc_cols:
+                    if "document_role" not in doc_cols:
+                        conn.execute(text("ALTER TABLE documents ADD COLUMN document_role VARCHAR(50) DEFAULT 'secondary_material'"))
+                    if "syllabus_id" not in doc_cols:
+                        conn.execute(text("ALTER TABLE documents ADD COLUMN syllabus_id VARCHAR(36)"))
+                    conn.commit()
+
+                # Sync syllabus-first Subject anchoring columns
+                sub_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(subjects)"))}
+                if sub_cols:
+                    if "user_id" not in sub_cols:
+                        conn.execute(text("ALTER TABLE subjects ADD COLUMN user_id VARCHAR(36)"))
+                    if "syllabus_version_id" not in sub_cols:
+                        conn.execute(text("ALTER TABLE subjects ADD COLUMN syllabus_version_id VARCHAR(36)"))
+                    if "content_source" not in sub_cols:
+                        conn.execute(text("ALTER TABLE subjects ADD COLUMN content_source VARCHAR(50) DEFAULT 'syllabus_extracted'"))
+                    conn.commit()
+
+                # Sync content_source on child hierarchy tables
+                for tbl in ["topics", "concepts", "learning_modules", "lessons"]:
+                    cols = {row[1] for row in conn.execute(text(f"PRAGMA table_info({tbl})"))}
+                    if cols and "content_source" not in cols:
+                        conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN content_source VARCHAR(50) DEFAULT 'syllabus_extracted'"))
+                        conn.commit()
+
                 # Sync notes table columns
                 note_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(notes)"))}
                 if note_cols:
@@ -255,13 +284,11 @@ async def lifespan(app: FastAPI):
                         conn.execute(text("ALTER TABLE notes ADD COLUMN is_archived BOOLEAN DEFAULT 0"))
                     conn.commit()
 
-        # Seed starter curriculum if empty
-        from app.db.session import SessionLocal
-        from app.services.learning.curriculum_service import CurriculumSeedService
         with SessionLocal() as session:
-            CurriculumSeedService.seed_if_empty(session)
+            from app.services.learning.curriculum_service import CurriculumSeedService
+            CurriculumSeedService.seed_boards_if_empty(session)
 
-        logger.info("Database schema synchronized and starter curriculum verified.")
+        logger.info("Database schema synchronized. Syllabus-First architecture active (reference board presets available, runtime auto-seeding detached).")
     except Exception as e:
         logger.error(f"Error creating database tables: {str(e)}")
 
