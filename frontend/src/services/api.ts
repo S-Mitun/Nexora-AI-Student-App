@@ -327,5 +327,102 @@ export const apiService = {
     const response = await apiClient.get<import('../types/learning').AcademicProgressOverview>('/api/v1/workspace/progress');
     return response.data;
   },
+
+  // --- UNIVERSAL SYLLABUS & VERSION LIFECYCLE (MASTER PROMPT 02R) ---
+  async uploadSyllabus(formData: FormData): Promise<import('../types/syllabus').SyllabusUploadResponse> {
+    const response = await apiClient.post<import('../types/syllabus').SyllabusUploadResponse>(
+      '/api/v1/syllabi',
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }
+    );
+    return response.data;
+  },
+
+  // --- SYLLABUS UPLOAD & CANONICAL STATE LIFECYCLE (PROMPTS 02R & 02R-A) ---
+  async getSyllabusState(academicContextId?: string): Promise<import('../types/syllabus').SyllabusCanonicalState> {
+    const params = academicContextId ? { academic_context_id: academicContextId } : {};
+    const response = await apiClient.get<import('../types/syllabus').SyllabusCanonicalState>('/api/v1/syllabi/state', { params });
+    return response.data;
+  },
+
+  async getSyllabi(academicLevel?: string): Promise<import('../types/syllabus').Syllabus[]> {
+    const response = await apiClient.get<import('../types/syllabus').Syllabus[]>('/api/v1/syllabi', {
+      params: academicLevel ? { academic_level: academicLevel } : undefined,
+    });
+    return response.data;
+  },
+
+  async getSyllabus(syllabusId: string): Promise<import('../types/syllabus').Syllabus> {
+    const response = await apiClient.get<import('../types/syllabus').Syllabus>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}`
+    );
+    return response.data;
+  },
+
+  async getSyllabusVersions(syllabusId: string): Promise<import('../types/syllabus').SyllabusVersion[]> {
+    const response = await apiClient.get<import('../types/syllabus').SyllabusVersion[]>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions`
+    );
+    return response.data;
+  },
+
+  async uploadSyllabusVersion(
+    syllabusId: string,
+    formData: FormData
+  ): Promise<import('../types/syllabus').SyllabusUploadResponse> {
+    const response = await apiClient.post<import('../types/syllabus').SyllabusUploadResponse>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions`,
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }
+    );
+    return response.data;
+  },
+
+  async activateSyllabusVersion(
+    syllabusId: string,
+    versionId: string
+  ): Promise<import('../types/syllabus').Syllabus> {
+    const response = await apiClient.patch<import('../types/syllabus').Syllabus>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/activate`
+    );
+    return response.data;
+  },
+
+  async archiveSyllabusVersion(
+    syllabusId: string,
+    versionId: string
+  ): Promise<import('../types/syllabus').SyllabusVersion> {
+    const response = await apiClient.patch<import('../types/syllabus').SyllabusVersion>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/archive`
+    );
+    return response.data;
+  },
+
+  async deleteSyllabus(syllabusId: string): Promise<{ message: string; id: string }> {
+    const response = await apiClient.delete<{ message: string; id: string }>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}`
+    );
+    return response.data;
+  },
+
+  async downloadSyllabusFile(syllabusId: string, versionId: string, filename: string): Promise<void> {
+    const response = await apiClient.get(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/download`,
+      { responseType: 'blob' }
+    );
+    const blobUrl = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(blobUrl);
+  },
 };
+
 

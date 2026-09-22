@@ -211,7 +211,7 @@ def test_user_notes_crud_and_cross_user_isolation(client):
     assert a_del.status_code == 200
 
 
-def test_practice_sets_and_evaluation_api(client):
+def test_practice_sets_and_evaluation_api(client, create_active_syllabus):
     """
     Test lesson/concept-aware practice sets and grading API:
     - Lists sets filtered by academic level
@@ -219,6 +219,7 @@ def test_practice_sets_and_evaluation_api(client):
     - Submission returns graded result with explanations and points
     """
     user_id = str(uuid.uuid4())
+    create_active_syllabus(user_id=user_id, academic_level="class_1_5", title="Primary Science")
     token = SecurityContext.create_test_jwt(user_id=user_id, email=f"practice_{user_id[:6]}@nexora.dev")
     headers = {"Authorization": f"Bearer {token}"}
 

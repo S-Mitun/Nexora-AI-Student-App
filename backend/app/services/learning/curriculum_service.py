@@ -18,14 +18,32 @@ class CurriculumService:
         active_only: bool = True,
         curriculum_id: Optional[str] = None,
         education_level: Optional[str] = None,
+        user_id: Optional[str] = None,
+        syllabus_version_id: Optional[str] = None,
+        include_reference: bool = False,
     ) -> List[Subject]:
-        """Returns all subjects ordered by order_index with eager-loaded topics."""
+        """
+        Returns subjects ordered by order_index with eager-loaded topics.
+        Syllabus-first scoping: if syllabus_version_id or user_id is provided, filters strictly
+        to user's syllabus. If neither is provided and include_reference is False, returns [].
+        Quarantined reference templates are only returned when include_reference is True.
+        """
+        if not syllabus_version_id and not user_id and not include_reference:
+            return []
+
         query = db.query(Subject).options(
             joinedload(Subject.curriculum),
             selectinload(Subject.topics).selectinload(Topic.concepts)
         )
         if active_only:
             query = query.filter(Subject.is_active == True)
+        if syllabus_version_id:
+            query = query.filter(Subject.syllabus_version_id == syllabus_version_id)
+        elif user_id:
+            query = query.filter(Subject.user_id == user_id)
+        elif include_reference:
+            query = query.filter(Subject.is_system == True)
+
         if curriculum_id:
             query = query.filter(Subject.curriculum_id == curriculum_id)
         if education_level:
@@ -196,15 +214,18 @@ class CurriculumService:
 
 class CurriculumSeedService:
     """
-    Idempotently seeds initial academic starter curriculum if subjects table is empty.
-    Ensures seamless execution across both local SQLite dev/test and remote Supabase PostgreSQL.
+    Seeds academic reference data for tests and board templates.
     """
 
     @staticmethod
-    def seed_if_empty(db: Session) -> bool:
-        # Seed standard curricula if empty
+    def seed_boards_if_empty(db: Session) -> bool:
+        """
+        Seeds standard educational board reference presets (CBSE, ICSE, University boards)
+        if the curricula table is empty. These serve as selectable presets/templates during
+        syllabus onboarding/creation and do NOT contain subjects, modules, or lessons.
+        """
         if db.query(Curriculum).count() == 0:
-            logger.info("Curricula table is empty. Seeding standard academic boards & curricula...")
+            logger.info("Curricula table is empty. Seeding standard academic boards & curricula presets...")
             curricula = [
                 Curriculum(
                     id="cur-00000000-0000-0000-0000-000000000001",
@@ -300,6 +321,13 @@ class CurriculumSeedService:
             for c in curricula:
                 db.add(c)
             db.commit()
+            return True
+        return False
+
+    @staticmethod
+    def seed_if_empty(db: Session) -> bool:
+        # Seed standard curricula boards if empty
+        CurriculumSeedService.seed_boards_if_empty(db)
 
         # 1. Update any existing legacy subjects so CSE starter subjects are strictly marked "undergraduate"
         legacy_cs_slugs = [

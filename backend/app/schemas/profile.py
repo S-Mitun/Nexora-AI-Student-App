@@ -1,19 +1,20 @@
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, Field
+from app.services.profile.completion_service import ProfileCompletionResult
 
 
 class ProfileBase(BaseModel):
     full_name: Optional[str] = Field(None, max_length=255, description="Student's display name")
     avatar_url: Optional[str] = Field(None, max_length=1024, description="Profile picture URL")
-    education_level: str = Field("undergraduate", max_length=100, description="Academic level (class-1-5, class-6-10, class-11-12, undergraduate, postgraduate, research, custom)")
-    education_category: Optional[str] = Field("undergraduate", max_length=50, description="Primary, Middle, Secondary, Higher Secondary, Undergraduate, Postgraduate, Research, Custom")
+    education_level: Optional[str] = Field(None, max_length=100, description="Academic level (class-1-5, class-6-10, class-11-12, undergraduate, postgraduate, research, custom)")
+    education_category: Optional[str] = Field(None, max_length=50, description="Primary, Middle, Secondary, Higher Secondary, Undergraduate, Postgraduate, Research, Custom")
     board_type: Optional[str] = Field(None, max_length=50, description="national_board, state_board, international_board, university_degree, research, custom")
     stream: Optional[str] = Field(None, max_length=100, description="Academic stream (e.g. Science PCM, Science PCB, Commerce, Arts)")
     program: Optional[str] = Field(None, max_length=100, description="University program (e.g. B.Tech, B.Sc, M.S.)")
     curriculum_id: Optional[str] = Field(None, description="Enrolled educational board or curriculum ID")
-    grade_level: Optional[str] = Field("Class 10", max_length=50, description="Specific academic grade/class or year")
-    academic_domain: Optional[str] = Field("General Studies", max_length=100, description="Discipline domain (e.g., Natural Sciences, Engineering, Commerce)")
+    grade_level: Optional[str] = Field(None, max_length=50, description="Specific academic grade/class or year")
+    academic_domain: Optional[str] = Field(None, max_length=100, description="Discipline domain (e.g., Natural Sciences, Engineering, Commerce)")
     state_region: Optional[str] = Field(None, max_length=100, description="State/Province for state board curricula")
     degree: Optional[str] = Field(None, max_length=100, description="Degree name for higher ed (e.g. B.Tech, B.Sc, M.S.)")
     department: Optional[str] = Field(None, max_length=100, description="Academic department (e.g. Information Technology, Physics)")
@@ -67,6 +68,7 @@ class ProfileRead(ProfileBase):
     is_active: bool
     completeness_score: Optional[int] = 0
     missing_fields: Optional[List[str]] = None
+    profile_completeness: Optional[ProfileCompletionResult] = None
     created_at: datetime
     updated_at: datetime
 

@@ -5,6 +5,7 @@ import {
   BookOpen,
   FolderKanban,
   FileText,
+  FileSpreadsheet,
   CheckCircle2,
   FlaskConical,
   BookMarked,
@@ -18,6 +19,7 @@ import { useAuth } from '../../context/AuthContext';
 
 export const primaryNavItems = [
   { path: '/', label: 'Home', icon: Home },
+  { path: '/syllabus', label: 'Syllabus', icon: FileSpreadsheet },
   { path: '/learn', label: 'My Learning', icon: BookOpen },
   { path: '/subjects', label: 'Subjects', icon: FolderKanban },
   { path: '/materials', label: 'Materials', icon: FileText },

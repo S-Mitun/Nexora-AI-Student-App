@@ -19,7 +19,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { apiService } from '../services/api';
-import { ConceptExploreResult, PersonalizedContext } from '../types/learning';
+import { ConceptExploreResult, PersonalizedContext, WorkspaceOverview } from '../types/learning';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -29,31 +29,44 @@ import { studentActivityService, ActiveCourseProgress } from '../services/studen
 import { AcademicContentRenderer } from '../components/common/AcademicContentRenderer';
 
 import { useAuth } from '../context/AuthContext';
+import { useSyllabus } from '../context/SyllabusContext';
 
 export const LearnPage: React.FC = () => {
   const { profile } = useAuth();
+  const { hasSyllabus, isCurriculumActive } = useSyllabus();
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
   const queryParam = searchParams.get('q');
+  const navigate = useNavigate();
 
-  // --- STATE FOR "MY LEARNING" VIEW ---
+  // --- STATE FOR "MY LEARNING OVERVIEW" VIEW ---
   const [learningFilter, setLearningFilter] = useState<'all' | 'in-progress' | 'completed'>('all');
+  const [workspace, setWorkspace] = useState<WorkspaceOverview | null>(null);
+  const [loadingWorkspace, setLoadingWorkspace] = useState(true);
 
-  // Genuine started courses derived from real student activity
-  const activeCourse = studentActivityService.getActiveCourse(profile?.education_category || profile?.education_level);
-  const registeredCourses = activeCourse
-    ? [
-        {
-          id: `course-${activeCourse.slug}`,
-          subject: activeCourse.courseTitle,
-          slug: activeCourse.slug,
-          totalTopics: activeCourse.totalTopics,
-          completedTopics: activeCourse.completedTopics,
-          progress: activeCourse.progressPercent,
-          currentTopic: activeCourse.currentTopic,
-          lastLessonSlug: activeCourse.lastLesson,
-        },
-      ]
+  useEffect(() => {
+    apiService
+      .getWorkspace()
+      .then((data) => {
+        setWorkspace(data);
+        setLoadingWorkspace(false);
+      })
+      .catch(() => {
+        setLoadingWorkspace(false);
+      });
+  }, []);
+
+  // Strictly derive registered courses from active syllabus & enrolled subjects
+  const registeredCourses = (isCurriculumActive && workspace?.enrolled_subjects)
+    ? workspace.enrolled_subjects.map((sub) => ({
+        id: `course-${sub.slug}`,
+        subject: sub.name,
+        slug: sub.slug,
+        totalTopics: sub.topic_count || 0,
+        completedTopics: 0,
+        progress: 0,
+        currentTopic: `${sub.topic_count || 0} Topics available`,
+        lastLessonSlug: sub.slug,
+      }))
     : [];
 
   // --- STATE FOR "TOPIC / LESSON" VIEW ---
@@ -330,12 +343,16 @@ export const LearnPage: React.FC = () => {
         {filteredCourses.length === 0 ? (
           <EmptyState
             icon={<BookOpen className="w-8 h-8 text-nexora-muted" />}
-            title="You haven't started learning yet"
-            description="Select a subject from the curriculum to begin your personalized learning path."
+            title={hasSyllabus ? "Syllabus uploaded. Curriculum not activated yet." : "No active syllabus has been added yet."}
+            description={
+              hasSyllabus
+                ? "Your syllabus has been received and verified. Concept lessons and learning units will be available once your curriculum is activated."
+                : "No active syllabus has been added yet. Upload your syllabus to build your personalized learning path."
+            }
             action={
-              <Link to="/subjects">
+              <Link to="/syllabus">
                 <Button variant="primary" size="md">
-                  Explore Subjects
+                  {hasSyllabus ? "View Syllabus Hub" : "Upload Syllabus"}
                 </Button>
               </Link>
             }
@@ -403,14 +420,21 @@ export const LearnPage: React.FC = () => {
   if (!conceptData) {
     return (
       <div className="py-16 text-center space-y-4 max-w-md mx-auto">
-        <BookOpen className="w-12 h-12 text-nexora-muted mx-auto" />
-        <h2 className="text-lg font-bold text-white">Lesson Not Found</h2>
-        <p className="text-xs text-nexora-subtext">
-          Could not find a structured lesson for "{queryParam}". Check your syllabus or search another topic.
-        </p>
-        <Button variant="primary" size="sm" onClick={() => navigate('/learn')}>
-          Back to My Learning
-        </Button>
+        <EmptyState
+          icon={<BookOpen className="w-10 h-10 text-nexora-muted" />}
+          title="Concept Not Grounded in Active Syllabus"
+          description={`"${queryParam}" is not available in your active syllabus curriculum. Upload learning materials or add this topic to your syllabus to explore it.`}
+          action={
+            <div className="flex gap-2 justify-center">
+              <Button variant="outline" size="sm" onClick={() => navigate('/learn')}>
+                Back to My Learning
+              </Button>
+              <Button variant="primary" size="sm" onClick={() => navigate('/syllabus')}>
+                {hasSyllabus ? "View Syllabus Hub" : "Upload Syllabus"}
+              </Button>
+            </div>
+          }
+        />
       </div>
     );
   }

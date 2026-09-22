@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from app.core.config import settings
 from app.core.logging import logger
 from app.db.base import Base
-from app.db.session import engine
+from app.db.session import engine, SessionLocal
 from app.api.v1.router import api_v1_router
 from app.api.v1.routes.health import get_health
 
@@ -26,8 +26,24 @@ async def lifespan(app: FastAPI):
         if "sqlite" in str(engine.url):
             from sqlalchemy import text
             with engine.connect() as conn:
-                existing_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(profiles)"))}
+                profile_rows = list(conn.execute(text("PRAGMA table_info(profiles)")))
+                existing_cols = {row[1] for row in profile_rows}
                 if existing_cols:
+                    ed_col = next((r for r in profile_rows if r[1] == "education_level"), None)
+                    if ed_col and ed_col[3] == 1:
+                        conn.execute(text("PRAGMA foreign_keys = OFF"))
+                        conn.execute(text("CREATE TABLE profiles_temp_sync AS SELECT * FROM profiles"))
+                        conn.execute(text("DROP TABLE profiles"))
+                        conn.commit()
+                        from app.models.profile import UserProfile
+                        UserProfile.__table__.create(bind=conn)
+                        common_cols = ", ".join(existing_cols)
+                        conn.execute(text(f"INSERT INTO profiles ({common_cols}) SELECT {common_cols} FROM profiles_temp_sync"))
+                        conn.execute(text("DROP TABLE profiles_temp_sync"))
+                        conn.execute(text("PRAGMA foreign_keys = ON"))
+                        conn.commit()
+                        profile_rows = list(conn.execute(text("PRAGMA table_info(profiles)")))
+                        existing_cols = {row[1] for row in profile_rows}
                     if "institution" not in existing_cols:
                         conn.execute(text("ALTER TABLE profiles ADD COLUMN institution VARCHAR(255)"))
                     if "interests" not in existing_cols:
@@ -46,11 +62,13 @@ async def lifespan(app: FastAPI):
                     if "curriculum_id" not in existing_cols:
                         conn.execute(text("ALTER TABLE profiles ADD COLUMN curriculum_id VARCHAR(36)"))
                     if "grade_level" not in existing_cols:
-                        conn.execute(text("ALTER TABLE profiles ADD COLUMN grade_level VARCHAR(50) DEFAULT 'Class 10'"))
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN grade_level VARCHAR(50)"))
                     if "academic_domain" not in existing_cols:
-                        conn.execute(text("ALTER TABLE profiles ADD COLUMN academic_domain VARCHAR(100) DEFAULT 'General Studies'"))
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN academic_domain VARCHAR(100)"))
                     if "education_category" not in existing_cols:
-                        conn.execute(text("ALTER TABLE profiles ADD COLUMN education_category VARCHAR(50) DEFAULT 'undergraduate'"))
+                        conn.execute(text("ALTER TABLE profiles ADD COLUMN education_category VARCHAR(50)"))
+                    # Clear out fake default 'General Studies'
+                    conn.execute(text("UPDATE profiles SET academic_domain = NULL WHERE academic_domain = 'General Studies'"))
                     if "board_type" not in existing_cols:
                         conn.execute(text("ALTER TABLE profiles ADD COLUMN board_type VARCHAR(50)"))
                     if "stream" not in existing_cols:
@@ -244,6 +262,103 @@ async def lifespan(app: FastAPI):
                         conn.execute(text("ALTER TABLE learning_modules ADD COLUMN is_active BOOLEAN DEFAULT 1"))
                     conn.commit()
 
+                # Sync documents table columns
+                doc_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(documents)"))}
+                if doc_cols:
+                    if "document_role" not in doc_cols:
+                        conn.execute(text("ALTER TABLE documents ADD COLUMN document_role VARCHAR(50) DEFAULT 'secondary_material'"))
+                    if "syllabus_id" not in doc_cols:
+                        conn.execute(text("ALTER TABLE documents ADD COLUMN syllabus_id VARCHAR(36)"))
+                    if "syllabus_version_id" not in doc_cols:
+                        conn.execute(text("ALTER TABLE documents ADD COLUMN syllabus_version_id VARCHAR(36)"))
+                    if "academic_context_id" not in doc_cols:
+                        conn.execute(text("ALTER TABLE documents ADD COLUMN academic_context_id VARCHAR(255)"))
+                    if "mime_type" not in doc_cols:
+                        conn.execute(text("ALTER TABLE documents ADD COLUMN mime_type VARCHAR(100)"))
+                    conn.commit()
+
+                # Sync syllabi table columns
+                syl_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(syllabi)"))}
+                if syl_cols:
+                    if "academic_context_id" not in syl_cols:
+                        conn.execute(text("ALTER TABLE syllabi ADD COLUMN academic_context_id VARCHAR(255)"))
+                    conn.commit()
+
+                # Sync syllabus_versions table columns
+                syl_ver_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(syllabus_versions)"))}
+                if syl_ver_cols:
+                    if "status" not in syl_ver_cols:
+                        conn.execute(text("ALTER TABLE syllabus_versions ADD COLUMN status VARCHAR(50) DEFAULT 'uploaded'"))
+                    if "upload_status" not in syl_ver_cols:
+                        conn.execute(text("ALTER TABLE syllabus_versions ADD COLUMN upload_status VARCHAR(50) DEFAULT 'uploaded'"))
+                    if "processing_status" not in syl_ver_cols:
+                        conn.execute(text("ALTER TABLE syllabus_versions ADD COLUMN processing_status VARCHAR(50) DEFAULT 'not_started'"))
+                    if "curriculum_status" not in syl_ver_cols:
+                        conn.execute(text("ALTER TABLE syllabus_versions ADD COLUMN curriculum_status VARCHAR(50) DEFAULT 'not_built'"))
+                    if "source_filename" not in syl_ver_cols:
+                        conn.execute(text("ALTER TABLE syllabus_versions ADD COLUMN source_filename VARCHAR(255)"))
+                    if "file_size_bytes" not in syl_ver_cols:
+                        conn.execute(text("ALTER TABLE syllabus_versions ADD COLUMN file_size_bytes INTEGER DEFAULT 0"))
+                    if "mime_type" not in syl_ver_cols:
+                        conn.execute(text("ALTER TABLE syllabus_versions ADD COLUMN mime_type VARCHAR(100)"))
+                    if "checksum" not in syl_ver_cols:
+                        conn.execute(text("ALTER TABLE syllabus_versions ADD COLUMN checksum VARCHAR(64)"))
+                    if "storage_path" not in syl_ver_cols:
+                        conn.execute(text("ALTER TABLE syllabus_versions ADD COLUMN storage_path VARCHAR(1024)"))
+                    if "error_message" not in syl_ver_cols:
+                        conn.execute(text("ALTER TABLE syllabus_versions ADD COLUMN error_message TEXT"))
+                    
+                    # Backfill status values
+                    conn.execute(text("""
+                        UPDATE syllabus_versions
+                        SET 
+                            curriculum_status = CASE 
+                                WHEN is_active = 1 THEN 'active'
+                                WHEN status = 'archived' THEN 'archived'
+                                ELSE 'not_built'
+                            END,
+                            upload_status = CASE 
+                                WHEN status = 'failed' THEN 'failed'
+                                ELSE 'verified'
+                            END,
+                            processing_status = CASE 
+                                WHEN is_active = 1 THEN 'completed'
+                                WHEN status = 'failed' THEN 'failed'
+                                ELSE 'not_started'
+                            END
+                        WHERE curriculum_status IS NULL OR upload_status IS NULL OR processing_status IS NULL
+                    """))
+                    conn.commit()
+
+                # Cleanup legacy premature processing stage on syllabus documents
+                conn.execute(text("""
+                    UPDATE documents
+                    SET 
+                        processing_stage = 'uploaded',
+                        progress_percent = 100
+                    WHERE document_role = 'syllabus' 
+                      AND processing_stage = 'ready_for_curriculum_intelligence'
+                """))
+                conn.commit()
+
+                # Sync syllabus-first Subject anchoring columns
+                sub_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(subjects)"))}
+                if sub_cols:
+                    if "user_id" not in sub_cols:
+                        conn.execute(text("ALTER TABLE subjects ADD COLUMN user_id VARCHAR(36)"))
+                    if "syllabus_version_id" not in sub_cols:
+                        conn.execute(text("ALTER TABLE subjects ADD COLUMN syllabus_version_id VARCHAR(36)"))
+                    if "content_source" not in sub_cols:
+                        conn.execute(text("ALTER TABLE subjects ADD COLUMN content_source VARCHAR(50) DEFAULT 'syllabus_extracted'"))
+                    conn.commit()
+
+                # Sync content_source on child hierarchy tables
+                for tbl in ["topics", "concepts", "learning_modules", "lessons"]:
+                    cols = {row[1] for row in conn.execute(text(f"PRAGMA table_info({tbl})"))}
+                    if cols and "content_source" not in cols:
+                        conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN content_source VARCHAR(50) DEFAULT 'syllabus_extracted'"))
+                        conn.commit()
+
                 # Sync notes table columns
                 note_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(notes)"))}
                 if note_cols:
@@ -255,13 +370,11 @@ async def lifespan(app: FastAPI):
                         conn.execute(text("ALTER TABLE notes ADD COLUMN is_archived BOOLEAN DEFAULT 0"))
                     conn.commit()
 
-        # Seed starter curriculum if empty
-        from app.db.session import SessionLocal
-        from app.services.learning.curriculum_service import CurriculumSeedService
         with SessionLocal() as session:
-            CurriculumSeedService.seed_if_empty(session)
+            from app.services.learning.curriculum_service import CurriculumSeedService
+            CurriculumSeedService.seed_boards_if_empty(session)
 
-        logger.info("Database schema synchronized and starter curriculum verified.")
+        logger.info("Database schema synchronized. Syllabus-First architecture active (reference board presets available, runtime auto-seeding detached).")
     except Exception as e:
         logger.error(f"Error creating database tables: {str(e)}")
 

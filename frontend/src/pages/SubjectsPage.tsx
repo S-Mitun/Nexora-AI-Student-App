@@ -23,6 +23,7 @@ import {
 import { apiService } from '../services/api';
 import { Subject } from '../types/learning';
 import { useAcademicContext } from '../context/AcademicContext';
+import { useSyllabus } from '../context/SyllabusContext';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { SkeletonCard } from '../components/ui/Skeleton';
@@ -32,6 +33,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 export const SubjectsPage: React.FC = () => {
   const navigate = useNavigate();
   const { academicContext, refreshAcademicContext, isReady } = useAcademicContext();
+  const { hasSyllabus, isCurriculumActive } = useSyllabus();
   const currentTier = academicContext?.academic_level;
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -42,8 +44,9 @@ export const SubjectsPage: React.FC = () => {
   const [actionInProgressId, setActionInProgressId] = useState<string | null>(null);
 
   const fetchSubjectsAndEnrollments = useCallback(async () => {
-    if (!currentTier) {
+    if (!currentTier || !isCurriculumActive) {
       setSubjects([]);
+      setEnrolledSubjectIds(new Set());
       setLoading(false);
       return;
     }
@@ -64,7 +67,7 @@ export const SubjectsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentTier]);
+  }, [currentTier, isCurriculumActive]);
 
   useEffect(() => {
     fetchSubjectsAndEnrollments();
@@ -235,19 +238,31 @@ export const SubjectsPage: React.FC = () => {
           title={
             activeCategoryFilter === 'enrolled'
               ? 'No subjects enrolled yet'
-              : 'No subjects found for this academic level'
+              : hasSyllabus && !isCurriculumActive
+              ? 'Syllabus uploaded. Curriculum not activated yet.'
+              : 'No syllabus uploaded'
           }
           description={
             activeCategoryFilter === 'enrolled'
-              ? 'Enroll in subjects from the curriculum above to build your active learning workspace.'
-              : `Curriculum subjects for ${academicContext?.grade_level || currentTier} are currently being mapped to standard syllabi.`
+              ? 'Enroll in subjects from your active syllabus to build your learning workspace.'
+              : hasSyllabus && !isCurriculumActive
+              ? 'Your primary syllabus is uploaded and verified. Curriculum subjects will become available once curriculum activation is completed.'
+              : 'Upload your primary syllabus to generate and activate your curriculum subjects.'
           }
           action={
             activeCategoryFilter === 'enrolled' ? (
               <Button variant="primary" size="sm" onClick={() => setActiveCategoryFilter('all')}>
                 Browse Available Subjects
               </Button>
-            ) : undefined
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => navigate('/syllabus')}
+              >
+                {hasSyllabus ? 'View Syllabus Hub' : 'Upload Syllabus'}
+              </Button>
+            )
           }
         />
       ) : (

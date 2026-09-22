@@ -553,19 +553,7 @@ class PersonalizationService:
             for interest in student_interests:
                 norm = cls.normalize_interest(interest)
                 if norm == "Gaming":
-                    if not is_primary and not is_secondary:
-                        recommendations.append(
-                            RecommendedTopic(
-                                concept="Binary Search",
-                                subject="Computer Science",
-                                slug="binary-search",
-                                matched_interest="Gaming",
-                                headline="Game World Spatial Partitioning & Hitboxes",
-                                summary="How game physics engines discard half the world at every step to render collision checks at 120 FPS.",
-                                target_url="/learn?q=Binary%20Search&interest=Gaming",
-                            )
-                        )
-                    elif is_secondary:
+                    if is_secondary:
                         recommendations.append(
                             RecommendedTopic(
                                 concept="Force and Pressure Dynamics",
@@ -725,39 +713,5 @@ class PersonalizationService:
                         target_url="/learn?q=Physics",
                     ),
                 ]
-            else:
-                defaults = [
-                    RecommendedTopic(
-                        concept="Doppler Effect",
-                        subject="Physics",
-                        slug="doppler-effect",
-                        matched_interest="Curriculum Core",
-                        headline="Wave Mechanics & Relative Source Velocity",
-                        summary="Observe wave compression and calculate observed frequencies for moving sound sources with an interactive wave canvas.",
-                        target_url="/learn?q=Doppler%20Effect",
-                    ),
-                    RecommendedTopic(
-                        concept="Binary Search",
-                        subject="Computer Science",
-                        slug="binary-search",
-                        matched_interest="Curriculum Core",
-                        headline="Logarithmic Divide-and-Conquer Search",
-                        summary="Step through logarithmic array bisection and observe how 1,000,000 elements can be searched in only 20 steps.",
-                        target_url="/learn?q=Binary%20Search",
-                    ),
-                    RecommendedTopic(
-                        concept="Convolutional Neural Network (CNN)",
-                        subject="Computer Science",
-                        slug="convolutional-neural-network",
-                        matched_interest="Curriculum Core",
-                        headline="Spatial Pattern Recognition with Matrix Kernels",
-                        summary="Learn how kernel filters slide across multidimensional inputs to extract edges, textures, and higher-order features.",
-                        target_url="/learn?q=Convolutional%20Neural%20Network",
-                    ),
-                ]
-            for d in defaults:
-                if d.concept not in seen_concepts:
-                    seen_concepts.add(d.concept)
-                    deduped.append(d)
 
         return deduped[:4]

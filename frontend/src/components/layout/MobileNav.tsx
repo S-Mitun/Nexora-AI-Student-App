@@ -10,6 +10,7 @@ import {
   FlaskConical,
   TrendingUp,
   FileText,
+  FileSpreadsheet,
   BookMarked,
   Settings,
   GraduationCap,
@@ -34,7 +35,8 @@ export const MobileNav: React.FC<MobileNavProps> = ({ isDrawerOpen, onCloseDrawe
   ];
 
   const secondaryLinks = [
-    { path: '/materials', label: 'Materials', icon: FileText, desc: 'Study documents & syllabus' },
+    { path: '/syllabus', label: 'Syllabus', icon: FileSpreadsheet, desc: 'Primary prescribed curriculum' },
+    { path: '/materials', label: 'Materials', icon: FileText, desc: 'Study textbooks & lecture notes' },
     { path: '/notes', label: 'Notes', icon: BookMarked, desc: 'Personal study notes' },
     { path: '/labs', label: 'Labs', icon: FlaskConical, desc: 'Interactive practical learning' },
     { path: '/progress', label: 'Progress', icon: TrendingUp, desc: 'Subject completion & scores' },

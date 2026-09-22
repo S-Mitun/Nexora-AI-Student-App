@@ -203,15 +203,14 @@ def test_personalization_mapping_domains():
 
 
 def test_dashboard_recommendations_behavior(client):
-    """Test M: Dashboard recommendations return interest-tailored cards or clean curriculum fallbacks."""
-    # 1. Unauthenticated guest returns defaults without 401
+    """Test M: Dashboard recommendations return [] when no active syllabus exists (Syllabus-First)."""
+    # 1. Unauthenticated guest returns empty list without 401
     guest_res = client.get("/api/v1/learning/recommendations")
     assert guest_res.status_code == 200
     guest_recs = guest_res.json()
-    assert len(guest_recs) >= 2
-    assert guest_recs[0]["matched_interest"] == "Curriculum Core"
+    assert guest_recs == []
 
-    # 2. Authenticated user with Cars interest gets Cars-tailored recommendation
+    # 2. Authenticated user without active syllabus also returns []
     user_id = "cccc1111-2222-3333-4444-555566667777"
     token = SecurityContext.create_test_jwt(user_id=user_id, email="cars_fan@nexora.dev")
     client.patch("/api/v1/profile/preferences", json={"interests": ["Cars"]}, headers={"Authorization": f"Bearer {token}"})
@@ -219,7 +218,7 @@ def test_dashboard_recommendations_behavior(client):
     auth_res = client.get("/api/v1/learning/recommendations", headers={"Authorization": f"Bearer {token}"})
     assert auth_res.status_code == 200
     auth_recs = auth_res.json()
-    assert any(r["matched_interest"] == "Cars" for r in auth_recs)
+    assert auth_recs == []
 
 
 def test_perspectives_toggle_endpoint(client):

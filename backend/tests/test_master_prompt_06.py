@@ -24,11 +24,6 @@ def db():
         session.close()
 
 
-@pytest.fixture
-def client():
-    return TestClient(app)
-
-
 def test_academic_context_resolution_class_1_5(db):
     user_id = f"test-p1-{uuid.uuid4()}"
     prof = UserProfile(

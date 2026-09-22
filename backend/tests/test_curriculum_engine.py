@@ -129,8 +129,8 @@ def test_curriculum_hierarchy_models(db_session):
 
 def test_curriculum_endpoints_list_and_details(client):
     """Verifies all curriculum listing and detail endpoints across the 5 tiers."""
-    # 1. List subjects
-    res = client.get("/api/v1/learning/subjects")
+    # 1. List subjects (reference templates)
+    res = client.get("/api/v1/learning/subjects?include_reference=true")
     assert res.status_code == 200
     subjects = res.json()
     assert len(subjects) >= 5
@@ -140,69 +140,69 @@ def test_curriculum_endpoints_list_and_details(client):
     assert dsa_sub["concept_count"] >= 4
 
     # Direct alias endpoint test
-    res_direct = client.get("/api/v1/subjects")
+    res_direct = client.get("/api/v1/subjects?include_reference=true")
     assert res_direct.status_code == 200
     assert len(res_direct.json()) == len(subjects)
 
-    # 2. Subject detail
-    res = client.get("/api/v1/learning/subjects/data-structures-algorithms")
+    # 2. Subject detail (reference template)
+    res = client.get("/api/v1/learning/subjects/data-structures-algorithms?include_reference=true")
     assert res.status_code == 200
     sub_detail = res.json()
     assert sub_detail["slug"] == "data-structures-algorithms"
     assert len(sub_detail["topics"]) >= 4
 
-    # 3. List topics for subject
-    res = client.get("/api/v1/learning/subjects/data-structures-algorithms/topics")
+    # 3. List topics for subject (reference template)
+    res = client.get("/api/v1/learning/subjects/data-structures-algorithms/topics?include_reference=true")
     assert res.status_code == 200
     topics = res.json()
     assert any(t["slug"] == "trees-hierarchies" for t in topics)
 
-    # 4. Topic detail
-    res = client.get("/api/v1/learning/topics/trees-hierarchies")
+    # 4. Topic detail (reference template)
+    res = client.get("/api/v1/learning/topics/trees-hierarchies?include_reference=true")
     assert res.status_code == 200
     top_detail = res.json()
     assert top_detail["name"] == "Trees & Hierarchies"
     assert len(top_detail["concepts"]) >= 2
 
-    # 5. List concepts for topic
-    res = client.get("/api/v1/learning/topics/trees-hierarchies/concepts")
+    # 5. List concepts for topic (reference template)
+    res = client.get("/api/v1/learning/topics/trees-hierarchies/concepts?include_reference=true")
     assert res.status_code == 200
     concepts = res.json()
     assert any(c["slug"] == "binary-search-tree" for c in concepts)
 
-    # 6. Concept detail
-    res = client.get("/api/v1/learning/concepts/binary-search-tree")
+    # 6. Concept detail (reference template)
+    res = client.get("/api/v1/learning/concepts/binary-search-tree?include_reference=true")
     assert res.status_code == 200
     con_detail = res.json()
     assert con_detail["name"] == "Binary Search Tree"
     assert len(con_detail["modules"]) >= 1
     assert con_detail["topic_name"] == "Trees & Hierarchies"
 
-    # 7. List modules for concept
-    res = client.get("/api/v1/learning/concepts/binary-search-tree/modules")
+    # 7. List modules for concept (reference template)
+    res = client.get("/api/v1/learning/concepts/binary-search-tree/modules?include_reference=true")
     assert res.status_code == 200
     modules = res.json()
     assert len(modules) >= 1
     mod = modules[0]
     assert mod["title"] == "Foundations of Binary Search Trees"
 
-    # 8. Module detail
-    res = client.get(f"/api/v1/learning/modules/{mod['id']}")
+    # 8. Module detail (reference template)
+    res = client.get(f"/api/v1/learning/modules/{mod['id']}?include_reference=true")
     assert res.status_code == 200
     mod_detail = res.json()
     assert mod_detail["title"] == "Foundations of Binary Search Trees"
     assert len(mod_detail["lessons"]) == 3
     assert mod_detail["concept_name"] == "Binary Search Tree"
 
-    # 9. List lessons for module
-    res = client.get(f"/api/v1/learning/modules/{mod['id']}/lessons")
+    # 9. List lessons for module (reference template)
+    res = client.get(f"/api/v1/learning/modules/{mod['id']}/lessons?include_reference=true")
     assert res.status_code == 200
     lessons = res.json()
     assert len(lessons) == 3
     assert lessons[0]["slug"] == "the-bst-invariant"
 
-    # 10. Lesson detail with previous / next navigation pointers
-    res = client.get("/api/v1/learning/lessons/the-bst-invariant")
+    # 10. Lesson detail with previous / next navigation pointers (reference template)
+    res = client.get("/api/v1/learning/lessons/the-bst-invariant?include_reference=true")
     assert res.status_code == 200
     les_detail = res.json()
     assert les_detail["title"] == "The BST Invariant & Structural Mechanics"
@@ -212,11 +212,26 @@ def test_curriculum_endpoints_list_and_details(client):
     assert les_detail["next_lesson_slug"] == "search-insertion-walkthrough"
 
     # Middle lesson has both previous and next
-    res_mid = client.get("/api/v1/learning/lessons/search-insertion-walkthrough")
+    res_mid = client.get("/api/v1/learning/lessons/search-insertion-walkthrough?include_reference=true")
     assert res_mid.status_code == 200
     mid_detail = res_mid.json()
     assert mid_detail["previous_lesson_slug"] == "the-bst-invariant"
     assert mid_detail["next_lesson_slug"] == "core-takeaways-complexity"
+
+
+def test_quarantined_reference_data_unreachable_in_normal_runtime(client):
+    """
+    Mandatory Rule 2 & 3:
+    Legacy/default/demo curriculum MUST NOT be reachable from normal runtime.
+    Without include_reference=true, all direct lookups for legacy data must return 404.
+    """
+    assert client.get("/api/v1/learning/subjects/data-structures-algorithms").status_code == 404
+    assert client.get("/api/v1/learning/subjects/data-structures-algorithms/topics").status_code == 404
+    assert client.get("/api/v1/learning/topics/trees-hierarchies").status_code == 404
+    assert client.get("/api/v1/learning/topics/trees-hierarchies/concepts").status_code == 404
+    assert client.get("/api/v1/learning/concepts/binary-search-tree").status_code == 404
+    assert client.get("/api/v1/learning/concepts/binary-search-tree/modules").status_code == 404
+    assert client.get("/api/v1/learning/lessons/the-bst-invariant").status_code == 404
 
 
 def test_curriculum_404_error_handling(client):
@@ -246,7 +261,7 @@ def test_prompt_04_personalization_in_lesson_detail(client, db_session):
     token = SecurityContext.create_test_jwt(user_id=user_id, email="gamer_student@example.com")
     headers = {"Authorization": f"Bearer {token}"}
 
-    res = client.get("/api/v1/learning/lessons/the-bst-invariant", headers=headers)
+    res = client.get("/api/v1/learning/lessons/the-bst-invariant?include_reference=true", headers=headers)
     assert res.status_code == 200
     data = res.json()
     assert data["title"] == "The BST Invariant & Structural Mechanics"

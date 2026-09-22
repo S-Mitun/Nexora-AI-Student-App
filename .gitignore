@@ -181,3 +181,8 @@ htmlcov/
 *.sqlite
 *.sqlite3
 *.db
+
+# Local storage and data
+data/
+backend/data/
+
