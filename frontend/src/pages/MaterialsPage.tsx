@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import {
   FileText,
   Plus,
@@ -22,8 +23,10 @@ import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
 import { apiService } from '../services/api';
 import { StudyMaterialDocument } from '../types/learning';
+import { useSyllabus } from '../context/SyllabusContext';
 
 export const MaterialsPage: React.FC = () => {
+  const { hasSyllabus } = useSyllabus();
   const [documents, setDocuments] = useState<StudyMaterialDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -133,7 +136,34 @@ export const MaterialsPage: React.FC = () => {
   });
 
   const getStatusBadge = (doc: StudyMaterialDocument) => {
-    if (doc.status === 'completed') {
+    // 1. Primary Syllabus Documents (classified under syllabus lifecycle)
+    if (doc.document_role === 'syllabus') {
+      if (doc.status === 'failed') {
+        return (
+          <Badge variant="outline" size="sm" className="flex items-center gap-1 border-rose-500/40 text-rose-300 bg-rose-500/15" title={doc.error_message}>
+            <AlertCircle className="w-3 h-3" />
+            <span>Failed</span>
+          </Badge>
+        );
+      }
+      if (doc.status === 'active') {
+        return (
+          <Badge variant="success" size="sm" className="flex items-center gap-1 bg-emerald-500/20 text-emerald-300 border-emerald-500/40">
+            <CheckCircle2 className="w-3 h-3" />
+            <span>Active Syllabus</span>
+          </Badge>
+        );
+      }
+      return (
+        <Badge variant="neutral" size="sm" className="flex items-center gap-1 border-purple-500/40 text-purple-300 bg-purple-500/15">
+          <CheckCircle2 className="w-3 h-3 text-purple-400" />
+          <span>Verified Syllabus</span>
+        </Badge>
+      );
+    }
+
+    // 2. Secondary Study Materials
+    if (doc.status === 'completed' || doc.status === 'ready') {
       return (
         <Badge variant="success" size="sm" className="flex items-center gap-1">
           <CheckCircle2 className="w-3 h-3" />
@@ -275,17 +305,29 @@ export const MaterialsPage: React.FC = () => {
       ) : filteredDocuments.length === 0 ? (
         <EmptyState
           icon={<FileText className="w-8 h-8 text-nexora-muted" />}
-          title="No academic materials uploaded yet"
-          description="Upload your school textbook (Class 8 Science, Class 10 Math), university slides, or notes to seed your personalized workspace."
+          title={!hasSyllabus ? "No syllabus uploaded yet" : "No academic materials uploaded yet"}
+          description={
+            !hasSyllabus
+              ? "Upload your official syllabus to build your learning workspace and primary curriculum blueprint."
+              : "Upload textbooks, slides, or notes to supplement your active syllabus curriculum."
+          }
           action={
-            <Button
-              variant="primary"
-              size="sm"
-              leftIcon={<Upload className="w-4 h-4" />}
-              onClick={() => setIsModalOpen(true)}
-            >
-              Upload First Document
-            </Button>
+            !hasSyllabus ? (
+              <Link to="/syllabus">
+                <Button variant="primary" size="sm" leftIcon={<Upload className="w-4 h-4" />}>
+                  Upload Syllabus
+                </Button>
+              </Link>
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                leftIcon={<Upload className="w-4 h-4" />}
+                onClick={() => setIsModalOpen(true)}
+              >
+                Upload First Document
+              </Button>
+            )
           }
         />
       ) : (
@@ -306,7 +348,13 @@ export const MaterialsPage: React.FC = () => {
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        {getTypeBadge(doc.source_type)}
+                        {doc.document_role === 'syllabus' ? (
+                          <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-semibold text-[10px] uppercase tracking-wide border border-purple-500/30">
+                            Primary Syllabus
+                          </span>
+                        ) : (
+                          getTypeBadge(doc.source_type)
+                        )}
                         <span className="text-xs font-semibold text-nexora-subtext">
                           {formatFileSize(doc.file_size_bytes)}
                         </span>
@@ -323,6 +371,16 @@ export const MaterialsPage: React.FC = () => {
 
                   <div className="flex items-center gap-3 self-end sm:self-center shrink-0">
                     {getStatusBadge(doc)}
+                    {doc.document_role === 'syllabus' && (
+                      <Link
+                        to="/syllabus"
+                        className="px-2.5 py-1 rounded-lg text-xs font-medium text-purple-300 hover:bg-purple-500/15 transition-colors flex items-center gap-1 border border-purple-500/30"
+                        title="View in Syllabus Hub"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Syllabus Hub</span>
+                      </Link>
+                    )}
                     <button
                       onClick={() => handleDelete(doc.id)}
                       className="p-1.5 text-nexora-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
@@ -334,8 +392,8 @@ export const MaterialsPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Progress bar for background processing */}
-                {doc.status === 'processing' && (
+                {/* Progress bar for background processing: ONLY for secondary materials */}
+                {doc.status === 'processing' && doc.document_role !== 'syllabus' && (
                   <div className="space-y-1.5 pt-2 border-t border-nexora-border/40">
                     <div className="flex items-center justify-between text-xs text-nexora-subtext">
                       <span className="capitalize font-medium text-amber-300">

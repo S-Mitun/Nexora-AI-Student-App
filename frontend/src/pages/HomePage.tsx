@@ -32,6 +32,7 @@ import { apiService } from '../services/api';
 import { Subject, RecommendedTopic, WorkspaceOverview } from '../types/learning';
 import { useAuth } from '../context/AuthContext';
 import { useAcademicContext } from '../context/AcademicContext';
+import { useSyllabus } from '../context/SyllabusContext';
 import {
   studentActivityService,
   ActiveCourseProgress,
@@ -47,14 +48,6 @@ import { EmptyState } from '../components/ui/EmptyState';
 const getExampleQueries = (category?: string, level?: string) => {
   const norm = (category || level || '').toLowerCase();
   if (norm.includes('primary') || norm.includes('class-1-5') || norm.includes('1-5')) {
-    return [
-      { label: 'Living and Non-Living Things', domain: 'Environmental Studies' },
-      { label: 'Addition & Basic Shapes', domain: 'Mathematics' },
-      { label: 'Parts of a Plant', domain: 'Science' },
-      { label: 'Alphabet & Story Reading', domain: 'Languages' },
-    ];
-  }
-  if (norm.includes('secondary') || norm.includes('class-6-10') || norm.includes('6-10')) {
     return [
       { label: "Force & Pressure Dynamics (F = ma)", domain: 'General Science' },
       { label: 'Linear Equations (y = mx + c)', domain: 'Mathematics' },
@@ -103,6 +96,7 @@ export const HomePage: React.FC = () => {
   const studentName = profile?.full_name || user?.email?.split('@')[0] || 'Student';
 
   const { academicContext, isReady } = useAcademicContext();
+  const { hasSyllabus, isCurriculumActive, syllabusState } = useSyllabus();
   const activeLevel = academicContext?.academic_level || profile?.education_category || profile?.education_level;
 
   // Genuine student learning activity & active course strictly from database
@@ -122,8 +116,8 @@ export const HomePage: React.FC = () => {
       .then((data) => {
         setWorkspace(data);
         setLoadingWorkspace(false);
-        // Syllabus-First: only establish an active course if user has an active syllabus and enrolled subjects
-        if (data?.active_syllabus && data?.enrolled_subjects && data.enrolled_subjects.length > 0) {
+        // Syllabus-First: only establish an active course if user has an active syllabus curriculum and enrolled subjects
+        if (isCurriculumActive && data?.enrolled_subjects && data.enrolled_subjects.length > 0) {
           const firstSub = data.enrolled_subjects[0];
           setActiveCourse({
             subject: firstSub.name,
@@ -398,8 +392,8 @@ export const HomePage: React.FC = () => {
         )}
       </div>
 
-      {/* 1b. Syllabus-First Mandatory Academic Workspace State (Master Prompt 01R) */}
-      {!loadingWorkspace && !workspace?.active_syllabus && (
+      {/* 1b. State A: No Syllabus Added Yet */}
+      {!loadingWorkspace && !hasSyllabus && (
         <div className="p-6 rounded-2xl bg-gradient-to-r from-nexora-surface to-indigo-950/30 border border-nexora-primary/30 shadow-glow-sm">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
@@ -415,9 +409,39 @@ export const HomePage: React.FC = () => {
                 Upload your syllabus to build your learning workspace. NEXORA extracts your subjects, units, and lessons directly from your prescribed curriculum.
               </p>
             </div>
-            <Link to="/materials?role=primary_syllabus" className="shrink-0">
+            <Link to="/syllabus" className="shrink-0">
               <Button variant="primary" size="md" rightIcon={<ArrowRight className="w-4 h-4" />}>
                 Upload Syllabus
+              </Button>
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* 1c. State B: Syllabus Uploaded, Curriculum Not Activated Yet */}
+      {!loadingWorkspace && hasSyllabus && !isCurriculumActive && (
+        <div className="p-6 rounded-2xl bg-gradient-to-r from-nexora-surface via-purple-950/20 to-nexora-surface border border-purple-500/40 shadow-glow-sm">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-purple-400 bg-purple-500/15 px-2.5 py-0.5 rounded-full border border-purple-500/30">
+                  Syllabus Verified
+                </span>
+                <span className="text-xs text-nexora-muted">&bull;</span>
+                <span className="text-xs text-nexora-subtext font-mono">
+                  {syllabusState?.title || 'Prescribed Syllabus'} (v{syllabusState?.active_version_number || 1})
+                </span>
+              </div>
+              <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                Syllabus uploaded. Curriculum not activated yet.
+              </h2>
+              <p className="text-xs sm:text-sm text-nexora-subtext mt-1 max-w-xl">
+                Your primary academic syllabus has been stored and verified. Structured subjects, units, and interactive lessons will become active in the upcoming prompt.
+              </p>
+            </div>
+            <Link to="/syllabus" className="shrink-0">
+              <Button variant="primary" size="md" className="bg-purple-600 hover:bg-purple-700" rightIcon={<ArrowRight className="w-4 h-4" />}>
+                View Syllabus Hub
               </Button>
             </Link>
           </div>
@@ -449,7 +473,7 @@ export const HomePage: React.FC = () => {
           </Button>
         </form>
 
-        {workspace?.active_syllabus ? (
+        {isCurriculumActive ? (
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className="text-nexora-muted font-medium">Suggested topics:</span>
             {getExampleQueries(profile?.education_category, profile?.education_level).map((item, idx) => (
@@ -465,7 +489,11 @@ export const HomePage: React.FC = () => {
         ) : (
           <div className="text-xs text-nexora-muted flex items-center gap-2 py-1">
             <Sparkles className="w-3.5 h-3.5 text-nexora-primary" />
-            <span>Upload and activate your syllabus to populate curriculum topics and lessons for exploration.</span>
+            <span>
+              {hasSyllabus
+                ? "Syllabus uploaded. Curriculum concepts will become active once your syllabus is processed."
+                : "Upload and activate your syllabus to populate curriculum topics and lessons for exploration."}
+            </span>
           </div>
         )}
       </div>
@@ -499,19 +527,32 @@ export const HomePage: React.FC = () => {
               <SkeletonCard key={i} />
             ))}
           </div>
-        ) : !workspace?.active_syllabus || !workspace?.enrolled_subjects || workspace.enrolled_subjects.length === 0 ? (
+        ) : !isCurriculumActive ? (
           <EmptyState
             icon={<BookOpen className="w-8 h-8 text-nexora-muted" />}
-            title="No curriculum available"
+            title={hasSyllabus ? "Syllabus uploaded. Curriculum not activated yet." : "No active syllabus has been added yet."}
             description={
-              !workspace?.active_syllabus
-                ? "No active syllabus has been added yet. Upload your syllabus to build your learning workspace and populate subjects."
-                : "You have not enrolled in any subjects from your active syllabus yet."
+              hasSyllabus
+                ? "Your syllabus has been received and verified. Curriculum subjects will appear once your syllabus curriculum is activated."
+                : "No active syllabus has been added yet. Upload your syllabus to build your learning workspace and populate subjects."
             }
             action={
-              <Link to={!workspace?.active_syllabus ? "/materials?role=primary_syllabus" : "/subjects"}>
+              <Link to="/syllabus">
                 <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
-                  {!workspace?.active_syllabus ? "Upload Syllabus" : "Browse Available Subjects"}
+                  {hasSyllabus ? "View Syllabus Hub" : "Upload Syllabus"}
+                </Button>
+              </Link>
+            }
+          />
+        ) : !workspace?.enrolled_subjects || workspace.enrolled_subjects.length === 0 ? (
+          <EmptyState
+            icon={<BookOpen className="w-8 h-8 text-nexora-muted" />}
+            title="No subjects enrolled yet"
+            description="You have not enrolled in any subjects from your active syllabus yet."
+            action={
+              <Link to="/subjects">
+                <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                  Browse Available Subjects
                 </Button>
               </Link>
             }
@@ -894,23 +935,21 @@ export const HomePage: React.FC = () => {
               <SkeletonCard key={i} />
             ))}
           </div>
-        ) : recommendations.length === 0 ? (
+        ) : !isCurriculumActive || recommendations.length === 0 ? (
           <EmptyState
             icon={<Compass className="w-8 h-8 text-nexora-muted" />}
-            title="No concepts available yet"
+            title={hasSyllabus ? "Curriculum activation pending" : "No concepts available yet"}
             description={
-              !workspace?.active_syllabus
-                ? "Upload your syllabus to activate and explore personalized concepts."
-                : "No concepts currently matched. Complete your interests in Profile to personalize learning examples."
+              hasSyllabus
+                ? "Concepts and personalized recommendations will become available upon syllabus curriculum activation."
+                : "Upload your syllabus to activate and explore personalized concepts."
             }
             action={
-              !workspace?.active_syllabus ? (
-                <Link to="/materials?role=primary_syllabus">
-                  <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
-                    Upload Syllabus
-                  </Button>
-                </Link>
-              ) : undefined
+              <Link to="/syllabus">
+                <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                  {hasSyllabus ? "View Syllabus Hub" : "Upload Syllabus"}
+                </Button>
+              </Link>
             }
           />
         ) : (
@@ -975,15 +1014,19 @@ export const HomePage: React.FC = () => {
               <SkeletonCard key={i} />
             ))}
           </div>
-        ) : !workspace?.active_syllabus || subjects.length === 0 ? (
+        ) : !isCurriculumActive || subjects.length === 0 ? (
           <EmptyState
             icon={<BookOpen className="w-8 h-8 text-nexora-muted" />}
-            title="No curriculum available"
-            description="No active syllabus has been added yet. Upload your syllabus to build your learning workspace."
+            title={hasSyllabus ? "Syllabus uploaded. Curriculum is not activated yet." : "No active syllabus available"}
+            description={
+              hasSyllabus
+                ? "Your syllabus has been received and verified. Curriculum subjects will appear once your syllabus curriculum is activated."
+                : "No active syllabus has been added yet. Upload your syllabus to build your learning workspace."
+            }
             action={
-              <Link to="/materials?role=primary_syllabus">
+              <Link to="/syllabus">
                 <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
-                  Upload Syllabus
+                  {hasSyllabus ? "View Syllabus Hub" : "Upload Syllabus"}
                 </Button>
               </Link>
             }

@@ -16,7 +16,7 @@ export interface StudyMaterialDocument {
   source_type: string;
   file_path: string;
   file_size_bytes: number;
-  status: 'queued' | 'processing' | 'completed' | 'failed' | 'retry';
+  status: 'queued' | 'processing' | 'completed' | 'failed' | 'retry' | 'active' | 'ready' | string;
   curriculum_id?: string;
   subject_id?: string;
   language: string;
@@ -26,6 +26,10 @@ export interface StudyMaterialDocument {
   error_message?: string;
   page_count: number;
   content_hash?: string;
+  document_role?: 'syllabus' | 'secondary_material' | string;
+  syllabus_id?: string;
+  syllabus_version_id?: string;
+  academic_context_id?: string;
   metadata_json: Record<string, any>;
   created_at: string;
   updated_at: string;
@@ -133,6 +137,7 @@ export interface Syllabus {
 export interface WorkspaceOverview {
   profile_completeness: ProfileCompleteness;
   academic_identity: AcademicIdentity;
+  syllabus_state?: import('./syllabus').SyllabusCanonicalState;
   active_syllabus?: Syllabus | null;
   enrolled_subjects: Subject[];
   materials_summary: MaterialsSummary;

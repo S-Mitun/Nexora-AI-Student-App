@@ -71,12 +71,13 @@ class LearningToolStatus(BaseModel):
     phase_label: str = "Live"  # "Live", "Prompt 10", "Prompt 18", etc.
 
 
-from app.schemas.syllabus import SyllabusRead
+from app.schemas.syllabus import SyllabusRead, SyllabusCanonicalStateResponse
 
 class WorkspaceOverview(BaseModel):
     profile_completeness: ProfileCompleteness
     academic_identity: AcademicIdentity
     academic_context: Optional[AcademicContextResponse] = None
+    syllabus_state: Optional[SyllabusCanonicalStateResponse] = None
     active_syllabus: Optional[SyllabusRead] = None
     enrolled_subjects: List[SubjectRead] = Field(default_factory=list)
     materials_summary: MaterialsSummary

@@ -29,14 +29,16 @@ import { studentActivityService, ActiveCourseProgress } from '../services/studen
 import { AcademicContentRenderer } from '../components/common/AcademicContentRenderer';
 
 import { useAuth } from '../context/AuthContext';
+import { useSyllabus } from '../context/SyllabusContext';
 
 export const LearnPage: React.FC = () => {
   const { profile } = useAuth();
+  const { hasSyllabus, isCurriculumActive } = useSyllabus();
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
   const queryParam = searchParams.get('q');
+  const navigate = useNavigate();
 
-  // --- STATE FOR "MY LEARNING" VIEW ---
+  // --- STATE FOR "MY LEARNING OVERVIEW" VIEW ---
   const [learningFilter, setLearningFilter] = useState<'all' | 'in-progress' | 'completed'>('all');
   const [workspace, setWorkspace] = useState<WorkspaceOverview | null>(null);
   const [loadingWorkspace, setLoadingWorkspace] = useState(true);
@@ -54,7 +56,7 @@ export const LearnPage: React.FC = () => {
   }, []);
 
   // Strictly derive registered courses from active syllabus & enrolled subjects
-  const registeredCourses = (workspace?.active_syllabus && workspace?.enrolled_subjects)
+  const registeredCourses = (isCurriculumActive && workspace?.enrolled_subjects)
     ? workspace.enrolled_subjects.map((sub) => ({
         id: `course-${sub.slug}`,
         subject: sub.name,
@@ -341,12 +343,16 @@ export const LearnPage: React.FC = () => {
         {filteredCourses.length === 0 ? (
           <EmptyState
             icon={<BookOpen className="w-8 h-8 text-nexora-muted" />}
-            title="No curriculum available"
-            description="No active syllabus has been added yet. Upload your syllabus to build your personalized learning path."
+            title={hasSyllabus ? "Syllabus uploaded. Curriculum not activated yet." : "No active syllabus has been added yet."}
+            description={
+              hasSyllabus
+                ? "Your syllabus has been received and verified. Concept lessons and learning units will be available once your curriculum is activated."
+                : "No active syllabus has been added yet. Upload your syllabus to build your personalized learning path."
+            }
             action={
-              <Link to="/materials?role=primary_syllabus">
+              <Link to="/syllabus">
                 <Button variant="primary" size="md">
-                  Upload Syllabus
+                  {hasSyllabus ? "View Syllabus Hub" : "Upload Syllabus"}
                 </Button>
               </Link>
             }
@@ -423,8 +429,8 @@ export const LearnPage: React.FC = () => {
               <Button variant="outline" size="sm" onClick={() => navigate('/learn')}>
                 Back to My Learning
               </Button>
-              <Button variant="primary" size="sm" onClick={() => navigate('/materials?role=primary_syllabus')}>
-                Upload Syllabus
+              <Button variant="primary" size="sm" onClick={() => navigate('/syllabus')}>
+                {hasSyllabus ? "View Syllabus Hub" : "Upload Syllabus"}
               </Button>
             </div>
           }

@@ -16,6 +16,7 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
 import { useAcademicContext } from '../context/AcademicContext';
+import { useSyllabus } from '../context/SyllabusContext';
 
 interface LabTrack {
   id: string;
@@ -66,11 +67,12 @@ const ALL_LAB_TRACKS: LabTrack[] = [
 
 export const LabsPage: React.FC = () => {
   const { academicContext, enrolledSubjects } = useAcademicContext();
+  const { hasSyllabus, isCurriculumActive } = useSyllabus();
   const currentTier = academicContext?.academic_level;
   const displayCategory = academicContext?.education_category || currentTier;
 
   // Filter lab tracks that genuinely match the student's active academic tier and enrolled syllabus
-  const applicableTracks = currentTier && enrolledSubjects && enrolledSubjects.length > 0
+  const applicableTracks = currentTier && enrolledSubjects && enrolledSubjects.length > 0 && isCurriculumActive
     ? ALL_LAB_TRACKS.filter((track) =>
         track.applicableTiers.some((tier) => tier === currentTier || tier === displayCategory)
       )
@@ -127,12 +129,20 @@ export const LabsPage: React.FC = () => {
         <Card className="border-nexora-border/80 p-8 text-center">
           <EmptyState
             icon={<FlaskConical className="w-10 h-10 text-nexora-muted mx-auto" />}
-            title="No curriculum-linked labs available"
-            description="Interactive simulations and virtual experiments are calibrated to active syllabus concepts. Upload your syllabus to view calibrated simulations and labs."
+            title={
+              hasSyllabus && !isCurriculumActive
+                ? 'Syllabus uploaded. Labs not ready yet.'
+                : 'No curriculum-linked labs available'
+            }
+            description={
+              hasSyllabus && !isCurriculumActive
+                ? 'Your primary syllabus is uploaded and verified. Concept simulations and virtual laboratory tracks will become available once curriculum activation is completed.'
+                : 'Interactive simulations and virtual experiments are calibrated to active syllabus concepts. Upload your syllabus to view calibrated simulations and labs.'
+            }
             action={
-              <Link to="/materials?role=primary_syllabus">
+              <Link to="/syllabus">
                 <Button variant="primary" size="md">
-                  Upload Syllabus
+                  {hasSyllabus ? 'View Syllabus Hub' : 'Upload Syllabus'}
                 </Button>
               </Link>
             }

@@ -237,13 +237,19 @@ def get_academic_workspace(
 
     from app.models.syllabus import Syllabus, SyllabusVersion
     from app.schemas.syllabus import SyllabusRead, SyllabusVersionRead
+    from app.services.syllabus.state_resolver import SyllabusStateResolver
+
+    # Authoritative Canonical Syllabus State
+    canonical_syllabus_state = SyllabusStateResolver.resolve_state(
+        db, current_user.id, target_context_id=academic_context.context_id
+    )
 
     active_syl_model = (
         db.query(Syllabus)
         .filter(
             Syllabus.user_id == current_user.id,
-            Syllabus.academic_level == academic_context.academic_level,
-            Syllabus.status.in_(["confirmed", "extracted"]),
+            (Syllabus.academic_context_id == academic_context.context_id) | (Syllabus.academic_level == academic_context.academic_level),
+            Syllabus.status.in_(["confirmed", "extracted", "active"]),
         )
         .first()
     )
@@ -263,6 +269,7 @@ def get_academic_workspace(
             user_id=active_syl_model.user_id,
             title=active_syl_model.title,
             academic_level=active_syl_model.academic_level,
+            academic_context_id=active_syl_model.academic_context_id,
             institution=active_syl_model.institution,
             program_degree=active_syl_model.program_degree,
             academic_year=active_syl_model.academic_year,
@@ -273,8 +280,8 @@ def get_academic_workspace(
             versions=[SyllabusVersionRead.model_validate(v) for v in active_syl_model.versions],
         )
 
-    # Absolute Rule: No active syllabus = empty curriculum workspace
-    if not active_syllabus_read:
+    # Absolute Rule: Only when curriculum is explicitly active may subjects appear
+    if not canonical_syllabus_state.is_curriculum_active:
         enrolled_subjects = []
         starter_subjects_available = 0
     else:
@@ -284,7 +291,8 @@ def get_academic_workspace(
         profile_completeness=completeness,
         academic_identity=academic_identity,
         academic_context=academic_context,
-        active_syllabus=active_syllabus_read,
+        syllabus_state=canonical_syllabus_state,
+        active_syllabus=active_syllabus_read if canonical_syllabus_state.is_curriculum_active else None,
         enrolled_subjects=enrolled_subjects,
         materials_summary=materials_summary,
         learning_tools=learning_tools,

@@ -26,8 +26,24 @@ async def lifespan(app: FastAPI):
         if "sqlite" in str(engine.url):
             from sqlalchemy import text
             with engine.connect() as conn:
-                existing_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(profiles)"))}
+                profile_rows = list(conn.execute(text("PRAGMA table_info(profiles)")))
+                existing_cols = {row[1] for row in profile_rows}
                 if existing_cols:
+                    ed_col = next((r for r in profile_rows if r[1] == "education_level"), None)
+                    if ed_col and ed_col[3] == 1:
+                        conn.execute(text("PRAGMA foreign_keys = OFF"))
+                        conn.execute(text("CREATE TABLE profiles_temp_sync AS SELECT * FROM profiles"))
+                        conn.execute(text("DROP TABLE profiles"))
+                        conn.commit()
+                        from app.models.profile import UserProfile
+                        UserProfile.__table__.create(bind=conn)
+                        common_cols = ", ".join(existing_cols)
+                        conn.execute(text(f"INSERT INTO profiles ({common_cols}) SELECT {common_cols} FROM profiles_temp_sync"))
+                        conn.execute(text("DROP TABLE profiles_temp_sync"))
+                        conn.execute(text("PRAGMA foreign_keys = ON"))
+                        conn.commit()
+                        profile_rows = list(conn.execute(text("PRAGMA table_info(profiles)")))
+                        existing_cols = {row[1] for row in profile_rows}
                     if "institution" not in existing_cols:
                         conn.execute(text("ALTER TABLE profiles ADD COLUMN institution VARCHAR(255)"))
                     if "interests" not in existing_cols:
@@ -253,7 +269,77 @@ async def lifespan(app: FastAPI):
                         conn.execute(text("ALTER TABLE documents ADD COLUMN document_role VARCHAR(50) DEFAULT 'secondary_material'"))
                     if "syllabus_id" not in doc_cols:
                         conn.execute(text("ALTER TABLE documents ADD COLUMN syllabus_id VARCHAR(36)"))
+                    if "syllabus_version_id" not in doc_cols:
+                        conn.execute(text("ALTER TABLE documents ADD COLUMN syllabus_version_id VARCHAR(36)"))
+                    if "academic_context_id" not in doc_cols:
+                        conn.execute(text("ALTER TABLE documents ADD COLUMN academic_context_id VARCHAR(255)"))
+                    if "mime_type" not in doc_cols:
+                        conn.execute(text("ALTER TABLE documents ADD COLUMN mime_type VARCHAR(100)"))
                     conn.commit()
+
+                # Sync syllabi table columns
+                syl_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(syllabi)"))}
+                if syl_cols:
+                    if "academic_context_id" not in syl_cols:
+                        conn.execute(text("ALTER TABLE syllabi ADD COLUMN academic_context_id VARCHAR(255)"))
+                    conn.commit()
+
+                # Sync syllabus_versions table columns
+                syl_ver_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(syllabus_versions)"))}
+                if syl_ver_cols:
+                    if "status" not in syl_ver_cols:
+                        conn.execute(text("ALTER TABLE syllabus_versions ADD COLUMN status VARCHAR(50) DEFAULT 'uploaded'"))
+                    if "upload_status" not in syl_ver_cols:
+                        conn.execute(text("ALTER TABLE syllabus_versions ADD COLUMN upload_status VARCHAR(50) DEFAULT 'uploaded'"))
+                    if "processing_status" not in syl_ver_cols:
+                        conn.execute(text("ALTER TABLE syllabus_versions ADD COLUMN processing_status VARCHAR(50) DEFAULT 'not_started'"))
+                    if "curriculum_status" not in syl_ver_cols:
+                        conn.execute(text("ALTER TABLE syllabus_versions ADD COLUMN curriculum_status VARCHAR(50) DEFAULT 'not_built'"))
+                    if "source_filename" not in syl_ver_cols:
+                        conn.execute(text("ALTER TABLE syllabus_versions ADD COLUMN source_filename VARCHAR(255)"))
+                    if "file_size_bytes" not in syl_ver_cols:
+                        conn.execute(text("ALTER TABLE syllabus_versions ADD COLUMN file_size_bytes INTEGER DEFAULT 0"))
+                    if "mime_type" not in syl_ver_cols:
+                        conn.execute(text("ALTER TABLE syllabus_versions ADD COLUMN mime_type VARCHAR(100)"))
+                    if "checksum" not in syl_ver_cols:
+                        conn.execute(text("ALTER TABLE syllabus_versions ADD COLUMN checksum VARCHAR(64)"))
+                    if "storage_path" not in syl_ver_cols:
+                        conn.execute(text("ALTER TABLE syllabus_versions ADD COLUMN storage_path VARCHAR(1024)"))
+                    if "error_message" not in syl_ver_cols:
+                        conn.execute(text("ALTER TABLE syllabus_versions ADD COLUMN error_message TEXT"))
+                    
+                    # Backfill status values
+                    conn.execute(text("""
+                        UPDATE syllabus_versions
+                        SET 
+                            curriculum_status = CASE 
+                                WHEN is_active = 1 THEN 'active'
+                                WHEN status = 'archived' THEN 'archived'
+                                ELSE 'not_built'
+                            END,
+                            upload_status = CASE 
+                                WHEN status = 'failed' THEN 'failed'
+                                ELSE 'verified'
+                            END,
+                            processing_status = CASE 
+                                WHEN is_active = 1 THEN 'completed'
+                                WHEN status = 'failed' THEN 'failed'
+                                ELSE 'not_started'
+                            END
+                        WHERE curriculum_status IS NULL OR upload_status IS NULL OR processing_status IS NULL
+                    """))
+                    conn.commit()
+
+                # Cleanup legacy premature processing stage on syllabus documents
+                conn.execute(text("""
+                    UPDATE documents
+                    SET 
+                        processing_stage = 'uploaded',
+                        progress_percent = 100
+                    WHERE document_role = 'syllabus' 
+                      AND processing_stage = 'ready_for_curriculum_intelligence'
+                """))
+                conn.commit()
 
                 # Sync syllabus-first Subject anchoring columns
                 sub_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(subjects)"))}
