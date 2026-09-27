@@ -423,6 +423,40 @@ export const apiService = {
     link.remove();
     window.URL.revokeObjectURL(blobUrl);
   },
+
+  // --- SYLLABUS DOCUMENT UNDERSTANDING & CURRICULUM DRAFT (MASTER PROMPT 03R) ---
+  async triggerSyllabusProcessing(
+    syllabusId: string,
+    versionId: string,
+    force: boolean = false
+  ): Promise<import('../types/syllabus').SyllabusProcessingJob> {
+    const response = await apiClient.post<import('../types/syllabus').SyllabusProcessingJob>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/process`,
+      { force_reprocess: force }
+    );
+    return response.data;
+  },
+
+  async getSyllabusProcessingStatus(
+    syllabusId: string,
+    versionId: string
+  ): Promise<import('../types/syllabus').SyllabusProcessingJob> {
+    const response = await apiClient.get<import('../types/syllabus').SyllabusProcessingJob>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/processing`
+    );
+    return response.data;
+  },
+
+  async getSyllabusCurriculumDraft(
+    syllabusId: string,
+    versionId: string
+  ): Promise<import('../types/syllabus').SyllabusCurriculumDraft> {
+    const response = await apiClient.get<import('../types/syllabus').SyllabusCurriculumDraft>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/draft`
+    );
+    return response.data;
+  },
 };
+
 
 

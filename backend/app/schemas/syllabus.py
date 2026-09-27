@@ -42,6 +42,8 @@ class SyllabusCanonicalStateResponse(BaseModel):
     source_filename: Optional[str] = None
     file_size_bytes: Optional[int] = None
     document_role: Optional[str] = "syllabus"
+    has_draft: bool = False
+    draft_id: Optional[str] = None
     updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -99,3 +101,95 @@ class SyllabusStatusRead(BaseModel):
 class SyllabusActivateRequest(BaseModel):
     version_id: Optional[str] = None
     confirmed: bool = True
+
+
+# --- Master Prompt 03R: Curriculum Draft Schemas ---
+
+class SyllabusDraftOutcomeRead(BaseModel):
+    id: str
+    outcome_type: str = "course_outcome"
+    description: str
+    source_page: Optional[int] = None
+    evidence_text: Optional[str] = None
+    confidence: str = "high"
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SyllabusDraftTopicRead(BaseModel):
+    id: str
+    title: str
+    source_page: Optional[int] = None
+    evidence_text: Optional[str] = None
+    confidence: str = "high"
+    sort_order: int = 0
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SyllabusDraftModuleRead(BaseModel):
+    id: str
+    title: str
+    display_label: str = "Unit"
+    source_page: Optional[int] = None
+    evidence_text: Optional[str] = None
+    confidence: str = "high"
+    sort_order: int = 0
+    topics: List[SyllabusDraftTopicRead] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SyllabusDraftSubjectRead(BaseModel):
+    id: str
+    name: str
+    code: Optional[str] = None
+    credits: Optional[str] = None
+    semester: Optional[str] = None
+    source_page: Optional[int] = None
+    evidence_text: Optional[str] = None
+    confidence: str = "high"
+    sort_order: int = 0
+    modules: List[SyllabusDraftModuleRead] = []
+    outcomes: List[SyllabusDraftOutcomeRead] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SyllabusCurriculumDraftRead(BaseModel):
+    id: str
+    syllabus_version_id: str
+    syllabus_id: str
+    title: str
+    academic_level: str
+    institution: Optional[str] = None
+    raw_text_summary: Optional[str] = None
+    overall_confidence: str = "high"
+    status: str = "review_required"
+    subjects: List[SyllabusDraftSubjectRead] = []
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SyllabusProcessingJobRead(BaseModel):
+    id: str
+    syllabus_id: Optional[str] = None
+    version_id: Optional[str] = None
+    syllabus_version_id: Optional[str] = None
+    status: str  # queued, extracting, analyzing, completed, failed
+    stage: str
+    error_message: Optional[str] = None
+    progress_percent: int = 0
+    total_pages: int = 0
+    processed_pages: int = 0
+    started_at: datetime
+    completed_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SyllabusProcessRequest(BaseModel):
+    force_reprocess: bool = False
+

@@ -118,3 +118,242 @@ class SyllabusVersion(Base, TimestampMixin):
     syllabus: Mapped["Syllabus"] = relationship("Syllabus", back_populates="versions")
     document: Mapped[Optional["Document"]] = relationship("Document", foreign_keys=[document_id])
     subjects: Mapped[List["Subject"]] = relationship("Subject", back_populates="syllabus_version")
+    processing_jobs: Mapped[List["SyllabusProcessingJob"]] = relationship("SyllabusProcessingJob", back_populates="syllabus_version", cascade="all, delete-orphan")
+    curriculum_draft: Mapped[Optional["SyllabusCurriculumDraft"]] = relationship("SyllabusCurriculumDraft", back_populates="syllabus_version", uselist=False, cascade="all, delete-orphan")
+
+
+class SyllabusProcessingJob(Base, TimestampMixin):
+    """Tracks asynchronous syllabus document extraction and understanding tasks."""
+    __tablename__ = "syllabus_processing_jobs"
+
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+        index=True,
+    )
+    syllabus_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey("syllabi.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    syllabus_version_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("syllabus_versions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("profiles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    academic_context_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="queued",
+        nullable=False,
+        comment="queued, extracting, analyzing, completed, failed",
+    )
+    stage: Mapped[str] = mapped_column(String(100), default="queued", nullable=False)
+    error_message: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    progress_percent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_pages: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    processed_pages: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Relationships
+    syllabus_version: Mapped["SyllabusVersion"] = relationship("SyllabusVersion", back_populates="processing_jobs")
+
+    @property
+    def version_id(self) -> str:
+        return self.syllabus_version_id
+
+    @version_id.setter
+    def version_id(self, value: str):
+        self.syllabus_version_id = value
+
+
+class SyllabusCurriculumDraft(Base, TimestampMixin):
+    """
+    Structured curriculum draft generated from primary syllabus document understanding.
+    Awaiting student / human review before activation. NOT an active curriculum.
+    """
+    __tablename__ = "syllabus_curriculum_drafts"
+
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+        index=True,
+    )
+    syllabus_version_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("syllabus_versions.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    syllabus_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("syllabi.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("profiles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    academic_context_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    academic_level: Mapped[str] = mapped_column(String(50), nullable=False)
+    institution: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    raw_text_summary: Mapped[Optional[str]] = mapped_column(String(4096), nullable=True)
+    overall_confidence: Mapped[str] = mapped_column(String(50), default="medium", nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="review_required", nullable=False)
+
+    # Relationships
+    syllabus_version: Mapped["SyllabusVersion"] = relationship("SyllabusVersion", back_populates="curriculum_draft")
+    subjects: Mapped[List["SyllabusDraftSubject"]] = relationship(
+        "SyllabusDraftSubject",
+        back_populates="draft",
+        cascade="all, delete-orphan",
+        order_by="SyllabusDraftSubject.sort_order",
+    )
+
+
+class SyllabusDraftSubject(Base, TimestampMixin):
+    """Individual subject identified in the extracted curriculum draft."""
+    __tablename__ = "syllabus_draft_subjects"
+
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+        index=True,
+    )
+    draft_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("syllabus_curriculum_drafts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    credits: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    semester: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    source_page: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    evidence_text: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+    confidence: Mapped[str] = mapped_column(String(50), default="high", nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Relationships
+    draft: Mapped["SyllabusCurriculumDraft"] = relationship("SyllabusCurriculumDraft", back_populates="subjects")
+    modules: Mapped[List["SyllabusDraftModule"]] = relationship(
+        "SyllabusDraftModule",
+        back_populates="subject",
+        cascade="all, delete-orphan",
+        order_by="SyllabusDraftModule.sort_order",
+    )
+    outcomes: Mapped[List["SyllabusDraftOutcome"]] = relationship(
+        "SyllabusDraftOutcome",
+        back_populates="subject",
+        cascade="all, delete-orphan",
+    )
+
+
+class SyllabusDraftModule(Base, TimestampMixin):
+    """Unit, Module, or Chapter detected within a draft subject."""
+    __tablename__ = "syllabus_draft_modules"
+
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+        index=True,
+    )
+    draft_subject_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("syllabus_draft_subjects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_label: Mapped[str] = mapped_column(
+        String(100),
+        default="Unit",
+        nullable=False,
+        comment="Original source terminology: Unit I, Module 1, Chapter 2",
+    )
+    source_page: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    evidence_text: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+    confidence: Mapped[str] = mapped_column(String(50), default="high", nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Relationships
+    subject: Mapped["SyllabusDraftSubject"] = relationship("SyllabusDraftSubject", back_populates="modules")
+    topics: Mapped[List["SyllabusDraftTopic"]] = relationship(
+        "SyllabusDraftTopic",
+        back_populates="module",
+        cascade="all, delete-orphan",
+        order_by="SyllabusDraftTopic.sort_order",
+    )
+
+
+class SyllabusDraftTopic(Base, TimestampMixin):
+    """Specific topic or candidate lesson within a draft unit/module."""
+    __tablename__ = "syllabus_draft_topics"
+
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+        index=True,
+    )
+    draft_module_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("syllabus_draft_modules.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_page: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    evidence_text: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+    confidence: Mapped[str] = mapped_column(String(50), default="high", nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Relationships
+    module: Mapped["SyllabusDraftModule"] = relationship("SyllabusDraftModule", back_populates="topics")
+
+
+class SyllabusDraftOutcome(Base, TimestampMixin):
+    """Learning outcome, course outcome, or explicit objective from syllabus."""
+    __tablename__ = "syllabus_draft_outcomes"
+
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+        index=True,
+    )
+    draft_subject_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("syllabus_draft_subjects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    outcome_type: Mapped[str] = mapped_column(String(50), default="course_outcome", nullable=False)
+    description: Mapped[str] = mapped_column(String(2048), nullable=False)
+    source_page: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    evidence_text: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+    confidence: Mapped[str] = mapped_column(String(50), default="high", nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Relationships
+    subject: Mapped["SyllabusDraftSubject"] = relationship("SyllabusDraftSubject", back_populates="outcomes")
+

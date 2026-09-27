@@ -61,7 +61,83 @@ export interface SyllabusCanonicalState {
   title: string | null;
   active_version_number: number | null;
   source_filename: string | null;
-  file_size_bytes: number | null;
   document_role?: string;
+  has_draft?: boolean;
+  draft_id?: string | null;
   updated_at?: string | null;
 }
+
+export interface SyllabusDraftTopic {
+  id: string;
+  title: string;
+  source_page?: number | null;
+  evidence_text?: string | null;
+  confidence: 'high' | 'medium' | 'low' | string;
+  sort_order: number;
+}
+
+export interface SyllabusDraftModule {
+  id: string;
+  title: string;
+  display_label: string;
+  source_page?: number | null;
+  evidence_text?: string | null;
+  confidence: 'high' | 'medium' | 'low' | string;
+  sort_order: number;
+  topics: SyllabusDraftTopic[];
+}
+
+export interface SyllabusDraftOutcome {
+  id: string;
+  outcome_type: string;
+  description: string;
+  source_page?: number | null;
+  evidence_text?: string | null;
+  confidence: 'high' | 'medium' | 'low' | string;
+  sort_order?: number;
+}
+
+export interface SyllabusDraftSubject {
+  id: string;
+  name: string;
+  code?: string | null;
+  credits?: string | null;
+  semester?: string | null;
+  source_page?: number | null;
+  evidence_text?: string | null;
+  confidence: 'high' | 'medium' | 'low' | string;
+  sort_order: number;
+  modules: SyllabusDraftModule[];
+  outcomes: SyllabusDraftOutcome[];
+}
+
+export interface SyllabusCurriculumDraft {
+  id: string;
+  syllabus_version_id: string;
+  syllabus_id: string;
+  title: string;
+  academic_level: string;
+  institution?: string | null;
+  raw_text_summary?: string | null;
+  overall_confidence: 'high' | 'medium' | 'low' | string;
+  status: 'draft' | 'review_required' | 'approved' | 'rejected' | string;
+  subjects: SyllabusDraftSubject[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SyllabusProcessingJob {
+  id: string;
+  syllabus_id?: string | null;
+  version_id?: string | null;
+  syllabus_version_id?: string | null;
+  status: 'queued' | 'extracting' | 'analyzing' | 'completed' | 'failed' | string;
+  stage: string;
+  error_message?: string | null;
+  progress_percent: number;
+  total_pages: number;
+  processed_pages: number;
+  started_at: string;
+  completed_at?: string | null;
+}
+

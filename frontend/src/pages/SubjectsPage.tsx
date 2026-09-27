@@ -33,7 +33,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 export const SubjectsPage: React.FC = () => {
   const navigate = useNavigate();
   const { academicContext, refreshAcademicContext, isReady } = useAcademicContext();
-  const { hasSyllabus, isCurriculumActive } = useSyllabus();
+  const { hasSyllabus, isCurriculumActive, hasDraft } = useSyllabus();
   const currentTier = academicContext?.academic_level;
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -238,6 +238,8 @@ export const SubjectsPage: React.FC = () => {
           title={
             activeCategoryFilter === 'enrolled'
               ? 'No subjects enrolled yet'
+              : hasDraft && !isCurriculumActive
+              ? 'Curriculum draft generated. Review required.'
               : hasSyllabus && !isCurriculumActive
               ? 'Syllabus uploaded. Curriculum not activated yet.'
               : 'No syllabus uploaded'
@@ -245,6 +247,8 @@ export const SubjectsPage: React.FC = () => {
           description={
             activeCategoryFilter === 'enrolled'
               ? 'Enroll in subjects from your active syllabus to build your learning workspace.'
+              : hasDraft && !isCurriculumActive
+              ? 'Your syllabus document has been structured into draft subjects and units with citations. Review your draft on the Syllabus page; subjects will become active once activated.'
               : hasSyllabus && !isCurriculumActive
               ? 'Your primary syllabus is uploaded and verified. Curriculum subjects will become available once curriculum activation is completed.'
               : 'Upload your primary syllabus to generate and activate your curriculum subjects.'
@@ -260,7 +264,11 @@ export const SubjectsPage: React.FC = () => {
                 size="sm"
                 onClick={() => navigate('/syllabus')}
               >
-                {hasSyllabus ? 'View Syllabus Hub' : 'Upload Syllabus'}
+                {hasDraft && !isCurriculumActive
+                  ? 'Review Curriculum Draft'
+                  : hasSyllabus
+                  ? 'View Syllabus Hub'
+                  : 'Upload Syllabus'}
               </Button>
             )
           }

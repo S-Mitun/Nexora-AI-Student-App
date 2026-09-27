@@ -24,7 +24,7 @@ import { PracticeSet, PracticeQuestion, PracticeResult } from '../types/learning
 export const PracticePage: React.FC = () => {
   const navigate = useNavigate();
   const { academicContext } = useAcademicContext();
-  const { hasSyllabus, isCurriculumActive } = useSyllabus();
+  const { hasSyllabus, isCurriculumActive, hasDraft } = useSyllabus();
   const currentTier = academicContext?.academic_level;
 
   // Practice Sets state
@@ -173,18 +173,26 @@ export const PracticePage: React.FC = () => {
           <EmptyState
             icon={<HelpCircle className="w-10 h-10 text-nexora-muted mx-auto" />}
             title={
-              hasSyllabus && !isCurriculumActive
+              hasDraft && !isCurriculumActive
+                ? 'Curriculum draft ready. Practice pending activation.'
+                : hasSyllabus && !isCurriculumActive
                 ? 'Syllabus uploaded. Practice not ready yet.'
                 : 'No practice available yet'
             }
             description={
-              hasSyllabus && !isCurriculumActive
+              hasDraft && !isCurriculumActive
+                ? 'Your syllabus document has been structured into draft subjects and units. Practice questions will be generated once curriculum activation is completed.'
+                : hasSyllabus && !isCurriculumActive
                 ? 'Your primary syllabus is uploaded and verified. Practice questions and modules will become available once curriculum activation is completed.'
                 : 'Practice questions are calibrated and generated when your syllabus and learning units are activated.'
             }
             action={
               <Button variant="primary" size="md" onClick={() => navigate('/syllabus')}>
-                {hasSyllabus ? 'View Syllabus Hub' : 'Upload Syllabus'}
+                {hasDraft && !isCurriculumActive
+                  ? 'Review Curriculum Draft'
+                  : hasSyllabus
+                  ? 'View Syllabus Hub'
+                  : 'Upload Syllabus'}
               </Button>
             }
           />

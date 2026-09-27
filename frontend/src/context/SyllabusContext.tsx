@@ -11,6 +11,8 @@ interface SyllabusContextType {
   curriculumStatus: string;
   uploadStatus: string | null;
   processingStatus: string;
+  hasDraft: boolean;
+  draftId: string | null;
   loading: boolean;
   error: string | null;
   refreshSyllabusState: () => Promise<void>;
@@ -66,6 +68,8 @@ export const SyllabusProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const curriculumStatus = syllabusState?.curriculum_status || 'none';
   const uploadStatus = syllabusState?.upload_status || null;
   const processingStatus = syllabusState?.processing_status || 'not_started';
+  const hasDraft = Boolean(syllabusState?.has_draft || syllabusState?.curriculum_status === 'review_required');
+  const draftId = syllabusState?.draft_id || null;
 
   return (
     <SyllabusContext.Provider
@@ -76,6 +80,8 @@ export const SyllabusProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         curriculumStatus,
         uploadStatus,
         processingStatus,
+        hasDraft,
+        draftId,
         loading,
         error,
         refreshSyllabusState,

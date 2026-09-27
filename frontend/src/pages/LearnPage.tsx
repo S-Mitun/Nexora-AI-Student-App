@@ -33,7 +33,7 @@ import { useSyllabus } from '../context/SyllabusContext';
 
 export const LearnPage: React.FC = () => {
   const { profile } = useAuth();
-  const { hasSyllabus, isCurriculumActive } = useSyllabus();
+  const { hasSyllabus, isCurriculumActive, hasDraft } = useSyllabus();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryParam = searchParams.get('q');
   const navigate = useNavigate();
@@ -343,16 +343,28 @@ export const LearnPage: React.FC = () => {
         {filteredCourses.length === 0 ? (
           <EmptyState
             icon={<BookOpen className="w-8 h-8 text-nexora-muted" />}
-            title={hasSyllabus ? "Syllabus uploaded. Curriculum not activated yet." : "No active syllabus has been added yet."}
+            title={
+              hasDraft && !isCurriculumActive
+                ? 'Curriculum draft ready for review. Activation required.'
+                : hasSyllabus && !isCurriculumActive
+                ? 'Syllabus uploaded. Curriculum not activated yet.'
+                : 'No active syllabus has been added yet.'
+            }
             description={
-              hasSyllabus
-                ? "Your syllabus has been received and verified. Concept lessons and learning units will be available once your curriculum is activated."
-                : "No active syllabus has been added yet. Upload your syllabus to build your personalized learning path."
+              hasDraft && !isCurriculumActive
+                ? 'Your syllabus document has been structured into draft subjects and units with citations. Review your pre-activation draft on the Syllabus page before learning can begin.'
+                : hasSyllabus && !isCurriculumActive
+                ? 'Your syllabus has been received and verified. Run document analysis on your syllabus to extract structured learning units.'
+                : 'No active syllabus has been added yet. Upload your syllabus to build your personalized learning path.'
             }
             action={
               <Link to="/syllabus">
                 <Button variant="primary" size="md">
-                  {hasSyllabus ? "View Syllabus Hub" : "Upload Syllabus"}
+                  {hasDraft && !isCurriculumActive
+                    ? 'Review Curriculum Draft'
+                    : hasSyllabus
+                    ? 'View Syllabus Hub'
+                    : 'Upload Syllabus'}
                 </Button>
               </Link>
             }

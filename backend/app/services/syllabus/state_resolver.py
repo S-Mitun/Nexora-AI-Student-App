@@ -134,15 +134,18 @@ class SyllabusStateResolver:
             is_curriculum_active = False
 
         # 7. Resolve processing_status
-        if target_version.status == "failed":
+        if target_version.status == "failed" or target_version.processing_status == "failed":
             processing_status = "failed"
-        elif target_version.status == "processing":
+        elif target_version.status == "processing" or target_version.processing_status == "processing":
             processing_status = "processing"
-        elif is_curriculum_active:
+        elif target_version.processing_status == "completed" or is_curriculum_active:
             processing_status = "completed"
         else:
             # Truthful: file uploaded & verified, future curriculum understanding not started
             processing_status = "not_started"
+
+        has_draft = bool(target_version.curriculum_draft)
+        draft_id = target_version.curriculum_draft.id if target_version.curriculum_draft else None
 
         return SyllabusCanonicalStateResponse(
             has_syllabus=True,
@@ -158,5 +161,7 @@ class SyllabusStateResolver:
             source_filename=target_version.source_filename,
             file_size_bytes=target_version.file_size_bytes,
             document_role="syllabus",
+            has_draft=has_draft,
+            draft_id=draft_id,
             updated_at=target_version.updated_at or active_syllabus.updated_at,
         )

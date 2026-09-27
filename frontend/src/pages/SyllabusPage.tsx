@@ -20,13 +20,21 @@ import {
   Shield,
   Layers,
   X,
+  Eye,
+  BookOpen,
+  ListChecks,
+  Check,
+  Quote,
+  Target,
+  Lock,
+  GraduationCap,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
 import { apiService } from '../services/api';
-import { Syllabus, SyllabusVersion } from '../types/syllabus';
+import { Syllabus, SyllabusVersion, SyllabusCurriculumDraft, SyllabusProcessingJob } from '../types/syllabus';
 import { useAcademicContext } from '../context/AcademicContext';
 import { useSyllabus } from '../context/SyllabusContext';
 
@@ -46,6 +54,16 @@ export const SyllabusPage: React.FC = () => {
   const [uploadStatusMsg, setUploadStatusMsg] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [expandedSyllabusId, setExpandedSyllabusId] = useState<string | null>(null);
+
+  // Document Understanding & Curriculum Draft States (Master Prompt 03R)
+  const [analyzingVersionId, setAnalyzingVersionId] = useState<string | null>(null);
+  const [processingJobs, setProcessingJobs] = useState<Record<string, SyllabusProcessingJob>>({});
+  const [reviewDraft, setReviewDraft] = useState<SyllabusCurriculumDraft | null>(null);
+  const [isDraftModalOpen, setIsDraftModalOpen] = useState(false);
+  const [loadingDraft, setLoadingDraft] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
+  const [activeDraftVersion, setActiveDraftVersion] = useState<{ syllabusId: string; version: SyllabusVersion } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -171,18 +189,82 @@ export const SyllabusPage: React.FC = () => {
     }
   };
 
+  const handleTriggerProcess = async (sylId: string, verId: string, force: boolean = false) => {
+    try {
+      setAnalyzingVersionId(verId);
+      const job = await apiService.triggerSyllabusProcessing(sylId, verId, force);
+      setProcessingJobs((prev) => ({ ...prev, [verId]: job }));
+
+      const pollInterval = setInterval(async () => {
+        try {
+          const status = await apiService.getSyllabusProcessingStatus(sylId, verId);
+          setProcessingJobs((prev) => ({ ...prev, [verId]: status }));
+
+          if (status.status === 'completed') {
+            clearInterval(pollInterval);
+            setAnalyzingVersionId(null);
+            await loadSyllabi();
+            await refreshSyllabusState();
+            handleOpenDraftReview(sylId, verId);
+          } else if (status.status === 'failed') {
+            clearInterval(pollInterval);
+            setAnalyzingVersionId(null);
+            alert(status.error_message || 'Syllabus document extraction encountered an error.');
+            await loadSyllabi();
+          }
+        } catch (pollErr) {
+          clearInterval(pollInterval);
+          setAnalyzingVersionId(null);
+        }
+      }, 1500);
+    } catch (err: any) {
+      setAnalyzingVersionId(null);
+      alert(err.response?.data?.detail || 'Failed to start syllabus document analysis.');
+    }
+  };
+
+  const handleOpenDraftReview = async (sylId: string, verId: string) => {
+    const syl = syllabi.find((s) => s.id === sylId);
+    const ver = syl?.versions.find((v) => v.id === verId);
+    if (syl && ver) {
+      setActiveDraftVersion({ syllabusId: sylId, version: ver });
+    }
+    setIsDraftModalOpen(true);
+    setLoadingDraft(true);
+    setDraftError(null);
+    try {
+      const draft = await apiService.getSyllabusCurriculumDraft(sylId, verId);
+      setReviewDraft(draft);
+      if (draft.subjects.length > 0 && draft.subjects[0].modules.length > 0) {
+        setExpandedModuleId(draft.subjects[0].modules[0].id);
+      }
+    } catch (err: any) {
+      setDraftError(err.response?.data?.detail || 'Could not load curriculum draft. Please process the syllabus first.');
+    } finally {
+      setLoadingDraft(false);
+    }
+  };
+
   const formatFileSize = (bytes: number) => {
     if (!bytes || bytes === 0) return '0 KB';
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const getStatusBadge = (status: string, isActive: boolean) => {
+  const getStatusBadge = (status: string, isActive: boolean, curriculumStatus?: string) => {
     if (isActive || status === 'active') {
       return (
         <Badge variant="success" size="sm" className="flex items-center gap-1">
           <CheckCircle2 className="w-3 h-3" />
           <span>Active</span>
+        </Badge>
+      );
+    }
+    if (curriculumStatus === 'review_required') {
+      return (
+        <Badge variant="outline" size="sm" className="flex items-center gap-1 border-purple-500/40 text-purple-300 bg-purple-500/10">
+          <Sparkles className="w-3 h-3 text-purple-400" />
+          <span>Draft Ready</span>
         </Badge>
       );
     }
@@ -206,14 +288,14 @@ export const SyllabusPage: React.FC = () => {
       return (
         <Badge variant="warning" size="sm" className="flex items-center gap-1 animate-pulse">
           <Loader2 className="w-3 h-3 animate-spin" />
-          <span>Processing syllabus...</span>
+          <span>Extracting...</span>
         </Badge>
       );
     }
     return (
       <Badge variant="outline" size="sm" className="flex items-center gap-1 border-indigo-500/30 text-indigo-300 bg-indigo-500/10">
         <CheckCircle2 className="w-3 h-3" />
-        <span>Ready</span>
+        <span>Uploaded</span>
       </Badge>
     );
   };
@@ -282,6 +364,50 @@ export const SyllabusPage: React.FC = () => {
         </div>
       )}
 
+      {/* State C Top Banner: Curriculum Draft Ready for Review */}
+      {syllabi.some((s) => s.versions.some((v) => v.curriculum_status === 'review_required')) && (
+        <div className="p-5 rounded-2xl bg-gradient-to-r from-purple-950/40 via-indigo-950/30 to-nexora-surface border border-purple-500/40 shadow-glow-sm">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300 shrink-0">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-purple-300 bg-purple-500/20 px-2.5 py-0.5 rounded-full border border-purple-500/30">
+                    Curriculum Draft Ready
+                  </span>
+                  <span className="text-xs text-nexora-muted">&bull;</span>
+                  <span className="text-xs text-nexora-subtext">Review Required (Pre-Activation)</span>
+                </div>
+                <h3 className="text-base font-bold text-white">
+                  Document understanding completed. Your curriculum draft is ready for review.
+                </h3>
+                <p className="text-xs text-nexora-subtext mt-0.5">
+                  Extracted subjects, units, candidate topics, and course outcomes with complete source citations. Review before activation.
+                </p>
+              </div>
+            </div>
+            {(() => {
+              const reviewSyl = syllabi.find((s) => s.versions.some((v) => v.curriculum_status === 'review_required'));
+              const reviewVer = reviewSyl?.versions.find((v) => v.curriculum_status === 'review_required');
+              if (!reviewSyl || !reviewVer) return null;
+              return (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="bg-purple-600 hover:bg-purple-700 shrink-0 shadow-md shadow-purple-900/30"
+                  leftIcon={<Eye className="w-4 h-4" />}
+                  onClick={() => handleOpenDraftReview(reviewSyl.id, reviewVer.id)}
+                >
+                  Review Curriculum Draft
+                </Button>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
       {/* 3. Empty State (Master Prompt 02R Mandatory Behavior) */}
       {!loading && syllabi.length === 0 && (
         <div className="p-8 sm:p-12 rounded-2xl bg-gradient-to-br from-nexora-surface via-nexora-surface to-indigo-950/20 border border-nexora-border shadow-card text-center">
@@ -312,7 +438,7 @@ export const SyllabusPage: React.FC = () => {
       <div className="space-y-6">
         {syllabi.map((syl) => {
           const isExpanded = expandedSyllabusId === syl.id;
-          const activeVer = syl.active_version || syl.versions.find((v) => v.is_active);
+          const activeVer = syl.active_version || syl.versions.find((v) => v.is_active) || syl.versions[0];
 
           return (
             <Card key={syl.id} className="border-nexora-border/80 bg-nexora-surface/90 overflow-hidden">
@@ -327,7 +453,7 @@ export const SyllabusPage: React.FC = () => {
                         <h3 className="text-lg font-bold text-white tracking-tight">
                           {syl.title}
                         </h3>
-                        {getStatusBadge(syl.status, !!activeVer)}
+                        {getStatusBadge(syl.status, !!(syl.active_version?.is_active), activeVer?.curriculum_status)}
                         <span className="text-[11px] font-mono text-nexora-muted bg-nexora-elevated px-2 py-0.5 rounded border border-nexora-border">
                           {syl.versions.length} {syl.versions.length === 1 ? 'version' : 'versions'}
                         </span>
@@ -342,6 +468,17 @@ export const SyllabusPage: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-2 self-end sm:self-center">
+                    {activeVer && (activeVer.curriculum_status === 'review_required' || activeVer.processing_status === 'completed') && (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        className="bg-purple-600 hover:bg-purple-700 text-xs shadow-md shadow-purple-900/30"
+                        leftIcon={<Eye className="w-3.5 h-3.5" />}
+                        onClick={() => handleOpenDraftReview(syl.id, activeVer.id)}
+                      >
+                        Review Draft
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
@@ -396,7 +533,7 @@ export const SyllabusPage: React.FC = () => {
                                 <span className="text-xs font-semibold text-white">
                                   {ver.source_filename || 'syllabus_document'}
                                 </span>
-                                {getStatusBadge(ver.status, ver.is_active)}
+                                {getStatusBadge(ver.status, ver.is_active, ver.curriculum_status)}
                               </div>
                               <div className="text-[11px] text-nexora-muted flex items-center gap-2 mt-0.5">
                                 <span>{formatFileSize(ver.file_size_bytes)}</span>
@@ -411,10 +548,69 @@ export const SyllabusPage: React.FC = () => {
                                   </>
                                 )}
                               </div>
+                              {/* Live Processing Indicator */}
+                              {analyzingVersionId === ver.id && (
+                                <div className="mt-2 text-xs">
+                                  <div className="flex items-center justify-between text-purple-300 mb-1">
+                                    <span className="flex items-center gap-1.5 font-medium">
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-400" />
+                                      {processingJobs[ver.id]?.stage || 'Analyzing document structure...'}
+                                    </span>
+                                    <span className="font-mono font-bold text-[11px]">
+                                      {processingJobs[ver.id]?.progress_percent || 25}%
+                                    </span>
+                                  </div>
+                                  <div className="w-full bg-nexora-bg rounded-full h-1.5 overflow-hidden border border-purple-500/20">
+                                    <div
+                                      className="bg-gradient-to-r from-indigo-500 to-purple-500 h-1.5 transition-all duration-300"
+                                      style={{ width: `${Math.max(10, processingJobs[ver.id]?.progress_percent || 25)}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 self-end sm:self-center">
+                          <div className="flex items-center gap-2 self-end sm:self-center flex-wrap">
+                            {/* 1. Review Draft Button if ready */}
+                            {(ver.curriculum_status === 'review_required' || ver.processing_status === 'completed') && (
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                className="bg-purple-600 hover:bg-purple-700 text-xs shadow-md shadow-purple-900/30"
+                                leftIcon={<Eye className="w-3.5 h-3.5" />}
+                                onClick={() => handleOpenDraftReview(syl.id, ver.id)}
+                              >
+                                Review Draft
+                              </Button>
+                            )}
+
+                            {/* 2. Analyze Syllabus Button if not started */}
+                            {ver.status !== 'archived' && ver.curriculum_status !== 'review_required' && ver.processing_status !== 'completed' && analyzingVersionId !== ver.id && (
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                className="bg-indigo-600 hover:bg-indigo-700 text-xs"
+                                leftIcon={<Sparkles className="w-3.5 h-3.5" />}
+                                onClick={() => handleTriggerProcess(syl.id, ver.id, false)}
+                              >
+                                Analyze Syllabus
+                              </Button>
+                            )}
+
+                            {/* 3. Re-analyze option for already analyzed versions */}
+                            {(ver.curriculum_status === 'review_required' || ver.processing_status === 'completed') && analyzingVersionId !== ver.id && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs text-nexora-muted hover:text-white"
+                                onClick={() => handleTriggerProcess(syl.id, ver.id, true)}
+                                title="Re-run multimodal extraction"
+                              >
+                                Re-analyze
+                              </Button>
+                            )}
+
                             {!ver.is_active && ver.status !== 'archived' && (
                               <Button
                                 variant="ghost"
@@ -597,6 +793,363 @@ export const SyllabusPage: React.FC = () => {
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Curriculum Draft & Source Traceability Modal (Master Prompt 03R) */}
+      {isDraftModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="relative w-full max-w-5xl bg-nexora-surface border border-nexora-border/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-nexora-border/80 flex items-start justify-between gap-4 bg-nexora-elevated/40 shrink-0">
+              <div className="flex items-start gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0 mt-0.5 shadow-inner">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h2 className="text-xl font-bold text-white tracking-tight">
+                      Curriculum Draft & Source Traceability
+                    </h2>
+                    <Badge variant="warning" size="sm" className="bg-amber-500/10 text-amber-300 border-amber-500/30">
+                      Review Required (Pre-Activation)
+                    </Badge>
+                    <Badge variant="outline" size="sm" className="font-mono text-[11px] text-slate-400 border-slate-700">
+                      Runtime Inactive
+                    </Badge>
+                    {reviewDraft?.overall_confidence && (
+                      <Badge variant="success" size="sm" className="text-[11px]">
+                        {reviewDraft.overall_confidence.toUpperCase()} Confidence
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-nexora-muted mt-1 flex items-center gap-2">
+                    <span>
+                      Draft from{' '}
+                      <strong className="text-white font-medium">
+                        {activeDraftVersion?.version.source_filename || 'Syllabus Document'}
+                      </strong>
+                    </span>
+                    <span>•</span>
+                    <span className="font-mono">v{activeDraftVersion?.version.version_number || 1}</span>
+                    <span>•</span>
+                    <span>State C: Stored in isolated draft tables</span>
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsDraftModalOpen(false)}
+                className="p-1.5 rounded-lg text-nexora-muted hover:text-white hover:bg-nexora-border transition-colors shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-6 flex-1">
+              {/* Pre-Activation Clarification Banner */}
+              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-3">
+                <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-semibold text-amber-300">
+                    Pre-Activation Curriculum Draft (State C: review_required)
+                  </p>
+                  <p className="text-amber-200/90 leading-relaxed">
+                    This curriculum draft was automatically extracted and structured directly from your syllabus with ground truth page citations.
+                    In accordance with strict runtime safety rules, <strong>your active curriculum remains inactive</strong>.
+                    No lessons, practice problems, or laboratory simulations will appear in the runtime app until you confirm and activate this curriculum.
+                  </p>
+                </div>
+              </div>
+
+              {loadingDraft ? (
+                <div className="py-20 flex flex-col items-center justify-center gap-4 text-center">
+                  <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
+                  <div>
+                    <p className="text-sm font-semibold text-white">Loading structured curriculum draft...</p>
+                    <p className="text-xs text-nexora-muted mt-1">Retrieving verified modules, topics, and source citations</p>
+                  </div>
+                </div>
+              ) : draftError ? (
+                <div className="py-12 flex flex-col items-center justify-center gap-4 text-center">
+                  <div className="w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white">Failed to Load Draft</p>
+                    <p className="text-xs text-rose-300 max-w-md mt-1">{draftError}</p>
+                  </div>
+                  {activeDraftVersion && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      leftIcon={<Sparkles className="w-3.5 h-3.5" />}
+                      onClick={() => handleTriggerProcess(activeDraftVersion.syllabusId, activeDraftVersion.version.id, true)}
+                    >
+                      Run Document Extraction Now
+                    </Button>
+                  )}
+                </div>
+              ) : reviewDraft && reviewDraft.subjects.length > 0 ? (
+                <div className="space-y-6">
+                  {/* Subject Overview Card */}
+                  {reviewDraft.subjects.map((subj) => (
+                    <div key={subj.id} className="space-y-6">
+                      <div className="p-5 rounded-xl bg-nexora-elevated/50 border border-nexora-border flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                              {subj.code || 'COURSE CODE'}
+                            </span>
+                            <h3 className="text-lg font-bold text-white tracking-tight">
+                              {subj.name}
+                            </h3>
+                            {subj.source_page && (
+                              <Badge variant="outline" size="sm" className="text-[10px] text-nexora-muted border-nexora-border">
+                                Page {subj.source_page}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-4 text-xs text-nexora-muted flex-wrap">
+                            {subj.semester && (
+                              <span className="flex items-center gap-1.5">
+                                <GraduationCap className="w-3.5 h-3.5 text-nexora-accent" />
+                                {subj.semester}
+                              </span>
+                            )}
+                            {subj.credits && (
+                              <span className="flex items-center gap-1.5">
+                                <Clock className="w-3.5 h-3.5 text-nexora-accent" />
+                                {subj.credits}
+                              </span>
+                            )}
+                            <span className="flex items-center gap-1.5">
+                              <Layers className="w-3.5 h-3.5 text-nexora-accent" />
+                              {subj.modules.length} Units / Modules
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                              <ListChecks className="w-3.5 h-3.5 text-nexora-accent" />
+                              {subj.modules.reduce((acc, m) => acc + m.topics.length, 0)} Topics
+                            </span>
+                            {subj.outcomes.length > 0 && (
+                              <span className="flex items-center gap-1.5">
+                                <Target className="w-3.5 h-3.5 text-nexora-accent" />
+                                {subj.outcomes.length} Course Outcomes
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {subj.evidence_text && (
+                          <div className="max-w-xs p-2.5 rounded-lg bg-nexora-bg/60 border border-nexora-border/60 text-[11px] text-nexora-muted italic">
+                            <div className="flex items-center gap-1 font-semibold not-italic text-purple-300 mb-0.5 text-[10px] uppercase">
+                              <Quote className="w-2.5 h-2.5" /> Source Citation Excerpt
+                            </div>
+                            &quot;{subj.evidence_text.slice(0, 100)}...&quot;
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Course Outcomes (COs) Section */}
+                      {subj.outcomes.length > 0 && (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-nexora-accent">
+                            <Target className="w-4 h-4" />
+                            <span>Course Outcomes (COs) — Source Verified</span>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                            {subj.outcomes.map((co, idx) => (
+                              <div
+                                key={co.id || idx}
+                                className="p-3.5 rounded-xl bg-nexora-elevated/40 border border-nexora-border/60 flex items-start gap-3"
+                              >
+                                <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shrink-0 mt-0.5">
+                                  {co.outcome_type}
+                                </span>
+                                <div className="space-y-1 flex-1">
+                                  <p className="text-xs text-white/90 leading-relaxed font-medium">
+                                    {co.description}
+                                  </p>
+                                  <div className="flex items-center gap-2 text-[10px] text-nexora-muted">
+                                    {co.source_page && <span>Page {co.source_page}</span>}
+                                    <span>•</span>
+                                    <span className="text-emerald-400 capitalize">{co.confidence} confidence</span>
+                                    {co.evidence_text && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="italic truncate max-w-[200px]" title={co.evidence_text}>
+                                          &quot;{co.evidence_text}&quot;
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Units & Modules Accordion */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-nexora-accent">
+                            <Layers className="w-4 h-4" />
+                            <span>Curriculum Units & Extracted Topics ({subj.modules.length})</span>
+                          </div>
+                          <span className="text-xs text-nexora-muted">
+                            Click any unit to expand topics and source evidence
+                          </span>
+                        </div>
+
+                        <div className="space-y-2.5">
+                          {subj.modules.map((mod, modIdx) => {
+                            const isModExpanded = expandedModuleId === mod.id || (!expandedModuleId && modIdx === 0);
+                            return (
+                              <div
+                                key={mod.id}
+                                className="rounded-xl border border-nexora-border bg-nexora-elevated/30 overflow-hidden transition-all duration-200"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedModuleId(isModExpanded ? null : mod.id)}
+                                  className="w-full p-4 flex items-center justify-between gap-4 text-left hover:bg-nexora-elevated/60 transition-colors"
+                                >
+                                  <div className="flex items-center gap-3 flex-wrap">
+                                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/30">
+                                      {mod.display_label || `Unit ${modIdx + 1}`}
+                                    </span>
+                                    <span className="text-sm font-semibold text-white">
+                                      {mod.title}
+                                    </span>
+                                    {mod.source_page && (
+                                      <Badge variant="outline" size="sm" className="text-[10px] text-nexora-muted border-nexora-border">
+                                        Page {mod.source_page}
+                                      </Badge>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center gap-3 shrink-0">
+                                    <span className="text-xs font-medium text-nexora-muted">
+                                      {mod.topics.length} {mod.topics.length === 1 ? 'topic' : 'topics'}
+                                    </span>
+                                    {isModExpanded ? (
+                                      <ChevronUp className="w-4 h-4 text-nexora-muted" />
+                                    ) : (
+                                      <ChevronDown className="w-4 h-4 text-nexora-muted" />
+                                    )}
+                                  </div>
+                                </button>
+
+                                {isModExpanded && (
+                                  <div className="p-4 pt-0 space-y-4 border-t border-nexora-border/40 bg-nexora-bg/30">
+                                    {/* Verbatim Evidence Excerpt */}
+                                    {mod.evidence_text && (
+                                      <div className="mt-3 p-3 rounded-lg bg-nexora-elevated/70 border border-purple-500/20 text-xs text-purple-200/90 flex items-start gap-2.5">
+                                        <Quote className="w-3.5 h-3.5 text-purple-400 shrink-0 mt-0.5" />
+                                        <div className="space-y-0.5">
+                                          <span className="text-[10px] font-bold uppercase tracking-wider text-purple-300">
+                                            Ground Truth Excerpt (Page {mod.source_page || 1})
+                                          </span>
+                                          <p className="italic text-[11px] leading-relaxed">
+                                            &quot;{mod.evidence_text}&quot;
+                                          </p>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Topics List */}
+                                    <div>
+                                      <span className="text-[11px] font-semibold text-nexora-muted uppercase tracking-wider block mb-2">
+                                        Extracted Curriculum Topics ({mod.topics.length})
+                                      </span>
+                                      {mod.topics.length === 0 ? (
+                                        <p className="text-xs text-nexora-muted italic">No topics extracted for this unit.</p>
+                                      ) : (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                          {mod.topics.map((top, tIdx) => (
+                                            <div
+                                              key={top.id || tIdx}
+                                              className="p-2.5 rounded-lg bg-nexora-elevated/40 border border-nexora-border/40 flex items-start gap-2 text-xs"
+                                            >
+                                              <span className="w-4 h-4 rounded-full bg-nexora-border/60 text-[10px] font-mono flex items-center justify-center text-nexora-muted shrink-0 mt-0.5">
+                                                {tIdx + 1}
+                                              </span>
+                                              <div className="flex-1 min-w-0">
+                                                <p className="text-white/90 font-medium truncate" title={top.title}>
+                                                  {top.title}
+                                                </p>
+                                                {top.source_page && (
+                                                  <span className="text-[10px] text-nexora-muted">
+                                                    Page {top.source_page}
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Zero Hallucination Guarantee Card */}
+                  <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300 flex items-center gap-3">
+                    <Shield className="w-5 h-5 text-indigo-400 shrink-0" />
+                    <div>
+                      <p className="font-semibold text-indigo-200">
+                        Zero Hallucination & Citation Traceability Guarantee
+                      </p>
+                      <p className="text-indigo-300/80 mt-0.5 text-[11px]">
+                        Every unit, topic, and outcome displayed above was extracted from the actual syllabus text using RapidOCR and layout analysis.
+                        No phantom subjects, simulated lessons, or fictitious requirements have been generated.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-12 text-center text-nexora-muted text-xs">
+                  No curriculum draft available. Click &quot;Analyze Syllabus&quot; on your syllabus version to extract structured units.
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 px-6 border-t border-nexora-border/80 bg-nexora-elevated/60 flex items-center justify-between gap-4 shrink-0">
+              <div className="text-xs text-nexora-muted flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-400 inline-block animate-pulse" />
+                <span>Curriculum Status: <strong>review_required</strong> (Pre-Activation)</span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsDraftModalOpen(false)}
+                >
+                  Close Review
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={true}
+                  className="opacity-60 cursor-not-allowed bg-slate-700 text-slate-300 border-slate-600"
+                  leftIcon={<Lock className="w-3.5 h-3.5" />}
+                  title="Curriculum activation is handled in Master Prompt 04R"
+                >
+                  Activate Curriculum (Prompt 04R)
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       )}

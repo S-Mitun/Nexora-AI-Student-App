@@ -67,7 +67,7 @@ const ALL_LAB_TRACKS: LabTrack[] = [
 
 export const LabsPage: React.FC = () => {
   const { academicContext, enrolledSubjects } = useAcademicContext();
-  const { hasSyllabus, isCurriculumActive } = useSyllabus();
+  const { hasSyllabus, isCurriculumActive, hasDraft } = useSyllabus();
   const currentTier = academicContext?.academic_level;
   const displayCategory = academicContext?.education_category || currentTier;
 
@@ -130,19 +130,27 @@ export const LabsPage: React.FC = () => {
           <EmptyState
             icon={<FlaskConical className="w-10 h-10 text-nexora-muted mx-auto" />}
             title={
-              hasSyllabus && !isCurriculumActive
+              hasDraft && !isCurriculumActive
+                ? 'Curriculum draft ready. Labs pending activation.'
+                : hasSyllabus && !isCurriculumActive
                 ? 'Syllabus uploaded. Labs not ready yet.'
                 : 'No curriculum-linked labs available'
             }
             description={
-              hasSyllabus && !isCurriculumActive
+              hasDraft && !isCurriculumActive
+                ? 'Your syllabus document has been structured into draft subjects and units. Lab practicals and experiments will be unlocked once curriculum activation is completed.'
+                : hasSyllabus && !isCurriculumActive
                 ? 'Your primary syllabus is uploaded and verified. Concept simulations and virtual laboratory tracks will become available once curriculum activation is completed.'
                 : 'Interactive simulations and virtual experiments are calibrated to active syllabus concepts. Upload your syllabus to view calibrated simulations and labs.'
             }
             action={
               <Link to="/syllabus">
                 <Button variant="primary" size="md">
-                  {hasSyllabus ? 'View Syllabus Hub' : 'Upload Syllabus'}
+                  {hasDraft && !isCurriculumActive
+                    ? 'Review Curriculum Draft'
+                    : hasSyllabus
+                    ? 'View Syllabus Hub'
+                    : 'Upload Syllabus'}
                 </Button>
               </Link>
             }

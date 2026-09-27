@@ -96,7 +96,7 @@ export const HomePage: React.FC = () => {
   const studentName = profile?.full_name || user?.email?.split('@')[0] || 'Student';
 
   const { academicContext, isReady } = useAcademicContext();
-  const { hasSyllabus, isCurriculumActive, syllabusState } = useSyllabus();
+  const { hasSyllabus, isCurriculumActive, syllabusState, hasDraft } = useSyllabus();
   const activeLevel = academicContext?.academic_level || profile?.education_category || profile?.education_level;
 
   // Genuine student learning activity & active course strictly from database
@@ -418,14 +418,46 @@ export const HomePage: React.FC = () => {
         </div>
       )}
 
-      {/* 1c. State B: Syllabus Uploaded, Curriculum Not Activated Yet */}
-      {!loadingWorkspace && hasSyllabus && !isCurriculumActive && (
+      {/* 1c. State C: Syllabus Processed & Curriculum Draft Ready for Review */}
+      {!loadingWorkspace && hasSyllabus && !isCurriculumActive && hasDraft && (
+        <div className="p-6 rounded-2xl bg-gradient-to-r from-nexora-surface via-purple-950/30 to-indigo-950/30 border border-purple-500/50 shadow-glow-sm">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-purple-300 bg-purple-500/20 px-2.5 py-0.5 rounded-full border border-purple-500/40 flex items-center gap-1.5">
+                  <Sparkles className="w-3 h-3 text-purple-400" />
+                  Curriculum Draft Ready (State C: Review Required)
+                </span>
+                <span className="text-xs text-nexora-muted">&bull;</span>
+                <span className="text-xs text-nexora-subtext font-mono">
+                  {syllabusState?.title || 'Prescribed Syllabus'} (v{syllabusState?.active_version_number || 1})
+                </span>
+              </div>
+              <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                Syllabus processed. Your curriculum draft is ready for review.
+              </h2>
+              <p className="text-xs sm:text-sm text-nexora-subtext mt-1 max-w-xl">
+                NEXORA has extracted structured subjects, units, topics, and course outcomes from your syllabus with source page citations.
+                Review the pre-activation draft on your Syllabus page.
+              </p>
+            </div>
+            <Link to="/syllabus" className="shrink-0">
+              <Button variant="primary" size="md" className="bg-purple-600 hover:bg-purple-700 shadow-md shadow-purple-900/40" rightIcon={<ArrowRight className="w-4 h-4" />}>
+                Review Curriculum Draft
+              </Button>
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* 1d. State B: Syllabus Uploaded, Document Analysis Pending */}
+      {!loadingWorkspace && hasSyllabus && !isCurriculumActive && !hasDraft && (
         <div className="p-6 rounded-2xl bg-gradient-to-r from-nexora-surface via-purple-950/20 to-nexora-surface border border-purple-500/40 shadow-glow-sm">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-purple-400 bg-purple-500/15 px-2.5 py-0.5 rounded-full border border-purple-500/30">
-                  Syllabus Verified
+                  Syllabus Uploaded (State B)
                 </span>
                 <span className="text-xs text-nexora-muted">&bull;</span>
                 <span className="text-xs text-nexora-subtext font-mono">
@@ -436,12 +468,12 @@ export const HomePage: React.FC = () => {
                 Syllabus uploaded. Curriculum not activated yet.
               </h2>
               <p className="text-xs sm:text-sm text-nexora-subtext mt-1 max-w-xl">
-                Your primary academic syllabus has been stored and verified. Structured subjects, units, and interactive lessons will become active in the upcoming prompt.
+                Your primary academic syllabus has been stored and verified. Analyze your syllabus to extract structured units, topics, and course outcomes.
               </p>
             </div>
             <Link to="/syllabus" className="shrink-0">
               <Button variant="primary" size="md" className="bg-purple-600 hover:bg-purple-700" rightIcon={<ArrowRight className="w-4 h-4" />}>
-                View Syllabus Hub
+                Analyze Syllabus
               </Button>
             </Link>
           </div>

@@ -12,9 +12,13 @@ from app.schemas.syllabus import (
     SyllabusUploadResponse,
     SyllabusActivateRequest,
     SyllabusCanonicalStateResponse,
+    SyllabusProcessingJobRead,
+    SyllabusCurriculumDraftRead,
+    SyllabusProcessRequest,
 )
 from app.services.syllabus.lifecycle_service import SyllabusLifecycleService
 from app.services.syllabus.state_resolver import SyllabusStateResolver
+from app.services.syllabus.job_runner import SyllabusJobRunner
 from app.core.logging import logger
 
 router = APIRouter(prefix="/syllabi", tags=["Universal Syllabus & Academic Document Lifecycle"])
@@ -216,3 +220,77 @@ def delete_syllabus(
         syllabus_id=syllabus_id,
     )
     return {"message": "Syllabus and its version history successfully deleted.", "id": syllabus_id}
+
+
+# --- Master Prompt 03R: Syllabus Understanding & Draft Endpoints ---
+
+@router.post("/{syllabus_id}/versions/{version_id}/process", response_model=SyllabusProcessingJobRead)
+def trigger_syllabus_processing(
+    syllabus_id: str,
+    version_id: str,
+    request: SyllabusProcessRequest = SyllabusProcessRequest(),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Triggers multimodal document understanding and structured curriculum draft extraction.
+    Runs asynchronously and idempotently.
+    """
+    return SyllabusJobRunner.start_processing_job(
+        db=db,
+        syllabus_id=syllabus_id,
+        version_id=version_id,
+        user_id=current_user.id,
+        force_reprocess=request.force_reprocess,
+        run_async=True,
+    )
+
+
+@router.get("/{syllabus_id}/versions/{version_id}/processing", response_model=Optional[SyllabusProcessingJobRead])
+def get_syllabus_processing_status(
+    syllabus_id: str,
+    version_id: str,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Fetches the latest document understanding job status and progress for a syllabus version.
+    """
+    job = SyllabusJobRunner.get_job_status(
+        db=db,
+        syllabus_id=syllabus_id,
+        version_id=version_id,
+        user_id=current_user.id,
+    )
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No processing job found for this syllabus version.",
+        )
+    return job
+
+
+@router.get("/{syllabus_id}/versions/{version_id}/draft", response_model=SyllabusCurriculumDraftRead)
+def get_syllabus_curriculum_draft(
+    syllabus_id: str,
+    version_id: str,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Fetches the structured curriculum draft generated from syllabus understanding.
+    Returns the hierarchy of subjects, units/modules, topics, and course outcomes with evidence.
+    """
+    draft = SyllabusJobRunner.get_version_draft(
+        db=db,
+        syllabus_id=syllabus_id,
+        version_id=version_id,
+        user_id=current_user.id,
+    )
+    if not draft:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No curriculum draft found. Please analyze or re-process the syllabus first.",
+        )
+    return draft
+
