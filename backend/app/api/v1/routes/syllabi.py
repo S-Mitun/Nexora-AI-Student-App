@@ -15,10 +15,14 @@ from app.schemas.syllabus import (
     SyllabusProcessingJobRead,
     SyllabusCurriculumDraftRead,
     SyllabusProcessRequest,
+    SyllabusCompileRequest,
+    SyllabusCompilationResult,
 )
+from app.models.syllabus import SyllabusCurriculumDraft
 from app.services.syllabus.lifecycle_service import SyllabusLifecycleService
 from app.services.syllabus.state_resolver import SyllabusStateResolver
 from app.services.syllabus.job_runner import SyllabusJobRunner
+from app.services.syllabus.compiler_engine import SyllabusCurriculumCompilerEngine
 from app.core.logging import logger
 
 router = APIRouter(prefix="/syllabi", tags=["Universal Syllabus & Academic Document Lifecycle"])
@@ -271,6 +275,7 @@ def get_syllabus_processing_status(
 
 
 @router.get("/{syllabus_id}/versions/{version_id}/draft", response_model=SyllabusCurriculumDraftRead)
+@router.get("/{syllabus_id}/versions/{version_id}/curriculum-draft", response_model=SyllabusCurriculumDraftRead)
 def get_syllabus_curriculum_draft(
     syllabus_id: str,
     version_id: str,
@@ -278,8 +283,8 @@ def get_syllabus_curriculum_draft(
     db: Session = Depends(get_db),
 ):
     """
-    Fetches the structured curriculum draft generated from syllabus understanding.
-    Returns the hierarchy of subjects, units/modules, topics, and course outcomes with evidence.
+    Fetches the structured curriculum draft generated from syllabus understanding & compilation.
+    Returns the hierarchy of subjects, units/modules, canonical candidate lessons, and course outcomes with evidence.
     """
     draft = SyllabusJobRunner.get_version_draft(
         db=db,
@@ -293,4 +298,56 @@ def get_syllabus_curriculum_draft(
             detail="No curriculum draft found. Please analyze or re-process the syllabus first.",
         )
     return draft
+
+
+@router.post("/{syllabus_id}/versions/{version_id}/compile", response_model=SyllabusCompilationResult)
+def compile_syllabus_curriculum_draft(
+    syllabus_id: str,
+    version_id: str,
+    request: SyllabusCompileRequest = SyllabusCompileRequest(),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Master Prompt 04R: Syllabus Curriculum Compiler Endpoint.
+    Compiles 03R extracted evidence into a canonical, normalized curriculum draft:
+    - Subject normalization (code, credits, semester, source citations)
+    - Unit/module preservation with original terminology
+    - Conversion of topics into canonical candidate lessons
+    - Scoping of learning outcomes and prerequisite deduction
+    - Strict invariant: curriculum_status remains review_required and is_curriculum_active = False.
+    """
+    return SyllabusCurriculumCompilerEngine.compile_draft_from_version(
+        db=db,
+        syllabus_id=syllabus_id,
+        version_id=version_id,
+        user_id=current_user.id,
+        force_recompile=request.force_recompile,
+    )
+
+
+@router.get("/drafts/{draft_id}", response_model=SyllabusCurriculumDraftRead)
+def get_curriculum_draft_by_id(
+    draft_id: str,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Direct draft lookup by draft_id, strictly enforcing authenticated student ownership.
+    """
+    draft = (
+        db.query(SyllabusCurriculumDraft)
+        .filter(
+            SyllabusCurriculumDraft.id == draft_id,
+            SyllabusCurriculumDraft.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not draft:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Curriculum draft not found or access denied.",
+        )
+    return draft
+
 

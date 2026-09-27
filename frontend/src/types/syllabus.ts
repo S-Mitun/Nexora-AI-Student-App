@@ -67,12 +67,36 @@ export interface SyllabusCanonicalState {
   updated_at?: string | null;
 }
 
+export interface SyllabusDraftPrerequisite {
+  id: string;
+  draft_id: string;
+  draft_subject_id: string;
+  source_module_id?: string | null;
+  target_module_id?: string | null;
+  source_topic_id?: string | null;
+  target_topic_id?: string | null;
+  title: string;
+  description?: string | null;
+  prerequisite_type: 'explicit' | 'inferred' | string;
+  confidence: 'high' | 'medium' | 'low' | string;
+  evidence_text?: string | null;
+  review_required: boolean;
+}
+
 export interface SyllabusDraftTopic {
   id: string;
   title: string;
+  is_lesson_candidate?: boolean;
+  lesson_candidate_title?: string | null;
+  source_section_id?: string | null;
   source_page?: number | null;
+  page_start?: number | null;
+  page_end?: number | null;
   evidence_text?: string | null;
   confidence: 'high' | 'medium' | 'low' | string;
+  review_required?: boolean;
+  is_ambiguous?: boolean;
+  ambiguity_reason?: string | null;
   sort_order: number;
 }
 
@@ -80,20 +104,37 @@ export interface SyllabusDraftModule {
   id: string;
   title: string;
   display_label: string;
+  original_label?: string | null;
+  sequence_order?: number;
+  source_section_id?: string | null;
   source_page?: number | null;
+  page_start?: number | null;
+  page_end?: number | null;
   evidence_text?: string | null;
   confidence: 'high' | 'medium' | 'low' | string;
+  review_required?: boolean;
+  is_ambiguous?: boolean;
   sort_order: number;
   topics: SyllabusDraftTopic[];
+  lesson_candidates?: SyllabusDraftTopic[];
+  outcomes?: SyllabusDraftOutcome[];
 }
 
 export interface SyllabusDraftOutcome {
   id: string;
   outcome_type: string;
+  scope?: 'course' | 'subject' | 'module' | 'lesson' | string;
+  scope_level?: 'course' | 'subject' | 'module' | 'lesson' | string;
+  origin?: 'explicit' | 'inferred' | string;
+  draft_module_id?: string | null;
   description: string;
+  source_section_id?: string | null;
   source_page?: number | null;
+  page_start?: number | null;
+  page_end?: number | null;
   evidence_text?: string | null;
   confidence: 'high' | 'medium' | 'low' | string;
+  review_required?: boolean;
   sort_order?: number;
 }
 
@@ -103,12 +144,18 @@ export interface SyllabusDraftSubject {
   code?: string | null;
   credits?: string | null;
   semester?: string | null;
+  source_section_id?: string | null;
   source_page?: number | null;
+  page_start?: number | null;
+  page_end?: number | null;
   evidence_text?: string | null;
   confidence: 'high' | 'medium' | 'low' | string;
+  review_required?: boolean;
+  is_ambiguous?: boolean;
   sort_order: number;
   modules: SyllabusDraftModule[];
   outcomes: SyllabusDraftOutcome[];
+  prerequisites?: SyllabusDraftPrerequisite[];
 }
 
 export interface SyllabusCurriculumDraft {
@@ -121,7 +168,12 @@ export interface SyllabusCurriculumDraft {
   raw_text_summary?: string | null;
   overall_confidence: 'high' | 'medium' | 'low' | string;
   status: 'draft' | 'review_required' | 'approved' | 'rejected' | string;
+  compilation_status?: 'not_started' | 'queued' | 'compiling' | 'draft_ready' | 'failed' | string;
+  compilation_version?: number;
+  compilation_error?: string | null;
+  compiled_at?: string | null;
   subjects: SyllabusDraftSubject[];
+  prerequisites?: SyllabusDraftPrerequisite[];
   created_at: string;
   updated_at: string;
 }
@@ -139,5 +191,20 @@ export interface SyllabusProcessingJob {
   processed_pages: number;
   started_at: string;
   completed_at?: string | null;
+}
+
+export interface SyllabusCompilationResult {
+  draft_id: string;
+  syllabus_version_id: string;
+  compilation_status: string;
+  compilation_version: number;
+  subject_count: number;
+  module_count: number;
+  lesson_candidate_count: number;
+  outcome_count: number;
+  prerequisite_count: number;
+  review_required_count: number;
+  is_curriculum_active: boolean;
+  message: string;
 }
 

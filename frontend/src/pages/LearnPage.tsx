@@ -345,14 +345,14 @@ export const LearnPage: React.FC = () => {
             icon={<BookOpen className="w-8 h-8 text-nexora-muted" />}
             title={
               hasDraft && !isCurriculumActive
-                ? 'Curriculum draft ready for review. Activation required.'
+                ? 'Your syllabus has been understood. Review the curriculum before starting learning.'
                 : hasSyllabus && !isCurriculumActive
                 ? 'Syllabus uploaded. Curriculum not activated yet.'
                 : 'No active syllabus has been added yet.'
             }
             description={
               hasDraft && !isCurriculumActive
-                ? 'Your syllabus document has been structured into draft subjects and units with citations. Review your pre-activation draft on the Syllabus page before learning can begin.'
+                ? 'Your syllabus has been compiled into a canonical curriculum draft with verified lessons, units, and learning outcomes. Review the curriculum draft before starting learning.'
                 : hasSyllabus && !isCurriculumActive
                 ? 'Your syllabus has been received and verified. Run document analysis on your syllabus to extract structured learning units.'
                 : 'No active syllabus has been added yet. Upload your syllabus to build your personalized learning path.'

@@ -28,6 +28,7 @@ import {
   Target,
   Lock,
   GraduationCap,
+  GitBranch,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -64,6 +65,8 @@ export const SyllabusPage: React.FC = () => {
   const [draftError, setDraftError] = useState<string | null>(null);
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
   const [activeDraftVersion, setActiveDraftVersion] = useState<{ syllabusId: string; version: SyllabusVersion } | null>(null);
+  const [isCompilingDraft, setIsCompilingDraft] = useState(false);
+  const [compilationSuccessMsg, setCompilationSuccessMsg] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -242,6 +245,24 @@ export const SyllabusPage: React.FC = () => {
       setDraftError(err.response?.data?.detail || 'Could not load curriculum draft. Please process the syllabus first.');
     } finally {
       setLoadingDraft(false);
+    }
+  };
+
+  const handleCompileDraft = async (sylId: string, verId: string) => {
+    try {
+      setIsCompilingDraft(true);
+      setCompilationSuccessMsg(null);
+      setDraftError(null);
+      const res = await apiService.compileSyllabusCurriculumDraft(sylId, verId);
+      const updatedDraft = await apiService.getSyllabusCurriculumDraft(sylId, verId);
+      setReviewDraft(updatedDraft);
+      setCompilationSuccessMsg(res.message || 'Curriculum draft successfully compiled and normalized.');
+      await loadSyllabi();
+      await refreshSyllabusState();
+    } catch (err: any) {
+      setDraftError(err.response?.data?.detail || 'Failed to compile canonical curriculum draft.');
+    } finally {
+      setIsCompilingDraft(false);
     }
   };
 
@@ -839,12 +860,26 @@ export const SyllabusPage: React.FC = () => {
                 </div>
               </div>
 
-              <button
-                onClick={() => setIsDraftModalOpen(false)}
-                className="p-1.5 rounded-lg text-nexora-muted hover:text-white hover:bg-nexora-border transition-colors shrink-0"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-3">
+                {activeDraftVersion && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs border-purple-500/40 text-purple-300 hover:bg-purple-500/10 shrink-0"
+                    leftIcon={isCompilingDraft ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                    disabled={isCompilingDraft}
+                    onClick={() => handleCompileDraft(activeDraftVersion.syllabusId, activeDraftVersion.version.id)}
+                  >
+                    {isCompilingDraft ? 'Compiling Draft...' : reviewDraft?.compilation_version ? `Re-compile Draft (v${reviewDraft.compilation_version})` : 'Compile Canonical Draft'}
+                  </Button>
+                )}
+                <button
+                  onClick={() => setIsDraftModalOpen(false)}
+                  className="p-1.5 rounded-lg text-nexora-muted hover:text-white hover:bg-nexora-border transition-colors shrink-0"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Modal Body */}
@@ -857,19 +892,31 @@ export const SyllabusPage: React.FC = () => {
                     Pre-Activation Curriculum Draft (State C: review_required)
                   </p>
                   <p className="text-amber-200/90 leading-relaxed">
-                    This curriculum draft was automatically extracted and structured directly from your syllabus with ground truth page citations.
+                    This canonical curriculum draft was normalized directly from your uploaded syllabus with ground truth page citations.
                     In accordance with strict runtime safety rules, <strong>your active curriculum remains inactive</strong>.
-                    No lessons, practice problems, or laboratory simulations will appear in the runtime app until you confirm and activate this curriculum.
+                    No lessons, practice problems, or laboratory simulations will appear in the runtime workspace until you confirm and activate this curriculum in Prompt 05R.
                   </p>
                 </div>
               </div>
+
+              {compilationSuccessMsg && (
+                <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="font-medium">{compilationSuccessMsg}</span>
+                  </div>
+                  <button onClick={() => setCompilationSuccessMsg(null)} className="text-emerald-400 hover:text-white p-1">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
 
               {loadingDraft ? (
                 <div className="py-20 flex flex-col items-center justify-center gap-4 text-center">
                   <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
                   <div>
                     <p className="text-sm font-semibold text-white">Loading structured curriculum draft...</p>
-                    <p className="text-xs text-nexora-muted mt-1">Retrieving verified modules, topics, and source citations</p>
+                    <p className="text-xs text-nexora-muted mt-1">Retrieving verified modules, candidate topics, and source citations</p>
                   </div>
                 </div>
               ) : draftError ? (
@@ -894,6 +941,38 @@ export const SyllabusPage: React.FC = () => {
                 </div>
               ) : reviewDraft && reviewDraft.subjects.length > 0 ? (
                 <div className="space-y-6">
+                  {/* Draft Metrics Summary Bar */}
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 p-4 rounded-xl bg-nexora-elevated/40 border border-nexora-border/60 text-center">
+                    <div className="p-2 rounded-lg bg-nexora-bg/40">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-nexora-muted block">Subjects</span>
+                      <span className="text-lg font-bold text-white">{reviewDraft.subjects.length}</span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-nexora-bg/40">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-nexora-muted block">Units / Modules</span>
+                      <span className="text-lg font-bold text-purple-300">
+                        {reviewDraft.subjects.reduce((acc, s) => acc + s.modules.length, 0)}
+                      </span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-nexora-bg/40">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-nexora-muted block">Lesson Candidates</span>
+                      <span className="text-lg font-bold text-indigo-300">
+                        {reviewDraft.subjects.reduce((acc, s) => acc + s.modules.reduce((mAcc, m) => mAcc + m.topics.length, 0), 0)}
+                      </span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-nexora-bg/40">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-nexora-muted block">Outcomes</span>
+                      <span className="text-lg font-bold text-emerald-300">
+                        {reviewDraft.subjects.reduce((acc, s) => acc + s.outcomes.length, 0)}
+                      </span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-nexora-bg/40">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-nexora-muted block">Prerequisites</span>
+                      <span className="text-lg font-bold text-amber-300">
+                        {reviewDraft.prerequisites?.length || 0}
+                      </span>
+                    </div>
+                  </div>
+
                   {/* Subject Overview Card */}
                   {reviewDraft.subjects.map((subj) => (
                     <div key={subj.id} className="space-y-6">
@@ -931,7 +1010,7 @@ export const SyllabusPage: React.FC = () => {
                             </span>
                             <span className="flex items-center gap-1.5">
                               <ListChecks className="w-3.5 h-3.5 text-nexora-accent" />
-                              {subj.modules.reduce((acc, m) => acc + m.topics.length, 0)} Topics
+                              {subj.modules.reduce((acc, m) => acc + m.topics.length, 0)} Lesson Candidates
                             </span>
                             {subj.outcomes.length > 0 && (
                               <span className="flex items-center gap-1.5">
@@ -957,7 +1036,7 @@ export const SyllabusPage: React.FC = () => {
                         <div className="space-y-3">
                           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-nexora-accent">
                             <Target className="w-4 h-4" />
-                            <span>Course Outcomes (COs) — Source Verified</span>
+                            <span>Course Outcomes (COs) — Source Verified ({subj.outcomes.length})</span>
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                             {subj.outcomes.map((co, idx) => (
@@ -968,18 +1047,28 @@ export const SyllabusPage: React.FC = () => {
                                 <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shrink-0 mt-0.5">
                                   {co.outcome_type}
                                 </span>
-                                <div className="space-y-1 flex-1">
+                                <div className="space-y-1.5 flex-1">
                                   <p className="text-xs text-white/90 leading-relaxed font-medium">
                                     {co.description}
                                   </p>
-                                  <div className="flex items-center gap-2 text-[10px] text-nexora-muted">
+                                  <div className="flex items-center gap-2 text-[10px] text-nexora-muted flex-wrap">
+                                    <span className="font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                                      {co.scope || 'course'} scope
+                                    </span>
+                                    <span className={`font-mono px-1.5 py-0.2 rounded border ${
+                                      co.origin === 'inferred'
+                                        ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                                        : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                                    }`}>
+                                      {co.origin || 'explicit'}
+                                    </span>
                                     {co.source_page && <span>Page {co.source_page}</span>}
                                     <span>•</span>
                                     <span className="text-emerald-400 capitalize">{co.confidence} confidence</span>
                                     {co.evidence_text && (
                                       <>
                                         <span>•</span>
-                                        <span className="italic truncate max-w-[200px]" title={co.evidence_text}>
+                                        <span className="italic truncate max-w-[180px]" title={co.evidence_text}>
                                           &quot;{co.evidence_text}&quot;
                                         </span>
                                       </>
@@ -1019,11 +1108,21 @@ export const SyllabusPage: React.FC = () => {
                                 >
                                   <div className="flex items-center gap-3 flex-wrap">
                                     <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/30">
-                                      {mod.display_label || `Unit ${modIdx + 1}`}
+                                      {mod.original_label || mod.display_label || `Unit ${modIdx + 1}`}
                                     </span>
                                     <span className="text-sm font-semibold text-white">
                                       {mod.title}
                                     </span>
+                                    {mod.sequence_order !== undefined && (
+                                      <span className="text-[10px] font-mono text-nexora-muted bg-nexora-bg/60 px-1.5 py-0.5 rounded border border-nexora-border/40">
+                                        Seq #{mod.sequence_order}
+                                      </span>
+                                    )}
+                                    {mod.review_required && (
+                                      <Badge variant="warning" size="sm" className="text-[10px] bg-amber-500/20 text-amber-300 border-amber-500/40">
+                                        Review Required
+                                      </Badge>
+                                    )}
                                     {mod.source_page && (
                                       <Badge variant="outline" size="sm" className="text-[10px] text-nexora-muted border-nexora-border">
                                         Page {mod.source_page}
@@ -1033,7 +1132,7 @@ export const SyllabusPage: React.FC = () => {
 
                                   <div className="flex items-center gap-3 shrink-0">
                                     <span className="text-xs font-medium text-nexora-muted">
-                                      {mod.topics.length} {mod.topics.length === 1 ? 'topic' : 'topics'}
+                                      {mod.topics.length} {mod.topics.length === 1 ? 'lesson candidate' : 'lesson candidates'}
                                     </span>
                                     {isModExpanded ? (
                                       <ChevronUp className="w-4 h-4 text-nexora-muted" />
@@ -1063,10 +1162,10 @@ export const SyllabusPage: React.FC = () => {
                                     {/* Topics List */}
                                     <div>
                                       <span className="text-[11px] font-semibold text-nexora-muted uppercase tracking-wider block mb-2">
-                                        Extracted Curriculum Topics ({mod.topics.length})
+                                        Normalized Lesson Candidates ({mod.topics.length})
                                       </span>
                                       {mod.topics.length === 0 ? (
-                                        <p className="text-xs text-nexora-muted italic">No topics extracted for this unit.</p>
+                                        <p className="text-xs text-nexora-muted italic">No lesson candidates extracted for this unit.</p>
                                       ) : (
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                           {mod.topics.map((top, tIdx) => (
@@ -1078,14 +1177,27 @@ export const SyllabusPage: React.FC = () => {
                                                 {tIdx + 1}
                                               </span>
                                               <div className="flex-1 min-w-0">
-                                                <p className="text-white/90 font-medium truncate" title={top.title}>
-                                                  {top.title}
-                                                </p>
-                                                {top.source_page && (
-                                                  <span className="text-[10px] text-nexora-muted">
-                                                    Page {top.source_page}
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                  <p className="text-white/90 font-medium truncate" title={top.lesson_candidate_title || top.title}>
+                                                    {top.lesson_candidate_title || top.title}
+                                                  </p>
+                                                  <span className="text-[9px] font-mono font-semibold px-1 py-0.2 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/25">
+                                                    Candidate
                                                   </span>
-                                                )}
+                                                  {(top.review_required || top.is_ambiguous) && (
+                                                    <span
+                                                      className="text-[9px] font-mono font-semibold px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-0.5"
+                                                      title={top.ambiguity_reason || 'Low confidence or unanchored scope'}
+                                                    >
+                                                      <AlertCircle className="w-2.5 h-2.5" />
+                                                      Review
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                <div className="flex items-center gap-2 text-[10px] text-nexora-muted mt-0.5">
+                                                  {top.source_page && <span>Page {top.source_page}</span>}
+                                                  {top.confidence && <span>• {top.confidence} conf</span>}
+                                                </div>
                                               </div>
                                             </div>
                                           ))}
@@ -1101,6 +1213,55 @@ export const SyllabusPage: React.FC = () => {
                       </div>
                     </div>
                   ))}
+
+                  {/* Dedicated Prerequisites Section */}
+                  {reviewDraft.prerequisites && reviewDraft.prerequisites.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-400">
+                          <GitBranch className="w-4 h-4" />
+                          <span>Curriculum Prerequisites & Flow Dependencies ({reviewDraft.prerequisites.length})</span>
+                        </div>
+                        <span className="text-[11px] text-nexora-muted">
+                          Preserving foundational curricular flow
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                        {reviewDraft.prerequisites.map((prereq, pIdx) => (
+                          <div
+                            key={prereq.id || pIdx}
+                            className="p-3 rounded-xl bg-nexora-elevated/40 border border-nexora-border/60 flex items-start gap-3 text-xs"
+                          >
+                            <GitBranch className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                            <div className="flex-1 space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                                  prereq.prerequisite_type === 'inferred'
+                                    ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                                    : 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30'
+                                }`}>
+                                  {prereq.prerequisite_type.toUpperCase()}
+                                </span>
+                                {prereq.confidence && (
+                                  <span className="text-[10px] text-emerald-400 font-mono">
+                                    {prereq.confidence} conf
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-white/90 text-xs font-medium">
+                                {prereq.description || 'Sequential curricular dependency'}
+                              </p>
+                              {prereq.evidence_text && (
+                                <p className="text-[10px] text-nexora-muted italic">
+                                  &quot;{prereq.evidence_text}&quot;
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Zero Hallucination Guarantee Card */}
                   <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300 flex items-center gap-3">
@@ -1144,9 +1305,9 @@ export const SyllabusPage: React.FC = () => {
                   disabled={true}
                   className="opacity-60 cursor-not-allowed bg-slate-700 text-slate-300 border-slate-600"
                   leftIcon={<Lock className="w-3.5 h-3.5" />}
-                  title="Curriculum activation is handled in Master Prompt 04R"
+                  title="Curriculum activation is handled in Master Prompt 05R"
                 >
-                  Activate Curriculum (Prompt 04R)
+                  Activate Curriculum (Coming in Prompt 05R)
                 </Button>
               </div>
             </div>

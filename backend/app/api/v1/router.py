@@ -21,6 +21,17 @@ syllabus_alias_router.add_api_route(
 )
 api_v1_router.include_router(syllabus_alias_router)
 
+# Alias router for /curriculum-drafts/{draft_id}
+curriculum_drafts_alias_router = APIRouter(prefix="/curriculum-drafts", tags=["Universal Syllabus & Academic Document Lifecycle"])
+curriculum_drafts_alias_router.add_api_route(
+    "/{draft_id}",
+    syllabi.get_curriculum_draft_by_id,
+    methods=["GET"],
+    response_model=syllabi.SyllabusCurriculumDraftRead,
+    summary="Direct Curriculum Draft Lookup Alias",
+)
+api_v1_router.include_router(curriculum_drafts_alias_router)
+
 api_v1_router.include_router(learning.router)
 api_v1_router.include_router(learning.curriculum_alias_router)
 api_v1_router.include_router(notes.router)

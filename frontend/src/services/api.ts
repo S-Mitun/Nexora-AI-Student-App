@@ -452,7 +452,29 @@ export const apiService = {
     versionId: string
   ): Promise<import('../types/syllabus').SyllabusCurriculumDraft> {
     const response = await apiClient.get<import('../types/syllabus').SyllabusCurriculumDraft>(
-      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/draft`
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/curriculum-draft`
+    );
+    return response.data;
+  },
+
+  // --- SYLLABUS CURRICULUM COMPILER (MASTER PROMPT 04R) ---
+  async compileSyllabusCurriculumDraft(
+    syllabusId: string,
+    versionId: string,
+    forceRecompile: boolean = false
+  ): Promise<import('../types/syllabus').SyllabusCompilationResult> {
+    const response = await apiClient.post<import('../types/syllabus').SyllabusCompilationResult>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/compile`,
+      { force_recompile: forceRecompile }
+    );
+    return response.data;
+  },
+
+  async getCurriculumDraftById(
+    draftId: string
+  ): Promise<import('../types/syllabus').SyllabusCurriculumDraft> {
+    const response = await apiClient.get<import('../types/syllabus').SyllabusCurriculumDraft>(
+      `/api/v1/curriculum-drafts/${encodeURIComponent(draftId)}`
     );
     return response.data;
   },

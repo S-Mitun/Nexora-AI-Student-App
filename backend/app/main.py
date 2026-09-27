@@ -370,6 +370,89 @@ async def lifespan(app: FastAPI):
                         conn.execute(text("ALTER TABLE notes ADD COLUMN is_archived BOOLEAN DEFAULT 0"))
                     conn.commit()
 
+                # Sync 04R syllabus curriculum draft columns
+                draft_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(syllabus_curriculum_drafts)"))}
+                if draft_cols:
+                    if "compilation_status" not in draft_cols:
+                        conn.execute(text("ALTER TABLE syllabus_curriculum_drafts ADD COLUMN compilation_status VARCHAR(50) DEFAULT 'draft_ready'"))
+                    if "compilation_version" not in draft_cols:
+                        conn.execute(text("ALTER TABLE syllabus_curriculum_drafts ADD COLUMN compilation_version INTEGER DEFAULT 1"))
+                    if "compilation_error" not in draft_cols:
+                        conn.execute(text("ALTER TABLE syllabus_curriculum_drafts ADD COLUMN compilation_error TEXT"))
+                    if "compiled_at" not in draft_cols:
+                        conn.execute(text("ALTER TABLE syllabus_curriculum_drafts ADD COLUMN compiled_at DATETIME"))
+                    conn.commit()
+
+                subj_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(syllabus_draft_subjects)"))}
+                if subj_cols:
+                    if "source_section_id" not in subj_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_subjects ADD COLUMN source_section_id VARCHAR(100)"))
+                    if "page_start" not in subj_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_subjects ADD COLUMN page_start INTEGER"))
+                    if "page_end" not in subj_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_subjects ADD COLUMN page_end INTEGER"))
+                    if "review_required" not in subj_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_subjects ADD COLUMN review_required BOOLEAN DEFAULT 0"))
+                    if "is_ambiguous" not in subj_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_subjects ADD COLUMN is_ambiguous BOOLEAN DEFAULT 0"))
+                    conn.commit()
+
+                mod_draft_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(syllabus_draft_modules)"))}
+                if mod_draft_cols:
+                    if "original_label" not in mod_draft_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_modules ADD COLUMN original_label VARCHAR(100)"))
+                    if "sequence_order" not in mod_draft_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_modules ADD COLUMN sequence_order INTEGER"))
+                    if "source_section_id" not in mod_draft_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_modules ADD COLUMN source_section_id VARCHAR(100)"))
+                    if "page_start" not in mod_draft_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_modules ADD COLUMN page_start INTEGER"))
+                    if "page_end" not in mod_draft_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_modules ADD COLUMN page_end INTEGER"))
+                    if "review_required" not in mod_draft_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_modules ADD COLUMN review_required BOOLEAN DEFAULT 0"))
+                    if "is_ambiguous" not in mod_draft_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_modules ADD COLUMN is_ambiguous BOOLEAN DEFAULT 0"))
+                    conn.commit()
+
+                topic_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(syllabus_draft_topics)"))}
+                if topic_cols:
+                    if "is_lesson_candidate" not in topic_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_topics ADD COLUMN is_lesson_candidate BOOLEAN DEFAULT 1"))
+                    if "lesson_candidate_title" not in topic_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_topics ADD COLUMN lesson_candidate_title VARCHAR(255)"))
+                    if "source_section_id" not in topic_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_topics ADD COLUMN source_section_id VARCHAR(100)"))
+                    if "page_start" not in topic_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_topics ADD COLUMN page_start INTEGER"))
+                    if "page_end" not in topic_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_topics ADD COLUMN page_end INTEGER"))
+                    if "review_required" not in topic_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_topics ADD COLUMN review_required BOOLEAN DEFAULT 0"))
+                    if "is_ambiguous" not in topic_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_topics ADD COLUMN is_ambiguous BOOLEAN DEFAULT 0"))
+                    if "ambiguity_reason" not in topic_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_topics ADD COLUMN ambiguity_reason VARCHAR(512)"))
+                    conn.commit()
+
+                outcome_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(syllabus_draft_outcomes)"))}
+                if outcome_cols:
+                    if "scope_level" not in outcome_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_outcomes ADD COLUMN scope_level VARCHAR(50) DEFAULT 'course'"))
+                    if "origin" not in outcome_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_outcomes ADD COLUMN origin VARCHAR(50) DEFAULT 'explicit'"))
+                    if "draft_module_id" not in outcome_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_outcomes ADD COLUMN draft_module_id VARCHAR(36)"))
+                    if "source_section_id" not in outcome_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_outcomes ADD COLUMN source_section_id VARCHAR(100)"))
+                    if "page_start" not in outcome_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_outcomes ADD COLUMN page_start INTEGER"))
+                    if "page_end" not in outcome_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_outcomes ADD COLUMN page_end INTEGER"))
+                    if "review_required" not in outcome_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_outcomes ADD COLUMN review_required BOOLEAN DEFAULT 0"))
+                    conn.commit()
+
         with SessionLocal() as session:
             from app.services.learning.curriculum_service import CurriculumSeedService
             CurriculumSeedService.seed_boards_if_empty(session)

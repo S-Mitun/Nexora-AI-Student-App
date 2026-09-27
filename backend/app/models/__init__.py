@@ -8,6 +8,7 @@ from app.models.syllabus import (
     SyllabusDraftModule,
     SyllabusDraftTopic,
     SyllabusDraftOutcome,
+    SyllabusDraftPrerequisite,
 )
 from app.models.learning import Curriculum, StudentSubject, Subject, Topic, Concept, LearningModule, Lesson, PracticeSet, PracticeQuestion
 from app.models.documents import Document, DocumentChunk
@@ -25,6 +26,7 @@ __all__ = [
     "SyllabusDraftModule",
     "SyllabusDraftTopic",
     "SyllabusDraftOutcome",
+    "SyllabusDraftPrerequisite",
     "Curriculum",
     "StudentSubject",
     "Subject",
