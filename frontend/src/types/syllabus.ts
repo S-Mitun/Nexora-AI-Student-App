@@ -67,6 +67,33 @@ export interface SyllabusCanonicalState {
   updated_at?: string | null;
 }
 
+export type SyllabusLifecycleState =
+  | 'NO_SYLLABUS'
+  | 'PROCESSING'
+  | 'UPLOADED_PENDING'
+  | 'DRAFT_READY_FOR_REVIEW'
+  | 'WAITING_FOR_ACTIVATION'
+  | 'ACTIVE_CURRICULUM';
+
+export function computeSyllabusLifecycleState(state: SyllabusCanonicalState | null): SyllabusLifecycleState {
+  if (!state || !state.has_syllabus) {
+    return 'NO_SYLLABUS';
+  }
+  if (state.is_curriculum_active && state.curriculum_status === 'active') {
+    return 'ACTIVE_CURRICULUM';
+  }
+  if (state.has_draft || state.curriculum_status === 'review_required' || state.curriculum_status === 'draft') {
+    return 'DRAFT_READY_FOR_REVIEW';
+  }
+  if (state.processing_status === 'processing' || state.upload_status === 'processing') {
+    return 'PROCESSING';
+  }
+  if (state.processing_status === 'completed' && !state.is_curriculum_active) {
+    return 'WAITING_FOR_ACTIVATION';
+  }
+  return 'UPLOADED_PENDING';
+}
+
 export interface SyllabusDraftPrerequisite {
   id: string;
   draft_id: string;

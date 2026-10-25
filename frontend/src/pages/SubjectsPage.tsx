@@ -33,7 +33,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 export const SubjectsPage: React.FC = () => {
   const navigate = useNavigate();
   const { academicContext, refreshAcademicContext, isReady } = useAcademicContext();
-  const { hasSyllabus, isCurriculumActive, hasDraft } = useSyllabus();
+  const { hasSyllabus, isCurriculumActive, hasDraft, lifecycleState, loading: syllabusLoading } = useSyllabus();
   const currentTier = academicContext?.academic_level;
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -226,7 +226,7 @@ export const SubjectsPage: React.FC = () => {
       </div>
 
       {/* Grid Content */}
-      {loading ? (
+      {loading || syllabusLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <SkeletonCard />
           <SkeletonCard />
@@ -238,37 +238,65 @@ export const SubjectsPage: React.FC = () => {
           title={
             activeCategoryFilter === 'enrolled'
               ? 'No subjects enrolled yet'
-              : hasDraft && !isCurriculumActive
+              : lifecycleState === 'DRAFT_READY_FOR_REVIEW'
               ? 'Curriculum draft generated. Review required.'
-              : hasSyllabus && !isCurriculumActive
+              : lifecycleState === 'PROCESSING'
+              ? 'Syllabus is being analyzed'
+              : lifecycleState === 'UPLOADED_PENDING'
+              ? 'Syllabus uploaded. Analysis pending.'
+              : lifecycleState === 'WAITING_FOR_ACTIVATION'
               ? 'Syllabus uploaded. Curriculum not activated yet.'
-              : 'No syllabus uploaded'
+              : lifecycleState === 'NO_SYLLABUS'
+              ? 'No syllabus uploaded'
+              : 'No subjects found'
           }
           description={
             activeCategoryFilter === 'enrolled'
               ? 'Enroll in subjects from your active syllabus to build your learning workspace.'
-              : hasDraft && !isCurriculumActive
+              : lifecycleState === 'DRAFT_READY_FOR_REVIEW'
               ? 'Your syllabus document has been structured into draft subjects and units with citations. Review your draft on the Syllabus page; subjects will become active once activated.'
-              : hasSyllabus && !isCurriculumActive
+              : lifecycleState === 'PROCESSING'
+              ? 'Your syllabus document is currently being analyzed. Subjects will appear once the curriculum draft is reviewed and activated.'
+              : lifecycleState === 'UPLOADED_PENDING'
+              ? 'Your primary syllabus is uploaded and verified. Run document analysis on the Syllabus page to extract structured curriculum subjects.'
+              : lifecycleState === 'WAITING_FOR_ACTIVATION'
               ? 'Your primary syllabus is uploaded and verified. Curriculum subjects will become available once curriculum activation is completed.'
-              : 'Upload your primary syllabus to generate and activate your curriculum subjects.'
+              : lifecycleState === 'NO_SYLLABUS'
+              ? 'Upload your primary syllabus to generate and activate your curriculum subjects.'
+              : 'No subjects match your current filter criteria.'
           }
           action={
             activeCategoryFilter === 'enrolled' ? (
               <Button variant="primary" size="sm" onClick={() => setActiveCategoryFilter('all')}>
                 Browse Available Subjects
               </Button>
-            ) : (
+            ) : lifecycleState === 'DRAFT_READY_FOR_REVIEW' ? (
               <Button
                 variant="primary"
                 size="sm"
                 onClick={() => navigate('/syllabus')}
               >
-                {hasDraft && !isCurriculumActive
-                  ? 'Review Curriculum Draft'
-                  : hasSyllabus
-                  ? 'View Syllabus Hub'
-                  : 'Upload Syllabus'}
+                Review Curriculum Draft
+              </Button>
+            ) : lifecycleState === 'NO_SYLLABUS' ? (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => navigate('/syllabus')}
+              >
+                Upload Syllabus
+              </Button>
+            ) : lifecycleState === 'WAITING_FOR_ACTIVATION' || lifecycleState === 'UPLOADED_PENDING' || lifecycleState === 'PROCESSING' ? (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => navigate('/syllabus')}
+              >
+                View Syllabus Hub
+              </Button>
+            ) : (
+              <Button variant="primary" size="sm" onClick={() => setActiveCategoryFilter('all')}>
+                Browse Available Subjects
               </Button>
             )
           }

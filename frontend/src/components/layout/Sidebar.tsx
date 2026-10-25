@@ -14,6 +14,7 @@ import {
   Settings,
   GraduationCap,
   LogOut,
+  Network,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -22,6 +23,7 @@ export const primaryNavItems = [
   { path: '/syllabus', label: 'Syllabus', icon: FileSpreadsheet },
   { path: '/learn', label: 'My Learning', icon: BookOpen },
   { path: '/subjects', label: 'Subjects', icon: FolderKanban },
+  { path: '/mindmap', label: 'Knowledge Map', icon: Network },
   { path: '/materials', label: 'Materials', icon: FileText },
   { path: '/practice', label: 'Practice', icon: CheckCircle2 },
   { path: '/labs', label: 'Labs', icon: FlaskConical },

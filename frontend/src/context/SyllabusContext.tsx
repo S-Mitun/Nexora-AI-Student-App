@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { useAuth } from './AuthContext';
 import { useAcademicContext } from './AcademicContext';
 import { apiService } from '../services/api';
-import { SyllabusCanonicalState } from '../types/syllabus';
+import { SyllabusCanonicalState, SyllabusLifecycleState, computeSyllabusLifecycleState } from '../types/syllabus';
 
 interface SyllabusContextType {
   syllabusState: SyllabusCanonicalState | null;
@@ -13,6 +13,7 @@ interface SyllabusContextType {
   processingStatus: string;
   hasDraft: boolean;
   draftId: string | null;
+  lifecycleState: SyllabusLifecycleState;
   loading: boolean;
   error: string | null;
   refreshSyllabusState: () => Promise<void>;
@@ -70,6 +71,7 @@ export const SyllabusProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const processingStatus = syllabusState?.processing_status || 'not_started';
   const hasDraft = Boolean(syllabusState?.has_draft || syllabusState?.curriculum_status === 'review_required');
   const draftId = syllabusState?.draft_id || null;
+  const lifecycleState = computeSyllabusLifecycleState(syllabusState);
 
   return (
     <SyllabusContext.Provider
@@ -82,6 +84,7 @@ export const SyllabusProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         processingStatus,
         hasDraft,
         draftId,
+        lifecycleState,
         loading,
         error,
         refreshSyllabusState,

@@ -114,17 +114,20 @@ class SyllabusStateResolver:
             upload_status = target_version.upload_status or "uploaded"
 
         # 6. Resolve curriculum_status & is_curriculum_active
-        # Check active status first
-        is_active = bool(target_version.is_active or active_syllabus.status == "active" or target_version.curriculum_status == "active")
-        
-        if is_active:
+        draft = target_version.curriculum_draft
+
+        if draft and draft.status in ["review_required", "draft"]:
+            # STATE C: Draft exists and is awaiting review
+            curriculum_status = "review_required" if draft.status == "review_required" else "draft"
+            is_curriculum_active = False
+        elif target_version.curriculum_status in ["review_required", "draft"]:
+            # STATE C: Version explicitly marked as review_required
+            curriculum_status = target_version.curriculum_status
+            is_curriculum_active = False
+        elif target_version.curriculum_status == "active" or (draft and draft.status == "active") or active_syllabus.status == "active":
             # STATE D: Curriculum active
             curriculum_status = "active"
             is_curriculum_active = True
-        elif target_version.curriculum_status in ["draft", "review_required"] or active_syllabus.status in ["confirmed", "extracted"]:
-            # STATE C: Interpretation exists, pending review
-            curriculum_status = target_version.curriculum_status if target_version.curriculum_status in ["draft", "review_required"] else "review_required"
-            is_curriculum_active = False
         elif target_version.curriculum_status == "archived" or active_syllabus.status == "archived":
             curriculum_status = "archived"
             is_curriculum_active = False
@@ -138,7 +141,7 @@ class SyllabusStateResolver:
             processing_status = "failed"
         elif target_version.status == "processing" or target_version.processing_status == "processing":
             processing_status = "processing"
-        elif target_version.processing_status == "completed" or is_curriculum_active:
+        elif target_version.processing_status == "completed" or is_curriculum_active or draft is not None:
             processing_status = "completed"
         else:
             # Truthful: file uploaded & verified, future curriculum understanding not started

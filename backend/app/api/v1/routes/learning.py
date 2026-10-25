@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from typing import List, Optional, Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
@@ -1064,7 +1065,7 @@ def list_practice_sets(
             .filter(
                 Syllabus.user_id == current_user.id,
                 Syllabus.academic_level == target_level,
-                Syllabus.status.in_(["confirmed", "extracted"]),
+                Syllabus.status.in_(["confirmed", "extracted", "active"]),
             )
             .first()
         )

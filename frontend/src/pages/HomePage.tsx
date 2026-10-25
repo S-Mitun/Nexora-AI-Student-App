@@ -96,7 +96,7 @@ export const HomePage: React.FC = () => {
   const studentName = profile?.full_name || user?.email?.split('@')[0] || 'Student';
 
   const { academicContext, isReady } = useAcademicContext();
-  const { hasSyllabus, isCurriculumActive, syllabusState, hasDraft } = useSyllabus();
+  const { hasSyllabus, isCurriculumActive, syllabusState, hasDraft, lifecycleState, loading: syllabusLoading } = useSyllabus();
   const activeLevel = academicContext?.academic_level || profile?.education_category || profile?.education_level;
 
   // Genuine student learning activity & active course strictly from database
@@ -216,7 +216,7 @@ export const HomePage: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [activeLevel, isReady]);
+  }, [activeLevel, isReady, isCurriculumActive]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -393,7 +393,7 @@ export const HomePage: React.FC = () => {
       </div>
 
       {/* 1b. State A: No Syllabus Added Yet */}
-      {!loadingWorkspace && !hasSyllabus && (
+      {!loadingWorkspace && !syllabusLoading && lifecycleState === 'NO_SYLLABUS' && (
         <div className="p-6 rounded-2xl bg-gradient-to-r from-nexora-surface to-indigo-950/30 border border-nexora-primary/30 shadow-glow-sm">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
@@ -419,7 +419,7 @@ export const HomePage: React.FC = () => {
       )}
 
       {/* 1c. State C: Syllabus Processed & Curriculum Draft Ready for Review */}
-      {!loadingWorkspace && hasSyllabus && !isCurriculumActive && hasDraft && (
+      {!loadingWorkspace && !syllabusLoading && lifecycleState === 'DRAFT_READY_FOR_REVIEW' && (
         <div className="p-6 rounded-2xl bg-gradient-to-r from-nexora-surface via-purple-950/30 to-indigo-950/30 border border-purple-500/50 shadow-glow-sm">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
@@ -451,7 +451,7 @@ export const HomePage: React.FC = () => {
       )}
 
       {/* 1d. State B: Syllabus Uploaded, Document Analysis Pending */}
-      {!loadingWorkspace && hasSyllabus && !isCurriculumActive && !hasDraft && (
+      {!loadingWorkspace && !syllabusLoading && (lifecycleState === 'UPLOADED_PENDING' || lifecycleState === 'PROCESSING' || lifecycleState === 'WAITING_FOR_ACTIVATION') && (
         <div className="p-6 rounded-2xl bg-gradient-to-r from-nexora-surface via-purple-950/20 to-nexora-surface border border-purple-500/40 shadow-glow-sm">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
@@ -744,53 +744,85 @@ export const HomePage: React.FC = () => {
         )}
       </div>
 
-      {/* 5. Concept-Aware Academic Learning Tools (Master Prompt 06) */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-xl font-bold text-white tracking-tight">Academic Learning Tools</h2>
-            <p className="text-xs text-nexora-muted">
-              10 multi-modal learning modalities aligned to your curriculum concepts
+      {/* 5. Compact Academic Status Overview (Truthful persisted state) */}
+      <div className="p-5 rounded-2xl bg-nexora-surface/80 border border-nexora-border/70 backdrop-blur-sm">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-nexora-muted">
+                Curriculum Status &bull; {academicContext?.grade_level || activeLevel || 'Academic Workspace'}
+              </span>
+              <Badge
+                variant={
+                  lifecycleState === 'ACTIVE_CURRICULUM'
+                    ? 'success'
+                    : lifecycleState === 'DRAFT_READY_FOR_REVIEW'
+                    ? 'accent'
+                    : lifecycleState === 'NO_SYLLABUS'
+                    ? 'neutral'
+                    : 'primary'
+                }
+                size="sm"
+              >
+                {lifecycleState === 'ACTIVE_CURRICULUM'
+                  ? 'Curriculum Active'
+                  : lifecycleState === 'DRAFT_READY_FOR_REVIEW'
+                  ? 'Draft Ready for Review'
+                  : lifecycleState === 'PROCESSING'
+                  ? 'Analyzing Syllabus'
+                  : lifecycleState === 'UPLOADED_PENDING'
+                  ? 'Syllabus Uploaded'
+                  : lifecycleState === 'WAITING_FOR_ACTIVATION'
+                  ? 'Awaiting Activation'
+                  : 'No Syllabus Uploaded'}
+              </Badge>
+            </div>
+            <h3 className="text-base font-bold text-white">
+              {hasSyllabus
+                ? `${syllabusState?.title || 'Prescribed Syllabus'} (v${syllabusState?.active_version_number || 1})`
+                : 'No Prescribed Syllabus Configured'}
+            </h3>
+            <p className="text-xs text-nexora-subtext">
+              {lifecycleState === 'ACTIVE_CURRICULUM'
+                ? `${workspace?.enrolled_subjects?.length || 0} active enrolled subjects powering your concept lessons and practice.`
+                : lifecycleState === 'DRAFT_READY_FOR_REVIEW'
+                ? 'Your syllabus document has been compiled into a structured curriculum draft awaiting student review.'
+                : lifecycleState === 'NO_SYLLABUS'
+                ? 'Upload your primary syllabus document to extract verified course units, lessons, and topic hierarchies.'
+                : 'Primary syllabus received and verified. Run analysis or activate your curriculum to populate subjects.'}
             </p>
           </div>
-        </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {(workspace?.learning_tools || []).map((tool) => {
-            const isLive = tool.status === 'active';
-            return (
-              <div
-                key={tool.id}
-                onClick={() => {
-                  if (isLive && tool.route) {
-                    navigate(tool.route);
-                  }
-                }}
-                className={`p-4 rounded-xl border transition-all ${
-                  isLive
-                    ? 'bg-nexora-surface/90 border-nexora-border/80 hover:border-nexora-primary/60 cursor-pointer group hover:-translate-y-0.5'
-                    : 'bg-nexora-surface/40 border-nexora-border/40 opacity-75'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-bold text-white group-hover:text-nexora-accent transition-colors">
-                    {tool.name}
-                  </span>
-                  <Badge variant={isLive ? 'accent' : 'neutral'} size="sm">
-                    {isLive ? 'Live' : tool.phase_label}
-                  </Badge>
-                </div>
-                <p className="text-[11px] text-nexora-subtext line-clamp-2 leading-snug">
-                  {tool.description}
-                </p>
-                {isLive && (
-                  <div className="mt-3 text-[11px] font-semibold text-nexora-primary flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
-                    Launch <ArrowRight className="w-3 h-3" />
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          <div className="flex items-center gap-3 shrink-0">
+            {lifecycleState === 'DRAFT_READY_FOR_REVIEW' && (
+              <Link to="/syllabus">
+                <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                  Review Curriculum Draft
+                </Button>
+              </Link>
+            )}
+            {lifecycleState === 'NO_SYLLABUS' && (
+              <Link to="/syllabus">
+                <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                  Upload Syllabus
+                </Button>
+              </Link>
+            )}
+            {(lifecycleState === 'WAITING_FOR_ACTIVATION' || lifecycleState === 'UPLOADED_PENDING' || lifecycleState === 'PROCESSING') && (
+              <Link to="/syllabus">
+                <Button variant="outline" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                  View Syllabus Hub
+                </Button>
+              </Link>
+            )}
+            {lifecycleState === 'ACTIVE_CURRICULUM' && (
+              <Link to="/subjects">
+                <Button variant="outline" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                  Browse Subjects
+                </Button>
+              </Link>
+            )}
+          </div>
         </div>
       </div>
 

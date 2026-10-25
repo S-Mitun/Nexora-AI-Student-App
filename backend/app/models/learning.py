@@ -1,8 +1,13 @@
 import uuid
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 from sqlalchemy import String, Text, Integer, Boolean, ForeignKey, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from app.models.notes import Note
+    from app.models.progress import UserProgress
+    from app.models.syllabus import SyllabusVersion
 
 
 class Curriculum(Base, TimestampMixin):

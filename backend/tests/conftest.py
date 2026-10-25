@@ -78,7 +78,7 @@ def create_active_syllabus(db_session):
             user_id=user_id,
             title=title,
             academic_level=academic_level,
-            status="confirmed",
+            status="active",
         )
         db_session.add(syl)
         ver = SyllabusVersion(
@@ -86,6 +86,7 @@ def create_active_syllabus(db_session):
             syllabus_id=syl_id,
             version_number=1,
             is_active=True,
+            curriculum_status="active",
             raw_extracted_json={"modules": []},
         )
         db_session.add(ver)

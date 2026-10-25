@@ -313,7 +313,9 @@ async def lifespan(app: FastAPI):
                         UPDATE syllabus_versions
                         SET 
                             curriculum_status = CASE 
-                                WHEN is_active = 1 THEN 'active'
+                                WHEN id IN (SELECT syllabus_version_id FROM syllabus_curriculum_drafts WHERE status = 'review_required') THEN 'review_required'
+                                WHEN id IN (SELECT syllabus_version_id FROM syllabus_curriculum_drafts WHERE status = 'active') THEN 'active'
+                                WHEN is_active = 1 AND id NOT IN (SELECT syllabus_version_id FROM syllabus_curriculum_drafts) THEN 'not_built'
                                 WHEN status = 'archived' THEN 'archived'
                                 ELSE 'not_built'
                             END,
@@ -322,11 +324,11 @@ async def lifespan(app: FastAPI):
                                 ELSE 'verified'
                             END,
                             processing_status = CASE 
-                                WHEN is_active = 1 THEN 'completed'
+                                WHEN is_active = 1 OR id IN (SELECT syllabus_version_id FROM syllabus_curriculum_drafts) THEN 'completed'
                                 WHEN status = 'failed' THEN 'failed'
                                 ELSE 'not_started'
                             END
-                        WHERE curriculum_status IS NULL OR upload_status IS NULL OR processing_status IS NULL
+                        WHERE curriculum_status IS NULL OR upload_status IS NULL OR processing_status IS NULL OR (curriculum_status = 'active' AND id IN (SELECT syllabus_version_id FROM syllabus_curriculum_drafts WHERE status = 'review_required'))
                     """))
                     conn.commit()
 

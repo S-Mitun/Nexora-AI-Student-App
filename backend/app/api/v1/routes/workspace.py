@@ -168,72 +168,8 @@ def get_academic_workspace(
         recent_materials=recent_doc_reads,
     )
 
-    # 6. Honest Educational Tool Statuses
-    learning_tools = [
-        LearningToolStatus(
-            id="tool-learn",
-            name="Concept Lessons",
-            description="Master atomic concepts through intuition, motivation, and verified explanations.",
-            icon="BookOpen",
-            route="/learn",
-            status="active",
-            phase_label="Live",
-        ),
-        LearningToolStatus(
-            id="tool-materials",
-            name="Study Materials Hub",
-            description="Manage uploaded textbooks, lecture slides, and notes powering your workspace.",
-            icon="FolderKanban",
-            route="/materials",
-            status="active",
-            phase_label="Live",
-        ),
-        LearningToolStatus(
-            id="tool-practice",
-            name="Concept Practice Checks",
-            description="Test your understanding with concept-aligned questions and immediate feedback.",
-            icon="CheckCircle2",
-            route="/practice",
-            status="active",
-            phase_label="Live",
-        ),
-        LearningToolStatus(
-            id="tool-notes",
-            name="Personal Academic Notes",
-            description="Record insights, formulas, and summaries attached directly to concepts.",
-            icon="FileText",
-            route="/notes",
-            status="active",
-            phase_label="Live",
-        ),
-        LearningToolStatus(
-            id="tool-mindmap",
-            name="Concept Knowledge Map",
-            description="Visualize the conceptual hierarchy and prerequisite relationships.",
-            icon="Binary",
-            route="/mindmap",
-            status="active",
-            phase_label="Live",
-        ),
-        LearningToolStatus(
-            id="tool-tutor",
-            name="AI Academic Tutor",
-            description="Conversational academic dialogue grounded strictly in your syllabus and materials.",
-            icon="Sparkles",
-            route="/chat",
-            status="upcoming_prompt",
-            phase_label="Phase 2 (Prompt 10)",
-        ),
-        LearningToolStatus(
-            id="tool-labs",
-            name="Concept Simulations & Labs",
-            description="Parameter-tuning models and virtual experiments tied to scientific concepts.",
-            icon="Cpu",
-            route="/labs",
-            status="upcoming_prompt",
-            phase_label="Phase 2 (Prompt 20)",
-        ),
-    ]
+    # 6. Academic Learning Tools (Promotional cards removed per Issue 1; legitimate routes accessible via workspace navigation)
+    learning_tools: List[LearningToolStatus] = []
 
     from app.models.syllabus import Syllabus, SyllabusVersion
     from app.schemas.syllabus import SyllabusRead, SyllabusVersionRead
@@ -292,7 +228,7 @@ def get_academic_workspace(
         academic_identity=academic_identity,
         academic_context=academic_context,
         syllabus_state=canonical_syllabus_state,
-        active_syllabus=active_syllabus_read if canonical_syllabus_state.is_curriculum_active else None,
+        active_syllabus=active_syllabus_read if canonical_syllabus_state.has_syllabus else None,
         enrolled_subjects=enrolled_subjects,
         materials_summary=materials_summary,
         learning_tools=learning_tools,

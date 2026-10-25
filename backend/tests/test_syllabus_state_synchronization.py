@@ -271,3 +271,57 @@ def test_cross_user_state_isolation(client: TestClient, sync_test_users):
     assert state_b["has_syllabus"] is False
     assert state_b["curriculum_status"] == "none"
     assert state_b["is_curriculum_active"] is False
+
+
+# 11. State C Invariant: Active Document Version with Draft Awaiting Review
+def test_active_document_version_with_review_required_draft(client: TestClient, sync_test_users, db_session):
+    """
+    Guarantees that when a document version is active (version.is_active = True),
+    but its curriculum draft is in 'review_required', the system strictly reports
+    curriculum_status='review_required' and is_curriculum_active=False.
+    """
+    from app.models.syllabus import SyllabusCurriculumDraft
+    user_a = sync_test_users["user_a"]
+    pdf_bytes = b"%PDF-1.4 Draft Invariant Syllabus"
+    files = {"file": ("draft_invariant.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
+    upload_res = client.post("/api/v1/syllabi", files=files, headers=auth_header(user_a["token"]))
+    version_id = upload_res.json()["version_id"]
+    syllabus_id = upload_res.json()["syllabus_id"]
+
+    version = db_session.query(SyllabusVersion).filter(SyllabusVersion.id == version_id).first()
+    version.is_active = True
+
+    # Attach a curriculum draft awaiting review
+    draft = SyllabusCurriculumDraft(
+        syllabus_id=syllabus_id,
+        syllabus_version_id=version_id,
+        user_id=user_a["id"],
+        title="Test Syllabus Draft",
+        academic_level="undergraduate",
+        status="review_required",
+        compilation_status="draft_ready",
+        compilation_version=1,
+    )
+    db_session.add(draft)
+    db_session.commit()
+
+    state_res = client.get("/api/v1/syllabi/state", headers=auth_header(user_a["token"]))
+    assert state_res.status_code == 200
+    state = state_res.json()
+    assert state["has_syllabus"] is True
+    assert state["has_draft"] is True
+    assert state["curriculum_status"] == "review_required"
+    assert state["is_curriculum_active"] is False
+
+
+# 12. Workspace Learning Tools Promotional Cards Removal
+def test_workspace_removes_generic_promotional_tools(client: TestClient, sync_test_users):
+    """
+    Verifies that the generic promotional learning tools grid is removed from the workspace API.
+    """
+    user_a = sync_test_users["user_a"]
+    res = client.get("/api/v1/workspace", headers=auth_header(user_a["token"]))
+    assert res.status_code == 200
+    workspace = res.json()
+    assert "learning_tools" in workspace
+    assert workspace["learning_tools"] == []

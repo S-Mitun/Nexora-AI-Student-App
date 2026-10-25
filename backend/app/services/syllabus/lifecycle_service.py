@@ -483,7 +483,12 @@ class SyllabusLifecycleService:
         # Activate selected version
         version.is_active = True
         version.status = "active"
-        version.curriculum_status = "active"
+        if version.curriculum_draft and version.curriculum_draft.status == "active":
+            version.curriculum_status = "active"
+        elif version.curriculum_draft and version.curriculum_draft.status in ["review_required", "draft"]:
+            version.curriculum_status = "review_required"
+        else:
+            version.curriculum_status = "not_built"
         version.processing_status = "completed"
         version.activated_at = datetime.now(timezone.utc)
         syllabus.status = "active"

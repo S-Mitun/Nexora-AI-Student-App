@@ -33,7 +33,7 @@ import { useSyllabus } from '../context/SyllabusContext';
 
 export const LearnPage: React.FC = () => {
   const { profile } = useAuth();
-  const { hasSyllabus, isCurriculumActive, hasDraft } = useSyllabus();
+  const { hasSyllabus, isCurriculumActive, hasDraft, lifecycleState, loading: syllabusLoading } = useSyllabus();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryParam = searchParams.get('q');
   const navigate = useNavigate();
@@ -340,33 +340,65 @@ export const LearnPage: React.FC = () => {
           </div>
         </div>
 
-        {filteredCourses.length === 0 ? (
+        {loadingWorkspace || syllabusLoading ? (
+          <div className="p-12 text-center text-xs text-nexora-muted animate-pulse">
+            Loading courses and learning path...
+          </div>
+        ) : filteredCourses.length === 0 ? (
           <EmptyState
             icon={<BookOpen className="w-8 h-8 text-nexora-muted" />}
             title={
-              hasDraft && !isCurriculumActive
-                ? 'Your syllabus has been understood. Review the curriculum before starting learning.'
-                : hasSyllabus && !isCurriculumActive
+              lifecycleState === 'DRAFT_READY_FOR_REVIEW'
+                ? 'Curriculum draft is ready for review.'
+                : lifecycleState === 'PROCESSING'
+                ? 'Syllabus is being analyzed'
+                : lifecycleState === 'UPLOADED_PENDING'
+                ? 'Syllabus uploaded. Analysis pending.'
+                : lifecycleState === 'WAITING_FOR_ACTIVATION'
                 ? 'Syllabus uploaded. Curriculum not activated yet.'
-                : 'No active syllabus has been added yet.'
+                : lifecycleState === 'NO_SYLLABUS'
+                ? 'No active syllabus has been added yet.'
+                : 'No courses enrolled yet'
             }
             description={
-              hasDraft && !isCurriculumActive
+              lifecycleState === 'DRAFT_READY_FOR_REVIEW'
                 ? 'Your syllabus has been compiled into a canonical curriculum draft with verified lessons, units, and learning outcomes. Review the curriculum draft before starting learning.'
-                : hasSyllabus && !isCurriculumActive
+                : lifecycleState === 'PROCESSING'
+                ? 'Your syllabus document is currently being analyzed. Lessons will become available once the curriculum is activated.'
+                : lifecycleState === 'UPLOADED_PENDING'
                 ? 'Your syllabus has been received and verified. Run document analysis on your syllabus to extract structured learning units.'
-                : 'No active syllabus has been added yet. Upload your syllabus to build your personalized learning path.'
+                : lifecycleState === 'WAITING_FOR_ACTIVATION'
+                ? 'Your syllabus is verified. Complete curriculum activation on your Syllabus page to start learning.'
+                : lifecycleState === 'NO_SYLLABUS'
+                ? 'No active syllabus has been added yet. Upload your syllabus to build your personalized learning path.'
+                : 'Enroll in subjects from your active curriculum to start lessons and track your progress.'
             }
             action={
-              <Link to="/syllabus">
-                <Button variant="primary" size="md">
-                  {hasDraft && !isCurriculumActive
-                    ? 'Review Curriculum Draft'
-                    : hasSyllabus
-                    ? 'View Syllabus Hub'
-                    : 'Upload Syllabus'}
-                </Button>
-              </Link>
+              lifecycleState === 'DRAFT_READY_FOR_REVIEW' ? (
+                <Link to="/syllabus">
+                  <Button variant="primary" size="md">
+                    Review Curriculum Draft
+                  </Button>
+                </Link>
+              ) : lifecycleState === 'NO_SYLLABUS' ? (
+                <Link to="/syllabus">
+                  <Button variant="primary" size="md">
+                    Upload Syllabus
+                  </Button>
+                </Link>
+              ) : lifecycleState === 'WAITING_FOR_ACTIVATION' || lifecycleState === 'UPLOADED_PENDING' || lifecycleState === 'PROCESSING' ? (
+                <Link to="/syllabus">
+                  <Button variant="primary" size="md">
+                    View Syllabus Hub
+                  </Button>
+                </Link>
+              ) : (
+                <Link to="/subjects">
+                  <Button variant="primary" size="md">
+                    Browse Subjects
+                  </Button>
+                </Link>
+              )
             }
           />
         ) : (
