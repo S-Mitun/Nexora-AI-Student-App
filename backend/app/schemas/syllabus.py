@@ -156,6 +156,7 @@ class SyllabusDraftTopicRead(BaseModel):
     review_required: bool = False
     is_ambiguous: bool = False
     ambiguity_reason: Optional[str] = None
+    is_excluded: bool = False
     sort_order: int = 0
 
     model_config = ConfigDict(from_attributes=True)
@@ -173,6 +174,7 @@ class SyllabusDraftModuleRead(BaseModel):
     confidence: str = "high"
     review_required: bool = False
     is_ambiguous: bool = False
+    is_excluded: bool = False
     sort_order: int = 0
     topics: List[SyllabusDraftTopicRead] = []
     outcomes: List[SyllabusDraftOutcomeRead] = []
@@ -194,6 +196,7 @@ class SyllabusDraftSubjectRead(BaseModel):
     confidence: str = "high"
     review_required: bool = False
     is_ambiguous: bool = False
+    is_excluded: bool = False
     sort_order: int = 0
     modules: List[SyllabusDraftModuleRead] = []
     outcomes: List[SyllabusDraftOutcomeRead] = []
@@ -262,4 +265,77 @@ class SyllabusCompilationResult(BaseModel):
     review_required_count: int = 0
     is_curriculum_active: bool = False
     message: str = "Curriculum draft compiled successfully. Awaiting student review before activation."
+
+
+# --- Master Prompt 05R: Curriculum Review, Corrections & Activation Schemas ---
+
+class SyllabusDraftTopicCorrection(BaseModel):
+    id: str
+    title: Optional[str] = None
+    lesson_candidate_title: Optional[str] = None
+    draft_module_id: Optional[str] = None
+    is_lesson_candidate: Optional[bool] = None
+    is_excluded: Optional[bool] = None
+    sort_order: Optional[int] = None
+    review_required: Optional[bool] = None
+
+
+class SyllabusDraftModuleCorrection(BaseModel):
+    id: str
+    title: Optional[str] = None
+    display_label: Optional[str] = None
+    draft_subject_id: Optional[str] = None
+    is_excluded: Optional[bool] = None
+    sort_order: Optional[int] = None
+    review_required: Optional[bool] = None
+
+
+class SyllabusDraftSubjectCorrection(BaseModel):
+    id: str
+    name: Optional[str] = None
+    code: Optional[str] = None
+    credits: Optional[str] = None
+    semester: Optional[str] = None
+    is_excluded: Optional[bool] = None
+    sort_order: Optional[int] = None
+    review_required: Optional[bool] = None
+
+
+class SyllabusDraftCorrectionRequest(BaseModel):
+    subjects: List[SyllabusDraftSubjectCorrection] = []
+    modules: List[SyllabusDraftModuleCorrection] = []
+    topics: List[SyllabusDraftTopicCorrection] = []
+
+
+class SyllabusCurriculumActivateRequest(BaseModel):
+    confirm_activation: bool = True
+    academic_context_id: Optional[str] = None
+
+
+class SyllabusCurriculumActivationResponse(BaseModel):
+    syllabus_id: str
+    version_id: str
+    draft_id: str
+    academic_context_id: str
+    status: str
+    curriculum_status: str
+    is_curriculum_active: bool
+    subjects_activated: int
+    modules_activated: int
+    topics_activated: int
+    lessons_activated: int
+    activated_at: datetime
+    message: str
+
+
+class SyllabusActivationEligibilityResponse(BaseModel):
+    is_eligible: bool
+    reasons: List[str] = []
+    subject_count: int
+    module_count: int
+    topic_count: int
+    lesson_candidate_count: int
+    review_required_count: int
+    is_already_active: bool
+
 

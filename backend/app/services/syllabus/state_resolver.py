@@ -116,15 +116,15 @@ class SyllabusStateResolver:
         # 6. Resolve curriculum_status & is_curriculum_active
         draft = target_version.curriculum_draft
 
-        if draft and draft.status in ["review_required", "draft"]:
+        if draft and draft.status in ["review_required", "draft", "changes_saved"]:
             # STATE C: Draft exists and is awaiting review
-            curriculum_status = "review_required" if draft.status == "review_required" else "draft"
+            curriculum_status = "review_required" if draft.status in ["review_required", "changes_saved"] else "draft"
             is_curriculum_active = False
         elif target_version.curriculum_status in ["review_required", "draft"]:
             # STATE C: Version explicitly marked as review_required
             curriculum_status = target_version.curriculum_status
             is_curriculum_active = False
-        elif target_version.curriculum_status == "active" or (draft and draft.status == "active") or active_syllabus.status == "active":
+        elif target_version.curriculum_status == "active" or (draft and draft.status in ["approved", "active"]) or active_syllabus.status == "active":
             # STATE D: Curriculum active
             curriculum_status = "active"
             is_curriculum_active = True

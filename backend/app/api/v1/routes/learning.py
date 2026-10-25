@@ -96,7 +96,7 @@ def _verify_subject_access(
         .join(Syllabus, SyllabusVersion.syllabus_id == Syllabus.id)
         .filter(
             Syllabus.user_id == current_user.id,
-            Syllabus.status.in_(["confirmed", "extracted"]),
+            Syllabus.status.in_(["confirmed", "extracted", "active"]),
             SyllabusVersion.id == subject.syllabus_version_id,
             SyllabusVersion.is_active == True,
         )
@@ -145,7 +145,7 @@ def list_subjects(
             .filter(
                 Syllabus.user_id == current_user.id,
                 Syllabus.academic_level == target_level,
-                Syllabus.status.in_(["confirmed", "extracted"]),
+                Syllabus.status.in_(["confirmed", "extracted", "active"]),
             )
             .first()
         )
@@ -421,7 +421,7 @@ def list_concepts(
             .filter(
                 Syllabus.user_id == current_user.id,
                 Syllabus.academic_level == target_level,
-                Syllabus.status.in_(["confirmed", "extracted"]),
+                Syllabus.status.in_(["confirmed", "extracted", "active"]),
             )
             .first()
         )
@@ -596,7 +596,7 @@ def list_learning_modules(
             .filter(
                 Syllabus.user_id == current_user.id,
                 Syllabus.academic_level == target_level,
-                Syllabus.status.in_(["confirmed", "extracted"]),
+                Syllabus.status.in_(["confirmed", "extracted", "active"]),
             )
             .first()
         )
@@ -773,7 +773,7 @@ def list_lessons(
             .filter(
                 Syllabus.user_id == current_user.id,
                 Syllabus.academic_level == target_level,
-                Syllabus.status.in_(["confirmed", "extracted"]),
+                Syllabus.status.in_(["confirmed", "extracted", "active"]),
             )
             .first()
         )
@@ -955,7 +955,7 @@ def get_recommendations(
         db.query(Syllabus)
         .filter(
             Syllabus.user_id == current_user.id,
-            Syllabus.status.in_(["confirmed", "extracted"]),
+            Syllabus.status.in_(["confirmed", "extracted", "active"]),
         )
         .first()
     )
@@ -1021,7 +1021,7 @@ def list_simulations(
             .filter(
                 Syllabus.user_id == current_user.id,
                 Syllabus.academic_level == target_level,
-                Syllabus.status.in_(["confirmed", "extracted"]),
+                Syllabus.status.in_(["confirmed", "extracted", "active"]),
             )
             .first()
         )

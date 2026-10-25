@@ -397,6 +397,8 @@ async def lifespan(app: FastAPI):
                         conn.execute(text("ALTER TABLE syllabus_draft_subjects ADD COLUMN review_required BOOLEAN DEFAULT 0"))
                     if "is_ambiguous" not in subj_cols:
                         conn.execute(text("ALTER TABLE syllabus_draft_subjects ADD COLUMN is_ambiguous BOOLEAN DEFAULT 0"))
+                    if "is_excluded" not in subj_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_subjects ADD COLUMN is_excluded BOOLEAN DEFAULT 0"))
                     conn.commit()
 
                 mod_draft_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(syllabus_draft_modules)"))}
@@ -415,6 +417,8 @@ async def lifespan(app: FastAPI):
                         conn.execute(text("ALTER TABLE syllabus_draft_modules ADD COLUMN review_required BOOLEAN DEFAULT 0"))
                     if "is_ambiguous" not in mod_draft_cols:
                         conn.execute(text("ALTER TABLE syllabus_draft_modules ADD COLUMN is_ambiguous BOOLEAN DEFAULT 0"))
+                    if "is_excluded" not in mod_draft_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_modules ADD COLUMN is_excluded BOOLEAN DEFAULT 0"))
                     conn.commit()
 
                 topic_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(syllabus_draft_topics)"))}
@@ -435,6 +439,8 @@ async def lifespan(app: FastAPI):
                         conn.execute(text("ALTER TABLE syllabus_draft_topics ADD COLUMN is_ambiguous BOOLEAN DEFAULT 0"))
                     if "ambiguity_reason" not in topic_cols:
                         conn.execute(text("ALTER TABLE syllabus_draft_topics ADD COLUMN ambiguity_reason VARCHAR(512)"))
+                    if "is_excluded" not in topic_cols:
+                        conn.execute(text("ALTER TABLE syllabus_draft_topics ADD COLUMN is_excluded BOOLEAN DEFAULT 0"))
                     conn.commit()
 
                 outcome_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(syllabus_draft_outcomes)"))}

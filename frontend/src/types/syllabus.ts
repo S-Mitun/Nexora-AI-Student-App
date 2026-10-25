@@ -124,6 +124,7 @@ export interface SyllabusDraftTopic {
   review_required?: boolean;
   is_ambiguous?: boolean;
   ambiguity_reason?: string | null;
+  is_excluded?: boolean;
   sort_order: number;
 }
 
@@ -141,6 +142,7 @@ export interface SyllabusDraftModule {
   confidence: 'high' | 'medium' | 'low' | string;
   review_required?: boolean;
   is_ambiguous?: boolean;
+  is_excluded?: boolean;
   sort_order: number;
   topics: SyllabusDraftTopic[];
   lesson_candidates?: SyllabusDraftTopic[];
@@ -179,6 +181,7 @@ export interface SyllabusDraftSubject {
   confidence: 'high' | 'medium' | 'low' | string;
   review_required?: boolean;
   is_ambiguous?: boolean;
+  is_excluded?: boolean;
   sort_order: number;
   modules: SyllabusDraftModule[];
   outcomes: SyllabusDraftOutcome[];
@@ -234,4 +237,77 @@ export interface SyllabusCompilationResult {
   is_curriculum_active: boolean;
   message: string;
 }
+
+// --- Master Prompt 05R: Curriculum Review, Corrections & Activation ---
+
+export interface SyllabusDraftTopicCorrection {
+  id: string;
+  title?: string;
+  lesson_candidate_title?: string | null;
+  draft_module_id?: string;
+  is_lesson_candidate?: boolean;
+  is_excluded?: boolean;
+  sort_order?: number;
+  review_required?: boolean;
+}
+
+export interface SyllabusDraftModuleCorrection {
+  id: string;
+  title?: string;
+  display_label?: string;
+  draft_subject_id?: string;
+  is_excluded?: boolean;
+  sort_order?: number;
+  review_required?: boolean;
+}
+
+export interface SyllabusDraftSubjectCorrection {
+  id: string;
+  name?: string;
+  code?: string | null;
+  credits?: string | null;
+  semester?: string | null;
+  is_excluded?: boolean;
+  sort_order?: number;
+  review_required?: boolean;
+}
+
+export interface SyllabusDraftCorrectionRequest {
+  subjects: SyllabusDraftSubjectCorrection[];
+  modules: SyllabusDraftModuleCorrection[];
+  topics: SyllabusDraftTopicCorrection[];
+}
+
+export interface SyllabusCurriculumActivateRequest {
+  confirm_activation: boolean;
+  academic_context_id?: string | null;
+}
+
+export interface SyllabusCurriculumActivationResponse {
+  syllabus_id: string;
+  version_id: string;
+  draft_id: string;
+  academic_context_id: string;
+  status: string;
+  curriculum_status: string;
+  is_curriculum_active: boolean;
+  subjects_activated: number;
+  modules_activated: number;
+  topics_activated: number;
+  lessons_activated: number;
+  activated_at: string;
+  message: string;
+}
+
+export interface SyllabusActivationEligibilityResponse {
+  is_eligible: boolean;
+  reasons: string[];
+  subject_count: number;
+  module_count: number;
+  topic_count: number;
+  lesson_candidate_count: number;
+  review_required_count: number;
+  is_already_active: boolean;
+}
+
 

@@ -17,12 +17,17 @@ from app.schemas.syllabus import (
     SyllabusProcessRequest,
     SyllabusCompileRequest,
     SyllabusCompilationResult,
+    SyllabusDraftCorrectionRequest,
+    SyllabusCurriculumActivateRequest,
+    SyllabusCurriculumActivationResponse,
+    SyllabusActivationEligibilityResponse,
 )
 from app.models.syllabus import SyllabusCurriculumDraft
 from app.services.syllabus.lifecycle_service import SyllabusLifecycleService
 from app.services.syllabus.state_resolver import SyllabusStateResolver
 from app.services.syllabus.job_runner import SyllabusJobRunner
 from app.services.syllabus.compiler_engine import SyllabusCurriculumCompilerEngine
+from app.services.syllabus.activation_service import SyllabusCurriculumActivationService
 from app.core.logging import logger
 
 router = APIRouter(prefix="/syllabi", tags=["Universal Syllabus & Academic Document Lifecycle"])
@@ -349,5 +354,80 @@ def get_curriculum_draft_by_id(
             detail="Curriculum draft not found or access denied.",
         )
     return draft
+
+
+# --- Master Prompt 05R: Curriculum Corrections & Explicit Activation Routes ---
+
+@router.put("/{syllabus_id}/versions/{version_id}/draft", response_model=SyllabusCurriculumDraftRead)
+def save_curriculum_draft_corrections(
+    syllabus_id: str,
+    version_id: str,
+    corrections: SyllabusDraftCorrectionRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Saves student review corrections to draft subjects, modules, and topics.
+    Validates ownership, non-empty names, and hierarchy consistency.
+    Preserves original evidence text, page numbers, and provenance.
+    """
+    return SyllabusCurriculumActivationService.save_draft_corrections(
+        db=db,
+        user_id=current_user.id,
+        syllabus_id=syllabus_id,
+        version_id=version_id,
+        corrections=corrections,
+    )
+
+
+@router.get("/{syllabus_id}/versions/{version_id}/activation-eligibility", response_model=SyllabusActivationEligibilityResponse)
+def check_activation_eligibility(
+    syllabus_id: str,
+    version_id: str,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Independent backend verification of whether a curriculum draft is eligible for explicit activation.
+    """
+    return SyllabusCurriculumActivationService.validate_activation_eligibility(
+        db=db,
+        user_id=current_user.id,
+        syllabus_id=syllabus_id,
+        version_id=version_id,
+    )
+
+
+@router.post("/{syllabus_id}/versions/{version_id}/activate-curriculum", response_model=SyllabusCurriculumActivationResponse)
+def activate_curriculum_draft(
+    syllabus_id: str,
+    version_id: str,
+    request: SyllabusCurriculumActivateRequest = SyllabusCurriculumActivateRequest(),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Master Prompt 05R: Explicit Curriculum Activation Endpoint.
+    Atomically translates approved draft entities into active runtime learning records:
+    - Creates runtime Subject, Topic, Concept, LearningModule, Lesson records.
+    - Enrolls student via StudentSubject in their active academic context.
+    - Supersedes previous active versions without deleting historical drafts or data.
+    - Idempotently safe against retries and duplicate submissions.
+    - Updates canonical state to State D (is_curriculum_active = True).
+    """
+    if not request.confirm_activation:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Activation confirmation is required.",
+        )
+
+    return SyllabusCurriculumActivationService.activate_curriculum(
+        db=db,
+        user_id=current_user.id,
+        syllabus_id=syllabus_id,
+        version_id=version_id,
+        target_context_id=request.academic_context_id,
+    )
+
 
 

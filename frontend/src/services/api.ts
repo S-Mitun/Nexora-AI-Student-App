@@ -474,11 +474,47 @@ export const apiService = {
     draftId: string
   ): Promise<import('../types/syllabus').SyllabusCurriculumDraft> {
     const response = await apiClient.get<import('../types/syllabus').SyllabusCurriculumDraft>(
-      `/api/v1/curriculum-drafts/${encodeURIComponent(draftId)}`
+      `/api/v1/syllabi/drafts/${encodeURIComponent(draftId)}`
+    );
+    return response.data;
+  },
+
+  // --- CURRICULUM REVIEW CORRECTIONS & EXPLICIT ACTIVATION (MASTER PROMPT 05R) ---
+  async saveDraftCorrections(
+    syllabusId: string,
+    versionId: string,
+    corrections: import('../types/syllabus').SyllabusDraftCorrectionRequest
+  ): Promise<import('../types/syllabus').SyllabusCurriculumDraft> {
+    const response = await apiClient.put<import('../types/syllabus').SyllabusCurriculumDraft>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/draft`,
+      corrections
+    );
+    return response.data;
+  },
+
+  async checkActivationEligibility(
+    syllabusId: string,
+    versionId: string
+  ): Promise<import('../types/syllabus').SyllabusActivationEligibilityResponse> {
+    const response = await apiClient.get<import('../types/syllabus').SyllabusActivationEligibilityResponse>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/activation-eligibility`
+    );
+    return response.data;
+  },
+
+  async activateCurriculum(
+    syllabusId: string,
+    versionId: string,
+    request: import('../types/syllabus').SyllabusCurriculumActivateRequest = { confirm_activation: true }
+  ): Promise<import('../types/syllabus').SyllabusCurriculumActivationResponse> {
+    const response = await apiClient.post<import('../types/syllabus').SyllabusCurriculumActivationResponse>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/activate-curriculum`,
+      request
     );
     return response.data;
   },
 };
+
 
 
 

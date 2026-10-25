@@ -269,6 +269,7 @@ class SyllabusDraftSubject(Base, TimestampMixin):
     confidence: Mapped[str] = mapped_column(String(50), default="high", nullable=False)
     review_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_ambiguous: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_excluded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Relationships
@@ -324,6 +325,7 @@ class SyllabusDraftModule(Base, TimestampMixin):
     confidence: Mapped[str] = mapped_column(String(50), default="high", nullable=False)
     review_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_ambiguous: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_excluded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Relationships
@@ -372,6 +374,7 @@ class SyllabusDraftTopic(Base, TimestampMixin):
     review_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_ambiguous: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     ambiguity_reason: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    is_excluded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Relationships
