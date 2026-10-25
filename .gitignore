@@ -185,4 +185,4 @@ htmlcov/
 # Local storage and data
 data/
 backend/data/
-
+.vscode/
