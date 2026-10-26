@@ -67,7 +67,7 @@ class SyllabusDraftEngine:
     """
 
     COURSE_CODE_PATTERN = re.compile(r"\b([0-9]{2}[A-Z]{2,5}[0-9]{2,4}|[A-Z]{2,4}[0-9]{3,4})\b", re.IGNORECASE)
-    UNIT_HEADER_PATTERN = re.compile(r"(?im)^\s*(UNIT\s+[IVX\d]+|MODULE\s+[IVX\d]+|CHAPTER\s+\d+|PART\s+[IVX\d]+)[:\s\-\–]*(.*)$")
+    UNIT_HEADER_PATTERN = re.compile(r"(?im)^\s*(UNIT\s+[IVX\d]+|MODULE\s+[IVX\d]+|CHAPTER\s+[IVX\d]+|PART\s+[IVX\d]+|THEME\s+[IVX\d]+|SECTION\s+[IVX\d]+)[:\s\-\–]*(.*)$")
     ALL_CAPS_HEADER_PATTERN = re.compile(r"^[A-Z\s\&\-\–\/\,]{4,60}$")
     OUTCOME_CODE_PATTERN = re.compile(r"\b(C[O0]\d+|L[O0]\d+|P[O0]\d+)\b", re.IGNORECASE)
 
@@ -202,9 +202,9 @@ class SyllabusDraftEngine:
                 elif unit_match:
                     is_unit_header = True
                     unit_title = unit_match.group(2).strip() or unit_match.group(1).strip()
-                elif cls.ALL_CAPS_HEADER_PATTERN.match(line) and len(line) > 8 and not line.startswith("COURSE"):
-                    # Academic all-caps section header keywords
-                    if any(keyword in line for keyword in ["FUNDAMENTALS", "BRUTE FORCE", "DIVIDE", "DYNAMIC", "GREEDY", "ITERATIVE", "LIMITATIONS OF", "GRAPH", "TREES", "SYSTEMS", "LAB COMPONENT"]):
+                elif cls.ALL_CAPS_HEADER_PATTERN.match(line) and 6 < len(line) < 65:
+                    excluded_hdrs = ["COURSE", "TEXT BOOK", "REFERENCE", "OBJECTIVE", "SYLLABUS", "EVALUATION", "EXAMINATION", "TOTAL", "PERIOD", "CREDIT", "HOURS", "TABLE OF", "DEPARTMENT"]
+                    if not any(ex in line.upper() for ex in excluded_hdrs):
                         is_unit_header = True
                         unit_title = line.title()
 

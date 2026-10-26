@@ -56,9 +56,9 @@ class CurriculumService:
             elif any(k in norm for k in ["secondary", "class 6 10", "6 10", "middle", "6 to 10"]):
                 query = query.filter(Subject.education_level.in_(["secondary", "class-6-10", "Secondary (Class 6-10)"]))
             elif any(k in norm for k in ["undergraduate", "university", "college", "ug", "b.tech", "btech", "b.e", "b.sc", "higher education"]):
-                query = query.filter(Subject.education_level.in_(["undergraduate", "higher education / university", "Higher Education / University"]))
+                query = query.filter(Subject.education_level.in_(["undergraduate", "higher_education", "higher-education", "higher education", "college", "university", "higher education / university", "Higher Education / University"]))
             elif any(k in norm for k in ["postgraduate", "research", "pg", "master", "phd"]):
-                query = query.filter(Subject.education_level.in_(["postgraduate", "research", "Higher Education / University"]))
+                query = query.filter(Subject.education_level.in_(["postgraduate", "research", "higher_education", "Higher Education / University"]))
             else:
                 query = query.filter(Subject.education_level.ilike(f"%{education_level}%"))
         return query.order_by(Subject.order_index.asc(), Subject.name.asc()).all()

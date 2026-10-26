@@ -110,7 +110,22 @@ class SyllabusCurriculumActivationService:
                 detail="No persistent curriculum draft found for this syllabus version. Compile draft first.",
             )
 
-        is_already_active = version.curriculum_status == "active" and version.is_active
+        has_active_subjects = (
+            db.query(Subject)
+            .filter(
+                Subject.syllabus_version_id == version.id,
+                Subject.user_id == user_id,
+                Subject.is_active == True,
+            )
+            .first()
+            is not None
+        )
+        is_already_active = (
+            version.curriculum_status == "active"
+            and version.is_active
+            and draft.status in ["approved", "active"]
+            and has_active_subjects
+        )
 
         # Count active / non-excluded entities
         active_subjects = [s for s in draft.subjects if not getattr(s, "is_excluded", False)]
@@ -118,7 +133,11 @@ class SyllabusCurriculumActivationService:
             m for s in active_subjects for m in s.modules if not getattr(m, "is_excluded", False)
         ]
         active_topics = [
-            t for m in active_modules for t in m.topics if not getattr(t, "is_excluded", False)
+            t
+            for m in active_modules
+            for t in m.topics
+            if not getattr(t, "is_excluded", False)
+            and getattr(t, "entity_category", "topic") == "topic"
         ]
         lesson_candidates = [
             t for t in active_topics if getattr(t, "is_lesson_candidate", True)
@@ -132,7 +151,7 @@ class SyllabusCurriculumActivationService:
                 if m.review_required or m.is_ambiguous:
                     review_required_count += 1
                 for t in m.topics:
-                    if t.review_required or t.is_ambiguous:
+                    if getattr(t, "entity_category", "topic") == "topic" and (t.review_required or t.is_ambiguous):
                         review_required_count += 1
 
         reasons: List[str] = []
@@ -332,6 +351,8 @@ class SyllabusCurriculumActivationService:
                     )
                 top.draft_module_id = t_corr.draft_module_id
 
+            if getattr(t_corr, "entity_category", None) is not None:
+                top.entity_category = t_corr.entity_category
             if t_corr.is_lesson_candidate is not None:
                 top.is_lesson_candidate = t_corr.is_lesson_candidate
             if t_corr.is_excluded is not None:
@@ -341,14 +362,49 @@ class SyllabusCurriculumActivationService:
             if t_corr.review_required is not None:
                 top.review_required = t_corr.review_required
 
+        # 4. Apply Reference Corrections
+        if getattr(corrections, "references", None):
+            from app.models.syllabus import SyllabusDraftReference
+            for r_corr in corrections.references:
+                ref = (
+                    db.query(SyllabusDraftReference)
+                    .filter(
+                        SyllabusDraftReference.id == r_corr.id,
+                        SyllabusDraftReference.draft_id == draft.id,
+                    )
+                    .first()
+                )
+                if not ref:
+                    continue
+                if r_corr.title is not None and r_corr.title.strip():
+                    ref.title = r_corr.title.strip()
+                if r_corr.reference_type is not None:
+                    ref.reference_type = r_corr.reference_type
+                if r_corr.authors is not None:
+                    ref.authors = r_corr.authors.strip() or None
+                if r_corr.publisher is not None:
+                    ref.publisher = r_corr.publisher.strip() or None
+                if r_corr.edition is not None:
+                    ref.edition = r_corr.edition.strip() or None
+                if r_corr.url is not None:
+                    ref.url = r_corr.url.strip() or None
+                if r_corr.sort_order is not None:
+                    ref.sort_order = r_corr.sort_order
+
         draft.status = "changes_saved"
         draft.updated_at = datetime.now(timezone.utc)
+        # If the version was not already active, mark version.curriculum_status = "changes_saved"
+        version = db.query(SyllabusVersion).filter(SyllabusVersion.id == version_id).first()
+        if version and version.curriculum_status != "active":
+            version.curriculum_status = "changes_saved"
+            version.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(draft)
 
+        ref_count = len(getattr(corrections, "references", []))
         logger.info(
             f"[SyllabusActivationService] Saved corrections for draft {draft.id} "
-            f"(subjects: {len(corrections.subjects)}, modules: {len(corrections.modules)}, topics: {len(corrections.topics)})"
+            f"(subjects: {len(corrections.subjects)}, modules: {len(corrections.modules)}, topics: {len(corrections.topics)}, references: {ref_count})"
         )
         return draft
 
@@ -482,10 +538,16 @@ class SyllabusCurriculumActivationService:
             for prev_v in sibling_versions:
                 prev_v.is_active = False
                 prev_v.curriculum_status = "archived"
-                db.query(Subject).filter(
+                prev_subjs = [s.id for s in db.query(Subject.id).filter(
                     Subject.syllabus_version_id == prev_v.id,
                     Subject.user_id == user_id,
-                ).update({"is_active": False}, synchronize_session="fetch")
+                ).all()]
+                if prev_subjs:
+                    db.query(Subject).filter(Subject.id.in_(prev_subjs)).update({"is_active": False}, synchronize_session="fetch")
+                    db.query(StudentSubject).filter(
+                        StudentSubject.user_id == user_id,
+                        StudentSubject.subject_id.in_(prev_subjs),
+                    ).update({"is_active": False}, synchronize_session="fetch")
 
             # Also supersede other syllabi for the same user in this academic context if applicable
             other_active_syllabi = (
@@ -503,10 +565,16 @@ class SyllabusCurriculumActivationService:
                     if other_ver.is_active:
                         other_ver.is_active = False
                         other_ver.curriculum_status = "archived"
-                        db.query(Subject).filter(
+                        other_subjs = [s.id for s in db.query(Subject.id).filter(
                             Subject.syllabus_version_id == other_ver.id,
                             Subject.user_id == user_id,
-                        ).update({"is_active": False}, synchronize_session="fetch")
+                        ).all()]
+                        if other_subjs:
+                            db.query(Subject).filter(Subject.id.in_(other_subjs)).update({"is_active": False}, synchronize_session="fetch")
+                            db.query(StudentSubject).filter(
+                                StudentSubject.user_id == user_id,
+                                StudentSubject.subject_id.in_(other_subjs),
+                            ).update({"is_active": False}, synchronize_session="fetch")
                 other_syl.status = "archived"
 
             # Step B: Translate Approved Draft Hierarchy into Runtime Learning Entities
@@ -515,52 +583,107 @@ class SyllabusCurriculumActivationService:
             topics_activated = 0
             lessons_activated = 0
 
-            for d_subj in active_subjects:
-                subj_id = str(uuid.uuid4())
-                subj_slug = _generate_unique_slug(db, Subject, d_subj.name, prefix=d_subj.code or "subj")
-
-                runtime_subject = Subject(
-                    id=subj_id,
-                    curriculum_id=None,
-                    name=d_subj.name,
-                    slug=subj_slug,
-                    description=d_subj.evidence_text or f"Curriculum subject extracted from {syllabus.title} (v{version.version_number})",
-                    icon="BookOpen",
-                    category="Computer Science & Engineering" if "cs" in (d_subj.code or "").lower() or "algorithm" in d_subj.name.lower() else "General",
-                    difficulty_level="all-levels",
-                    education_level=canonical_level,
-                    academic_domain=resolved_ctx.academic_domain or syllabus.program_degree or "General",
-                    is_system=False,
-                    created_by_user_id=user_id,
-                    user_id=user_id,
-                    syllabus_version_id=version.id,
-                    content_source="syllabus_extracted",
-                    order_index=d_subj.sort_order or subjects_activated,
-                    is_active=True,
+            # Idempotency / Reactivation check: check if runtime entities already exist for this version
+            existing_subjects = (
+                db.query(Subject)
+                .filter(
+                    Subject.syllabus_version_id == version.id,
+                    Subject.user_id == user_id,
                 )
-                db.add(runtime_subject)
-                db.flush()
-                subjects_activated += 1
+                .all()
+            )
 
-                # Enroll student via StudentSubject
-                existing_enrollment = (
-                    db.query(StudentSubject)
-                    .filter(
-                        StudentSubject.user_id == user_id,
-                        StudentSubject.subject_id == subj_id,
-                    )
-                    .first()
-                )
-                if not existing_enrollment:
-                    new_enrollment = StudentSubject(
+            if existing_subjects:
+                # Idempotent reactivation / retry: reactivate existing subjects, topics, modules, concepts and student links
+                subj_ids = [s.id for s in existing_subjects]
+                for idx, s in enumerate(existing_subjects):
+                    s.is_active = True
+                    if idx < len(active_subjects):
+                        d_subj = active_subjects[idx]
+                        s.name = d_subj.name
+                        if d_subj.evidence_text:
+                            s.description = d_subj.evidence_text
+
+                db.query(StudentSubject).filter(
+                    StudentSubject.user_id == user_id,
+                    StudentSubject.subject_id.in_(subj_ids),
+                ).update({"is_active": True}, synchronize_session="fetch")
+
+                db.query(Topic).filter(
+                    Topic.subject_id.in_(subj_ids),
+                ).update({"is_active": True}, synchronize_session="fetch")
+
+                topic_ids = [t.id for t in db.query(Topic.id).filter(Topic.subject_id.in_(subj_ids)).all()]
+                if topic_ids:
+                    db.query(Concept).filter(
+                        Concept.topic_id.in_(topic_ids),
+                    ).update({"is_active": True}, synchronize_session="fetch")
+
+                    concept_ids = [c.id for c in db.query(Concept.id).filter(Concept.topic_id.in_(topic_ids)).all()]
+                    if concept_ids:
+                        db.query(LearningModule).filter(
+                            LearningModule.concept_id.in_(concept_ids),
+                        ).update({"is_active": True}, synchronize_session="fetch")
+
+                        lm_ids = [lm.id for lm in db.query(LearningModule.id).filter(LearningModule.concept_id.in_(concept_ids)).all()]
+                        if lm_ids:
+                            db.query(Lesson).filter(
+                                Lesson.module_id.in_(lm_ids),
+                            ).update({"is_active": True}, synchronize_session="fetch")
+
+                subjects_activated = len(existing_subjects)
+                modules_activated = len(topic_ids)
+                topics_activated = db.query(Concept).filter(Concept.topic_id.in_(topic_ids)).count() if topic_ids else 0
+                lessons_activated = topics_activated
+            else:
+                for d_subj in active_subjects:
+                    subj_id = str(uuid.uuid4())
+                    subj_slug = _generate_unique_slug(db, Subject, d_subj.name, prefix=d_subj.code or "subj")
+
+                    runtime_subject = Subject(
+                        id=subj_id,
+                        curriculum_id=None,
+                        name=d_subj.name,
+                        slug=subj_slug,
+                        description=d_subj.evidence_text or f"Curriculum subject extracted from {syllabus.title} (v{version.version_number})",
+                        icon="BookOpen",
+                        category=resolved_ctx.academic_domain or syllabus.program_degree or "General",
+                        difficulty_level="all-levels",
+                        education_level=canonical_level,
+                        academic_domain=resolved_ctx.academic_domain or syllabus.program_degree or "General",
+                        is_system=False,
+                        created_by_user_id=user_id,
                         user_id=user_id,
-                        subject_id=subj_id,
-                        academic_level=canonical_level,
-                        enrollment_source="curriculum_prescribed",
+                        syllabus_version_id=version.id,
+                        content_source="syllabus_extracted",
+                        order_index=d_subj.sort_order or subjects_activated,
                         is_active=True,
                     )
-                    db.add(new_enrollment)
+                    db.add(runtime_subject)
                     db.flush()
+                    subjects_activated += 1
+
+                    # Enroll student via StudentSubject
+                    existing_enrollment = (
+                        db.query(StudentSubject)
+                        .filter(
+                            StudentSubject.user_id == user_id,
+                            StudentSubject.subject_id == subj_id,
+                        )
+                        .first()
+                    )
+                    if not existing_enrollment:
+                        new_enrollment = StudentSubject(
+                            user_id=user_id,
+                            subject_id=subj_id,
+                            academic_level=canonical_level,
+                            enrollment_source="curriculum_prescribed",
+                            is_active=True,
+                        )
+                        db.add(new_enrollment)
+                        db.flush()
+                    else:
+                        existing_enrollment.is_active = True
 
                 # Iterate non-excluded draft modules -> runtime Topics
                 for d_mod in d_subj.modules:
@@ -588,6 +711,10 @@ class SyllabusCurriculumActivationService:
                     # Iterate non-excluded draft topics -> runtime Concepts, LearningModules, Lessons
                     for d_top in d_mod.topics:
                         if getattr(d_top, "is_excluded", False):
+                            continue
+                        if not getattr(d_top, "is_lesson_candidate", True):
+                            continue
+                        if getattr(d_top, "entity_category", "topic") in ["metadata", "reference"]:
                             continue
 
                         top_name = d_top.lesson_candidate_title or d_top.title
@@ -697,4 +824,135 @@ class SyllabusCurriculumActivationService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Curriculum activation failed: {str(e)}",
+            )
+
+    @classmethod
+    def deactivate_curriculum(
+        cls,
+        db: Session,
+        user_id: str,
+        syllabus_id: str,
+        version_id: str,
+    ) -> SyllabusCurriculumActivationResponse:
+        """
+        Master Prompt 05R: Safe Return to Review / Deactivation Operation.
+        Safely returns an active curriculum to review (State C):
+        - Enforces strict student ownership and academic context scoping.
+        - Atomically soft-deactivates runtime subjects for this version (is_active = False).
+        - Sets version.curriculum_status = 'review_required'.
+        - Sets draft.status = 'review_required'.
+        - Non-destructively preserves the syllabus, versions, drafts, corrections, and learning history.
+        - Updates canonical state so workspace immediately reflects State C.
+        """
+        syllabus = (
+            db.query(Syllabus)
+            .filter(Syllabus.id == syllabus_id, Syllabus.user_id == user_id)
+            .first()
+        )
+        if not syllabus:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Syllabus not found or access denied.",
+            )
+
+        version = (
+            db.query(SyllabusVersion)
+            .filter(
+                SyllabusVersion.id == version_id,
+                SyllabusVersion.syllabus_id == syllabus_id,
+            )
+            .first()
+        )
+        if not version:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Syllabus version not found.",
+            )
+
+        draft = (
+            db.query(SyllabusCurriculumDraft)
+            .filter(
+                SyllabusCurriculumDraft.syllabus_version_id == version_id,
+                SyllabusCurriculumDraft.user_id == user_id,
+            )
+            .first()
+        )
+        if not draft:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No persistent curriculum draft found for this syllabus version.",
+            )
+
+        resolved_ctx = AcademicContextResolver.resolve_context(db, user_id)
+        effective_context_id = syllabus.academic_context_id or resolved_ctx.context_id
+
+        try:
+            # 1. Soft-deactivate runtime subjects and student subjects for this syllabus version
+            # Preserves records, progress, and relationships non-destructively
+            subj_ids = [
+                s.id for s in db.query(Subject.id).filter(
+                    Subject.syllabus_version_id == version.id,
+                    Subject.user_id == user_id,
+                ).all()
+            ]
+            if subj_ids:
+                db.query(Subject).filter(
+                    Subject.id.in_(subj_ids),
+                ).update({"is_active": False}, synchronize_session="fetch")
+
+                db.query(StudentSubject).filter(
+                    StudentSubject.user_id == user_id,
+                    StudentSubject.subject_id.in_(subj_ids),
+                ).update({"is_active": False}, synchronize_session="fetch")
+
+            # 2. Update lifecycle states back to State C
+            now_dt = datetime.now(timezone.utc)
+            version.curriculum_status = "review_required"
+            version.updated_at = now_dt
+
+            draft.status = "review_required"
+            draft.updated_at = now_dt
+
+            # Check if any other syllabus version is active
+            other_active_ver = (
+                db.query(SyllabusVersion)
+                .filter(
+                    SyllabusVersion.syllabus_id == syllabus.id,
+                    SyllabusVersion.id != version.id,
+                    SyllabusVersion.curriculum_status == "active",
+                )
+                .first()
+            )
+            if not other_active_ver and syllabus.status == "active":
+                syllabus.status = "uploaded"
+                syllabus.updated_at = now_dt
+
+            db.commit()
+
+            logger.info(
+                f"[SyllabusActivationService] Safely returned curriculum to review: "
+                f"user={user_id[:8]} syllabus={syllabus.id} version={version.id}"
+            )
+
+            return SyllabusCurriculumActivationResponse(
+                syllabus_id=syllabus.id,
+                version_id=version.id,
+                draft_id=draft.id,
+                academic_context_id=effective_context_id,
+                status="review_required",
+                curriculum_status="review_required",
+                is_curriculum_active=False,
+                subjects_activated=0,
+                modules_activated=0,
+                topics_activated=0,
+                lessons_activated=0,
+                activated_at=now_dt,
+                message="Curriculum draft successfully returned to review. Active learning workspace is paused until re-activation.",
+            )
+        except Exception as e:
+            db.rollback()
+            logger.exception(f"[SyllabusActivationService] Return to review failed: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to return curriculum to review: {str(e)}",
             )

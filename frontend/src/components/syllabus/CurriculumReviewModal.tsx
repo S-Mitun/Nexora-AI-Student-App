@@ -85,6 +85,11 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
   const [isActivating, setIsActivating] = useState(false);
   const [activationError, setActivationError] = useState<string | null>(null);
 
+  // Deactivation / Return to Review Dialog State
+  const [isDeactivating, setIsDeactivating] = useState(false);
+  const [isDeactivateConfirmOpen, setIsDeactivateConfirmOpen] = useState(false);
+  const [deactivateError, setDeactivateError] = useState<string | null>(null);
+
   // Post-Activation Success Dialog
   const [activationResult, setActivationResult] = useState<SyllabusCurriculumActivationResponse | null>(null);
 
@@ -267,6 +272,7 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
               lesson_candidate_title: t.lesson_candidate_title || t.title,
               draft_module_id: m.id,
               is_lesson_candidate: t.is_lesson_candidate ?? true,
+              entity_category: t.entity_category,
               is_excluded: t.is_excluded ?? false,
               sort_order: t.sort_order ?? 0,
               review_required: t.review_required ?? false,
@@ -320,6 +326,10 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
         academic_context_id: academicContext?.context_id,
       });
 
+      version.curriculum_status = 'active';
+      version.is_active = true;
+      setEditedDraft((prev) => ({ ...prev, status: 'approved' }));
+
       setActivationResult(res);
       setIsConfirmModalOpen(false);
       onActivated(res);
@@ -336,6 +346,31 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
     }
   };
 
+  const handleConfirmDeactivation = async () => {
+    try {
+      setIsDeactivating(true);
+      setDeactivateError(null);
+      await apiService.deactivateCurriculum(syllabusId, version.id);
+
+      setEditedDraft((prev) => ({
+        ...prev,
+        status: 'review_required',
+      }));
+      version.curriculum_status = 'review_required';
+      setIsDeactivateConfirmOpen(false);
+      setSaveSuccessMsg('Curriculum safely returned to review (State C). Source evidence and draft remain preserved.');
+
+      await Promise.all([
+        refreshSyllabusState().catch(() => {}),
+        refreshAcademicContext().catch(() => {}),
+      ]);
+    } catch (err: any) {
+      setDeactivateError(err.response?.data?.detail || 'Failed to return curriculum to review.');
+    } finally {
+      setIsDeactivating(false);
+    }
+  };
+
   const handleCloseReview = () => {
     if (hasUnsavedChanges) {
       if (!confirm('You have unsaved review changes. Are you sure you want to exit without saving?')) {
@@ -345,7 +380,10 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
     onClose();
   };
 
-  const isAlreadyActive = version.is_active || editedDraft.status === 'approved';
+  const isAlreadyActive =
+    version.curriculum_status === 'active' ||
+    editedDraft.status === 'approved' ||
+    editedDraft.status === 'active';
 
   return (
     <>
@@ -361,7 +399,7 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
               <div>
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <h2 className="text-xl font-bold text-white tracking-tight">
-                    Curriculum Review & Activation
+                    Curriculum Review &amp; Activation
                   </h2>
                   {isAlreadyActive ? (
                     <Badge variant="success" size="sm" className="bg-emerald-500/15 text-emerald-300 border-emerald-500/30 flex items-center gap-1">
@@ -426,6 +464,19 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
               >
                 {isSaving ? 'Saving...' : 'Save Changes'}
               </Button>
+
+              {isAlreadyActive && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
+                  leftIcon={<AlertTriangle className="w-3.5 h-3.5 text-amber-400" />}
+                  onClick={() => setIsDeactivateConfirmOpen(true)}
+                  disabled={isDeactivating}
+                >
+                  Cancel Activation
+                </Button>
+              )}
 
               <Button
                 variant="primary"
@@ -945,13 +996,59 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
               </div>
             )}
 
-            {/* Zero Hallucination Guarantee Card */}
+            {/* Recommended Books & References Section */}
+            {((editedDraft.references && editedDraft.references.length > 0) ||
+              (editedDraft.subjects[0]?.references && editedDraft.subjects[0].references.length > 0)) && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-purple-400">
+                  <BookOpen className="w-4 h-4" />
+                  <span>
+                    Recommended Books &amp; References ({
+                      (editedDraft.references?.length || 0) + (editedDraft.subjects[0]?.references?.length || 0)
+                    })
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                  {[...(editedDraft.references || []), ...(editedDraft.subjects[0]?.references || [])].map((ref, idx) => (
+                    <div
+                      key={ref.id || idx}
+                      className="p-3.5 rounded-xl bg-nexora-elevated/40 border border-nexora-border/60 flex items-start gap-3"
+                    >
+                      <span className="font-mono text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 shrink-0 mt-0.5">
+                        {ref.reference_type?.replace('_', ' ') || 'Reference'}
+                      </span>
+                      <div className="space-y-1.5 flex-1 min-w-0">
+                        <p className="text-xs text-white/90 leading-relaxed font-medium">{ref.title}</p>
+                        <div className="flex items-center gap-2 text-[10px] text-nexora-muted flex-wrap">
+                          {ref.source_page && <span>Page {ref.source_page}</span>}
+                          {ref.url && (
+                            <>
+                              <span>•</span>
+                              <a
+                                href={ref.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-indigo-400 hover:text-indigo-300 underline truncate max-w-[200px]"
+                              >
+                                {ref.url}
+                              </a>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Syllabus-Grounded Curriculum Draft Disclaimer */}
             <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300 flex items-center gap-3">
               <Shield className="w-5 h-5 text-indigo-400 shrink-0" />
               <div>
-                <p className="font-semibold text-indigo-200">Zero Hallucination Guarantee</p>
+                <p className="font-semibold text-indigo-200">Syllabus-Grounded Curriculum Draft</p>
                 <p className="text-indigo-300/80 mt-0.5 text-[11px]">
-                  All units, topics, and outcomes above are derived directly from your official uploaded syllabus document with verified page citations. NEXORA never fabricates curriculum content.
+                  All units, topics, and outcomes above are derived directly from your official uploaded syllabus document with verified page citations. Review and verify extracted content before activation.
                 </p>
               </div>
             </div>
@@ -1171,6 +1268,58 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
                 }}
               >
                 Open Learning Workspace
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4. Cancel Active Curriculum Confirmation Dialog (Phase 6) */}
+      {isDeactivateConfirmOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+          <div className="w-full max-w-lg bg-nexora-surface border border-amber-500/40 rounded-2xl shadow-2xl overflow-hidden p-6 space-y-5 animate-scale-in">
+            <div className="flex items-start gap-4">
+              <div className="w-11 h-11 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold text-white tracking-tight">
+                  Cancel Active Curriculum?
+                </h3>
+                <p className="text-xs text-nexora-muted leading-relaxed">
+                  Cancel the active curriculum for this academic context? The curriculum will no longer be available as the active learning curriculum. Your uploaded syllabus, curriculum draft, saved review changes, source evidence and historical records will be preserved. You can review and activate the curriculum again when eligible.
+                </p>
+              </div>
+            </div>
+
+            {deactivateError && (
+              <div className="p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-rose-200">Cancellation Error</p>
+                  <p className="mt-0.5">{deactivateError}</p>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsDeactivateConfirmOpen(false)}
+                disabled={isDeactivating}
+              >
+                Keep Active
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                className="bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold shadow-lg shadow-amber-900/30"
+                disabled={isDeactivating}
+                leftIcon={isDeactivating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+                onClick={handleConfirmDeactivation}
+              >
+                {isDeactivating ? 'Cancelling...' : 'Confirm Cancellation'}
               </Button>
             </div>
           </div>

@@ -82,7 +82,12 @@ export function computeSyllabusLifecycleState(state: SyllabusCanonicalState | nu
   if (state.is_curriculum_active && state.curriculum_status === 'active') {
     return 'ACTIVE_CURRICULUM';
   }
-  if (state.has_draft || state.curriculum_status === 'review_required' || state.curriculum_status === 'draft') {
+  if (
+    state.has_draft ||
+    state.curriculum_status === 'review_required' ||
+    state.curriculum_status === 'draft' ||
+    state.curriculum_status === 'changes_saved'
+  ) {
     return 'DRAFT_READY_FOR_REVIEW';
   }
   if (state.processing_status === 'processing' || state.upload_status === 'processing') {
@@ -110,9 +115,28 @@ export interface SyllabusDraftPrerequisite {
   review_required: boolean;
 }
 
+export interface SyllabusDraftReference {
+  id: string;
+  draft_id: string;
+  draft_subject_id?: string | null;
+  reference_type: 'textbook' | 'reference_book' | 'web_reference' | 'citation' | string;
+  title: string;
+  raw_citation?: string | null;
+  author?: string | null;
+  publisher?: string | null;
+  edition?: string | null;
+  url?: string | null;
+  source_page?: number | null;
+  evidence_text?: string | null;
+  confidence: 'high' | 'medium' | 'low' | string;
+  is_excluded?: boolean;
+  sort_order: number;
+}
+
 export interface SyllabusDraftTopic {
   id: string;
   title: string;
+  entity_category?: 'topic' | 'metadata' | 'reference' | 'uncertain';
   is_lesson_candidate?: boolean;
   lesson_candidate_title?: string | null;
   source_section_id?: string | null;
@@ -186,6 +210,7 @@ export interface SyllabusDraftSubject {
   modules: SyllabusDraftModule[];
   outcomes: SyllabusDraftOutcome[];
   prerequisites?: SyllabusDraftPrerequisite[];
+  references?: SyllabusDraftReference[];
 }
 
 export interface SyllabusCurriculumDraft {
@@ -204,6 +229,7 @@ export interface SyllabusCurriculumDraft {
   compiled_at?: string | null;
   subjects: SyllabusDraftSubject[];
   prerequisites?: SyllabusDraftPrerequisite[];
+  references?: SyllabusDraftReference[];
   created_at: string;
   updated_at: string;
 }

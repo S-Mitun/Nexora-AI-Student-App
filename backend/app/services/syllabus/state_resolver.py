@@ -68,11 +68,12 @@ class SyllabusStateResolver:
         exact_match = next((s for s in context_syllabi if s.academic_context_id == effective_context_id), None)
         active_syllabus: Syllabus = exact_match or sorted(context_syllabi, key=lambda s: s.updated_at, reverse=True)[0]
 
-        # 3. Determine target version (active version takes precedence, then latest version)
+        # 3. Determine target version (curriculum active takes highest precedence, then active document, then latest version)
         versions = active_syllabus.versions
+        curriculum_active_ver = next((v for v in versions if v.curriculum_status == "active"), None)
         active_ver = next((v for v in versions if v.is_active), None)
         latest_ver = max(versions, key=lambda v: v.version_number) if versions else None
-        target_version: Optional[SyllabusVersion] = active_ver or latest_ver
+        target_version: Optional[SyllabusVersion] = curriculum_active_ver or active_ver or latest_ver
 
         if not target_version:
             # Syllabus record exists but has no versions (transient State B)
@@ -116,19 +117,36 @@ class SyllabusStateResolver:
         # 6. Resolve curriculum_status & is_curriculum_active
         draft = target_version.curriculum_draft
 
-        if draft and draft.status in ["review_required", "draft", "changes_saved"]:
-            # STATE C: Draft exists and is awaiting review
-            curriculum_status = "review_required" if draft.status in ["review_required", "changes_saved"] else "draft"
-            is_curriculum_active = False
-        elif target_version.curriculum_status in ["review_required", "draft"]:
-            # STATE C: Version explicitly marked as review_required
-            curriculum_status = target_version.curriculum_status
-            is_curriculum_active = False
-        elif target_version.curriculum_status == "active" or (draft and draft.status in ["approved", "active"]) or active_syllabus.status == "active":
+        # Authoritative check for runtime learning subjects belonging to this syllabus version
+        from app.models.learning import Subject
+        has_runtime_subjects = (
+            db.query(Subject)
+            .filter(
+                Subject.syllabus_version_id == target_version.id,
+                Subject.user_id == user_id,
+                Subject.is_active == True,
+            )
+            .first()
+            is not None
+        )
+
+        if (
+            target_version.curriculum_status == "active"
+            and target_version.is_active
+            and (draft is None or draft.status in ["approved", "active", "changes_saved"])
+        ):
             # STATE D: Curriculum active
             curriculum_status = "active"
             is_curriculum_active = True
-        elif target_version.curriculum_status == "archived" or active_syllabus.status == "archived":
+        elif draft and draft.status in ["review_required", "draft", "changes_saved", "draft_ready"]:
+            # STATE C: Draft exists and is awaiting review or has saved changes
+            curriculum_status = "changes_saved" if draft.status == "changes_saved" else ("review_required" if draft.status in ["review_required", "draft_ready"] else "draft")
+            is_curriculum_active = False
+        elif target_version.curriculum_status in ["review_required", "draft", "changes_saved"]:
+            # STATE C: Version explicitly marked as review_required or changes_saved
+            curriculum_status = target_version.curriculum_status
+            is_curriculum_active = False
+        elif target_version.curriculum_status == "archived":
             curriculum_status = "archived"
             is_curriculum_active = False
         else:

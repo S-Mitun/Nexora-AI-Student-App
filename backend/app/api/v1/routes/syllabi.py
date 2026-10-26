@@ -430,4 +430,27 @@ def activate_curriculum_draft(
     )
 
 
+@router.post("/{syllabus_id}/versions/{version_id}/deactivate", response_model=SyllabusCurriculumActivationResponse)
+def deactivate_curriculum_version(
+    syllabus_id: str,
+    version_id: str,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Master Prompt 05R: Safe Return to Review / Deactivation Endpoint.
+    Soft-deactivates active curriculum records back to State C:
+    - Sets version.curriculum_status = 'review_required'
+    - Sets draft.status = 'review_required'
+    - Deactivates runtime subjects while fully preserving history and student progress.
+    """
+    return SyllabusCurriculumActivationService.deactivate_curriculum(
+        db=db,
+        user_id=current_user.id,
+        syllabus_id=syllabus_id,
+        version_id=version_id,
+    )
+
+
+
 

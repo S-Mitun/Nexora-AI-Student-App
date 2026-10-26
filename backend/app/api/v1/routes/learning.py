@@ -140,25 +140,38 @@ def list_subjects(
             target_level = ctx.academic_level
         enrolled_ids = set(ctx.enrolled_subject_ids)
 
-        active_syl = (
+        user_syllabi = (
             db.query(Syllabus)
             .filter(
                 Syllabus.user_id == current_user.id,
-                Syllabus.academic_level == target_level,
                 Syllabus.status.in_(["confirmed", "extracted", "active"]),
             )
-            .first()
+            .all()
         )
+        active_syl = next((s for s in user_syllabi if s.academic_level == target_level), None)
+        if not active_syl:
+            active_syl = next((s for s in user_syllabi if AcademicContextResolver.level_matches(s.academic_level, target_level)), None)
+        if not active_syl and user_syllabi:
+            active_syl = user_syllabi[0]
         if active_syl:
             active_ver = (
                 db.query(SyllabusVersion)
                 .filter(
                     SyllabusVersion.syllabus_id == active_syl.id,
-                    SyllabusVersion.is_active == True,
+                    SyllabusVersion.curriculum_status == "active",
                 )
                 .first()
             )
-            if active_ver:
+            if not active_ver:
+                active_ver = (
+                    db.query(SyllabusVersion)
+                    .filter(
+                        SyllabusVersion.syllabus_id == active_syl.id,
+                        SyllabusVersion.is_active == True,
+                    )
+                    .first()
+                )
+            if active_ver and active_ver.curriculum_status not in ["review_required", "archived", "draft"]:
                 active_version_id = active_ver.id
 
     subjects = CurriculumService.get_subjects(

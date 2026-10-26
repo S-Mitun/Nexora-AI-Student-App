@@ -134,6 +134,8 @@ export const LabsPage: React.FC = () => {
                 ? 'Curriculum draft ready. Labs pending activation.'
                 : hasSyllabus && !isCurriculumActive
                 ? 'Syllabus uploaded. Labs not ready yet.'
+                : isCurriculumActive
+                ? 'No laboratory practicals for this active curriculum'
                 : 'No curriculum-linked labs available'
             }
             description={
@@ -141,12 +143,16 @@ export const LabsPage: React.FC = () => {
                 ? 'Your syllabus document has been structured into draft subjects and units. Lab practicals and experiments will be unlocked once curriculum activation is completed.'
                 : hasSyllabus && !isCurriculumActive
                 ? 'Your primary syllabus is uploaded and verified. Concept simulations and virtual laboratory tracks will become available once curriculum activation is completed.'
+                : isCurriculumActive
+                ? 'Your curriculum is active. This syllabus track focuses on theoretical and conceptual mastery without mandatory lab simulations.'
                 : 'Interactive simulations and virtual experiments are calibrated to active syllabus concepts. Upload your syllabus to view calibrated simulations and labs.'
             }
             action={
-              <Link to="/syllabus">
+              <Link to={isCurriculumActive ? "/learn" : "/syllabus"}>
                 <Button variant="primary" size="md">
-                  {hasDraft && !isCurriculumActive
+                  {isCurriculumActive
+                    ? 'Explore Active Lessons'
+                    : hasDraft && !isCurriculumActive
                     ? 'Review Curriculum Draft'
                     : hasSyllabus
                     ? 'View Syllabus Hub'

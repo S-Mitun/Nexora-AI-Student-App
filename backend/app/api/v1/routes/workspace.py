@@ -118,6 +118,7 @@ def get_academic_workspace(
         .filter(
             StudentSubject.user_id == current_user.id,
             StudentSubject.is_active == True,
+            Subject.is_active == True,
             (StudentSubject.academic_level == academic_context.academic_level) | (StudentSubject.academic_level == None),
         )
         .all()
@@ -125,7 +126,7 @@ def get_academic_workspace(
 
     enrolled_subjects = []
     for link in enrolled_links:
-        if link.subject and AcademicContextResolver.level_matches(link.subject.education_level, academic_context.academic_level):
+        if link.subject and link.subject.is_active and AcademicContextResolver.level_matches(link.subject.education_level, academic_context.academic_level):
             subj_read = SubjectRead(
                 id=link.subject.id,
                 curriculum_id=link.subject.curriculum_id,
@@ -351,6 +352,7 @@ def list_enrolled_subjects(
         .filter(
             StudentSubject.user_id == current_user.id,
             StudentSubject.is_active == True,
+            Subject.is_active == True,
             (StudentSubject.academic_level == target_level) | (StudentSubject.academic_level == None),
         )
         .all()
@@ -358,7 +360,7 @@ def list_enrolled_subjects(
 
     results = []
     for link in enrolled_links:
-        if link.subject and AcademicContextResolver.level_matches(link.subject.education_level, target_level):
+        if link.subject and link.subject.is_active and AcademicContextResolver.level_matches(link.subject.education_level, target_level):
             results.append(
                 SubjectRead(
                     id=link.subject.id,
@@ -534,13 +536,14 @@ def get_workspace_progress(
         .filter(
             StudentSubject.user_id == current_user.id,
             StudentSubject.is_active == True,
+            Subject.is_active == True,
             (StudentSubject.academic_level == target_level) | (StudentSubject.academic_level == None),
         )
         .all()
     )
     enrolled_records = [
         link for link in enrolled_records
-        if link.subject and AcademicContextResolver.level_matches(link.subject.education_level, target_level)
+        if link.subject and link.subject.is_active and AcademicContextResolver.level_matches(link.subject.education_level, target_level)
     ]
     enrolled_count = len(enrolled_records)
 

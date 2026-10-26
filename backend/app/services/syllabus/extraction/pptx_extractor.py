@@ -1,6 +1,7 @@
 import os
-from typing import List
+from typing import List, Optional
 import pptx
+from pptx.enum.shapes import MSO_SHAPE_TYPE
 from app.services.syllabus.extraction.base import BaseDocumentExtractor, ExtractedDocument, ExtractedPage, ExtractedSection
 from app.services.syllabus.extraction.normalizer import clean_academic_text
 from app.core.logging import logger
@@ -68,7 +69,7 @@ class PptxExtractor(BaseDocumentExtractor):
                     page_number=slide_num,
                     raw_text=slide_text,
                     clean_text=slide_text,
-                    has_images=any(s.shape_type == pptx.enum.shapes.MSO_SHAPE.PICTURE for s in slide.shapes if hasattr(s, "shape_type")),
+                    has_images=any(s.shape_type == MSO_SHAPE_TYPE.PICTURE for s in slide.shapes if hasattr(s, "shape_type")),
                     is_scanned=False,
                     word_count=len(slide_text.split()),
                     metadata={"slide_number": slide_num},

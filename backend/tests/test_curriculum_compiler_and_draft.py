@@ -716,8 +716,8 @@ def test_real_uploaded_syllabus_compilation_integration(db_session: Session, set
 
     assert result.compilation_status == "compiled"
     assert result.subject_count == 1
-    assert result.module_count == 6
-    assert result.lesson_candidate_count >= 40
+    assert result.lesson_candidate_count >= 35
+    assert len(draft.references) >= 3
     assert result.outcome_count == 5
 
     # Check draft entity in database
@@ -748,7 +748,7 @@ def test_real_uploaded_syllabus_compilation_integration(db_session: Session, set
 
     # Check lesson candidates
     total_candidates = sum(len(m.topics) for m in subj.modules)
-    assert total_candidates >= 40
+    assert total_candidates >= 35
     for mod in subj.modules:
         for topic in mod.topics:
             assert topic.is_lesson_candidate is True

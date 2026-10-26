@@ -239,6 +239,12 @@ class SyllabusCurriculumDraft(Base, TimestampMixin):
         back_populates="draft",
         cascade="all, delete-orphan",
     )
+    references: Mapped[List["SyllabusDraftReference"]] = relationship(
+        "SyllabusDraftReference",
+        back_populates="draft",
+        cascade="all, delete-orphan",
+        order_by="SyllabusDraftReference.sort_order",
+    )
 
 
 class SyllabusDraftSubject(Base, TimestampMixin):
@@ -289,6 +295,12 @@ class SyllabusDraftSubject(Base, TimestampMixin):
         "SyllabusDraftPrerequisite",
         back_populates="subject",
         cascade="all, delete-orphan",
+    )
+    references: Mapped[List["SyllabusDraftReference"]] = relationship(
+        "SyllabusDraftReference",
+        back_populates="subject",
+        cascade="all, delete-orphan",
+        order_by="SyllabusDraftReference.sort_order",
     )
 
 
@@ -363,6 +375,12 @@ class SyllabusDraftTopic(Base, TimestampMixin):
         index=True,
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    entity_category: Mapped[str] = mapped_column(
+        String(50),
+        default="topic",
+        nullable=False,
+        comment="topic, metadata, reference, uncertain",
+    )
     is_lesson_candidate: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     lesson_candidate_title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     source_section_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
@@ -379,6 +397,52 @@ class SyllabusDraftTopic(Base, TimestampMixin):
 
     # Relationships
     module: Mapped["SyllabusDraftModule"] = relationship("SyllabusDraftModule", back_populates="topics")
+
+
+class SyllabusDraftReference(Base, TimestampMixin):
+    """
+    Textbook, Reference Book, Author citation, or Reference URL extracted from syllabus.
+    Strictly segregated from curriculum lesson topics.
+    """
+    __tablename__ = "syllabus_draft_references"
+
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+        index=True,
+    )
+    draft_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("syllabus_curriculum_drafts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    draft_subject_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey("syllabus_draft_subjects.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    reference_type: Mapped[str] = mapped_column(
+        String(50),
+        default="textbook",
+        nullable=False,
+        comment="textbook, reference_book, web_reference, other",
+    )
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    authors: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    publisher: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    edition: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    year: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    raw_citation: Mapped[str] = mapped_column(String(2048), nullable=False)
+    source_page: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Relationships
+    draft: Mapped["SyllabusCurriculumDraft"] = relationship("SyllabusCurriculumDraft", back_populates="references")
+    subject: Mapped[Optional["SyllabusDraftSubject"]] = relationship("SyllabusDraftSubject", back_populates="references")
 
 
 class SyllabusDraftOutcome(Base, TimestampMixin):

@@ -142,9 +142,28 @@ class SyllabusDraftOutcomeRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SyllabusDraftReferenceRead(BaseModel):
+    id: str
+    draft_id: str
+    draft_subject_id: Optional[str] = None
+    reference_type: str = "textbook"  # textbook, reference_book, web_reference, other
+    title: str
+    authors: Optional[str] = None
+    publisher: Optional[str] = None
+    edition: Optional[str] = None
+    year: Optional[str] = None
+    url: Optional[str] = None
+    raw_citation: str
+    source_page: Optional[int] = None
+    sort_order: int = 0
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class SyllabusDraftTopicRead(BaseModel):
     id: str
     title: str
+    entity_category: str = "topic"  # topic, metadata, reference, uncertain
     is_lesson_candidate: bool = True
     lesson_candidate_title: Optional[str] = None
     source_section_id: Optional[str] = None
@@ -201,6 +220,7 @@ class SyllabusDraftSubjectRead(BaseModel):
     modules: List[SyllabusDraftModuleRead] = []
     outcomes: List[SyllabusDraftOutcomeRead] = []
     prerequisites: List[SyllabusDraftPrerequisiteRead] = []
+    references: List[SyllabusDraftReferenceRead] = []
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -221,6 +241,7 @@ class SyllabusCurriculumDraftRead(BaseModel):
     compiled_at: Optional[datetime] = None
     subjects: List[SyllabusDraftSubjectRead] = []
     prerequisites: List[SyllabusDraftPrerequisiteRead] = []
+    references: List[SyllabusDraftReferenceRead] = []
     created_at: datetime
     updated_at: datetime
 
@@ -272,12 +293,24 @@ class SyllabusCompilationResult(BaseModel):
 class SyllabusDraftTopicCorrection(BaseModel):
     id: str
     title: Optional[str] = None
+    entity_category: Optional[str] = None
     lesson_candidate_title: Optional[str] = None
     draft_module_id: Optional[str] = None
     is_lesson_candidate: Optional[bool] = None
     is_excluded: Optional[bool] = None
     sort_order: Optional[int] = None
     review_required: Optional[bool] = None
+
+
+class SyllabusDraftReferenceCorrection(BaseModel):
+    id: str
+    reference_type: Optional[str] = None
+    title: Optional[str] = None
+    authors: Optional[str] = None
+    publisher: Optional[str] = None
+    edition: Optional[str] = None
+    url: Optional[str] = None
+    sort_order: Optional[int] = None
 
 
 class SyllabusDraftModuleCorrection(BaseModel):
@@ -305,6 +338,7 @@ class SyllabusDraftCorrectionRequest(BaseModel):
     subjects: List[SyllabusDraftSubjectCorrection] = []
     modules: List[SyllabusDraftModuleCorrection] = []
     topics: List[SyllabusDraftTopicCorrection] = []
+    references: List[SyllabusDraftReferenceCorrection] = []
 
 
 class SyllabusCurriculumActivateRequest(BaseModel):

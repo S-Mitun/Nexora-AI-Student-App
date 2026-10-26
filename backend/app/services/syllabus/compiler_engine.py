@@ -15,6 +15,7 @@ from app.models.syllabus import (
     SyllabusDraftTopic,
     SyllabusDraftOutcome,
     SyllabusDraftPrerequisite,
+    SyllabusDraftReference,
 )
 from app.schemas.syllabus import SyllabusCompilationResult
 from app.services.syllabus.draft_engine import SyllabusDraftEngine
@@ -24,11 +25,12 @@ from app.core.logging import logger
 
 class SyllabusCurriculumCompilerEngine:
     """
-    Authoritative Syllabus Curriculum Compiler Engine (Master Prompt 04R).
+    Authoritative Syllabus Curriculum Compiler Engine (Master Prompt 04R / 05R).
     Compiles 03R extracted evidence into a canonical, normalized curriculum draft:
     - Evidence-preserving normalization (cleans OCR artifacts & repeated headers without changing meaning).
     - Preserves source academic terminology ('Unit I', 'Module 2', 'Lab Component').
     - Compiles syllabus topics into canonical candidate lessons.
+    - Classifies and separates metadata (Total Periods) and references (Textbooks, URLs) from lesson topics.
     - Detects and flags ambiguous / low-confidence items (review_required = True).
     - Eliminates duplicate entries caused by OCR or page wraps.
     - Scopes learning outcomes (course / module) and sets origin (explicit / inferred).
@@ -50,6 +52,37 @@ class SyllabusCurriculumCompilerEngine:
     PREREQUISITE_KEYWORDS = [
         "prerequisite", "pre-requisite", "prior knowledge", "review of",
         "assumes knowledge", "fundamental data structures", "background"
+    ]
+
+    METADATA_PATTERNS = [
+        re.compile(r"(?i)\bTOTAL\s*(\([^\)]+\))?:\s*\d+\s*(PERIODS|HOURS)\b"),
+        re.compile(r"(?i)^PERIODS\s*:\s*\d+"),
+        re.compile(r"(?i)^\s*(L\s*T\s*P\s*C|HOURS\s*PER\s*WEEK)"),
+        re.compile(r"(?i)\b\d+\s*PERIODS\b"),
+        re.compile(r"(?i)\b(total\s*lecture\s*hours|contact\s*hours|credits)\s*[:=]\s*\d+\b"),
+        re.compile(r"(?i)\b(internal\s*assessment|end[- ]semester\s*exam(ination)?|continuous\s*evaluation|mid[- ]term\s*exam(ination)?)\s*[:=]\s*\d+\s*%?\b"),
+    ]
+
+    URL_PATTERN = re.compile(r"(https?://\S+|www\.\S+)")
+
+    PUBLISHER_PATTERNS = re.compile(
+        r"(?i)\b(Pearson|Prentice(\s*Hall)?|McGraw(\s*Hill)?|Wiley|Springer|MIT\s*Press|Oxford(\s*University\s*Press)?|"
+        r"Cambridge(\s*University\s*Press)?|PHI|O'Reilly|Universities\s*Press|Routledge|Elsevier|Academic\s*Press|"
+        r"Sage|Macmillan|Bloomsbury|Harvard(\s*University\s*Press)?|CRC\s*Press|Cengage|Dover|W\.\s*H\.\s*Freeman|"
+        r"Simon\s*&\s*Schuster|HarperCollins|Penguin|TMH|Tata\s*McGraw|S\.\s*Chand|Laxmi|Narosa|Orient\s*Blackswan|"
+        r"Kalyani|Vikas|LexisNexis|West\s*Academic|Edward\s*Elgar|Brill|De\s*Gruyter)\b"
+    )
+
+    EDITION_PATTERNS = re.compile(r"(?i)\b\d+(st|nd|rd|th)\s+Edition\b")
+    CITATION_INDICATORS = re.compile(
+        r"(?i)\b(\d+(st|nd|rd|th)?\s*(ed\.|edition|revised\s*edition)|vol\.|volume|vols\.|pp\.|pages?|isbn[:\s]*[0-9\-x]+|issn[:\s]*[0-9\-x]+|doi:)\b"
+    )
+    AUTHOR_YEAR_PATTERN = re.compile(r"(\([12]\d{3}[a-z]?\)|,\s*[12]\d{3}[\.\,\;])")
+
+    KNOWN_AUTHORS = [
+        "anany levitin", "cormen", "leiserson", "rivest", "stein",
+        "horowitz", "sahni", "rajasekaran", "baase", "van gelder",
+        "sedgewick", "wayne", "kleinberg", "tardos", "knuth", "aho", "ullman", "hopcroft"
     ]
 
     def __init__(self, db: Session):
@@ -179,8 +212,9 @@ class SyllabusCurriculumCompilerEngine:
             review_required_count = 0
             prerequisites_to_add: List[SyllabusDraftPrerequisite] = []
 
-            # Clear existing prerequisites for clean idempotent re-compile
+            # Clear existing prerequisites and references for clean idempotent re-compile
             db.query(SyllabusDraftPrerequisite).filter(SyllabusDraftPrerequisite.draft_id == draft.id).delete()
+            db.query(SyllabusDraftReference).filter(SyllabusDraftReference.draft_id == draft.id).delete()
 
             for subject in draft.subjects:
                 # Normalize subject fields
@@ -223,7 +257,51 @@ class SyllabusCurriculumCompilerEngine:
                         if cls._is_noise_or_header(cleaned_title):
                             continue
 
-                        # Intra-unit deduplication
+                        # Classify entity: metadata vs reference vs genuine curriculum topic
+                        category, is_lesson_cand, cat_reason = cls._classify_topic(cleaned_title)
+                        topic.entity_category = category
+                        topic.is_lesson_candidate = is_lesson_cand
+
+                        if category == "metadata":
+                            topic.is_excluded = True
+                            topic.lesson_candidate_title = None
+                            periods_match = re.search(r"(?i)\bTOTAL\s*(\([^\)]+\))?:\s*([0-9]+)\s*PERIODS\b", cleaned_title)
+                            if periods_match and not subject.credits:
+                                subject.credits = f"{periods_match.group(2)} Periods"
+                            continue
+
+                        if category == "reference":
+                            topic.is_excluded = True
+                            topic.lesson_candidate_title = None
+                            url_match = cls.URL_PATTERN.search(cleaned_title)
+                            ref_url = url_match.group(1) if url_match else None
+                            ref_type = "web_reference" if ref_url else ("reference_book" if "reference" in cleaned_title.lower() else "textbook")
+
+                            ref_exists = any(r.raw_citation == cleaned_title for r in draft.references)
+                            if not ref_exists:
+                                ref_record = SyllabusDraftReference(
+                                    id=str(uuid.uuid4()),
+                                    draft_id=draft.id,
+                                    draft_subject_id=subject.id,
+                                    reference_type=ref_type,
+                                    title=cleaned_title[:512],
+                                    raw_citation=cleaned_title,
+                                    url=ref_url,
+                                    source_page=topic.source_page or module.page_start,
+                                    sort_order=len(draft.references),
+                                )
+                                db.add(ref_record)
+                                draft.references.append(ref_record)
+                            continue
+
+                        if category == "uncertain":
+                            topic.is_lesson_candidate = False
+                            topic.is_ambiguous = True
+                            topic.ambiguity_reason = cat_reason or "Unclassified entity structure requiring review"
+                            topic.review_required = True
+                            review_required_count += 1
+                            cleaned_topics.append(topic)
+                            continue
                         norm_key = cleaned_title.lower().strip()
                         if norm_key in seen_in_this_unit:
                             logger.debug(f"[CurriculumCompiler] Pruned duplicate topic in unit: '{cleaned_title}'")
@@ -423,6 +501,47 @@ class SyllabusCurriculumCompilerEngine:
         return False
 
     @classmethod
+    def _classify_topic(cls, text: str) -> Tuple[str, bool, Optional[str]]:
+        """
+        Classifies an extracted line into:
+        - ('metadata', False, reason) -> Total periods, hours, credits
+        - ('reference', False, reason) -> Textbook, author, publisher, URL
+        - ('topic', True, None) -> Legitimate curriculum lesson topic
+        """
+        lower = text.lower().strip()
+
+        # 1. Metadata check: teaching periods, hours, credits
+        for p in cls.METADATA_PATTERNS:
+            if p.search(text):
+                return "metadata", False, "Course duration or teaching period metadata"
+
+        # 2. URL check: web reference / simulation / visualization links
+        if cls.URL_PATTERN.search(text):
+            return "reference", False, "Supplementary web reference URL"
+
+        # 3. Publisher / Edition / Citation indicator check: textbook publication indicators
+        if cls.PUBLISHER_PATTERNS.search(text) or cls.EDITION_PATTERNS.search(text) or cls.CITATION_INDICATORS.search(text):
+            return "reference", False, "Textbook publication or citation reference"
+
+        # 4. Author-Year citation format check: e.g. "Mankiw (2018)" or "Halliday et al., 2015."
+        if cls.AUTHOR_YEAR_PATTERN.search(text) and len(text) > 20:
+            return "reference", False, "Bibliographic citation"
+
+        # 5. Known author check: prominent academic textbook authors
+        if any(author in lower for author in cls.KNOWN_AUTHORS):
+            return "reference", False, "Textbook author / bibliography reference"
+
+        # 6. Quoted book title pattern with publishing indicators
+        if re.search(r'["\'].+?["\']', text) and any(w in lower for w in ["edition", "press", "publications", "vol", "pp", "isbn", "publishers", "india", "new york", "london"]):
+            return "reference", False, "Textbook citation"
+
+        # 7. Unclassified or highly ambiguous fragment
+        if len(text) < 3 or text.isdigit():
+            return "uncertain", False, "Fragmented or purely numeric line requiring review"
+
+        return "topic", True, None
+
+    @classmethod
     def _check_ambiguity(cls, topic_title: str, confidence: str) -> Tuple[bool, Optional[str]]:
         """Identifies ambiguous or low-confidence topics that need human review."""
         if len(topic_title) < 3:
@@ -445,10 +564,12 @@ class SyllabusCurriculumCompilerEngine:
 
     @classmethod
     def _build_compilation_result(cls, draft: SyllabusCurriculumDraft, message: str) -> SyllabusCompilationResult:
-        """Assembles a clean response schema summarizing the compiled curriculum draft."""
         subject_count = len(draft.subjects)
         module_count = sum(len(s.modules) for s in draft.subjects)
-        lesson_count = sum(len(m.topics) for s in draft.subjects for m in s.modules)
+        lesson_count = sum(
+            1 for s in draft.subjects for m in s.modules for t in m.topics
+            if t.is_lesson_candidate and not t.is_excluded
+        )
         outcome_count = sum(len(s.outcomes) for s in draft.subjects)
         prereq_count = len(draft.prerequisites) if draft.prerequisites else 0
 

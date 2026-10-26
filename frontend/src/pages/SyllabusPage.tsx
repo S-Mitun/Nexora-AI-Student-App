@@ -29,6 +29,7 @@ import {
   Lock,
   GraduationCap,
   GitBranch,
+  AlertTriangle,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -68,6 +69,11 @@ export const SyllabusPage: React.FC = () => {
   const [activeDraftVersion, setActiveDraftVersion] = useState<{ syllabusId: string; version: SyllabusVersion } | null>(null);
   const [isCompilingDraft, setIsCompilingDraft] = useState(false);
   const [compilationSuccessMsg, setCompilationSuccessMsg] = useState<string | null>(null);
+
+  // Phase 6: Visible Cancel Active Curriculum State
+  const [deactivatingTarget, setDeactivatingTarget] = useState<{ syllabusId: string; versionId: string } | null>(null);
+  const [isDeactivatingTarget, setIsDeactivatingTarget] = useState(false);
+  const [deactivateTargetError, setDeactivateTargetError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -184,6 +190,22 @@ export const SyllabusPage: React.FC = () => {
     }
   };
 
+  const handleConfirmTargetDeactivation = async () => {
+    if (!deactivatingTarget) return;
+    try {
+      setIsDeactivatingTarget(true);
+      setDeactivateTargetError(null);
+      await apiService.deactivateCurriculum(deactivatingTarget.syllabusId, deactivatingTarget.versionId);
+      setDeactivatingTarget(null);
+      await loadSyllabi();
+      await refreshSyllabusState();
+    } catch (err: any) {
+      setDeactivateTargetError(err.response?.data?.detail || 'Failed to cancel active curriculum.');
+    } finally {
+      setIsDeactivatingTarget(false);
+    }
+  };
+
   const handleDownload = async (syllabusId: string, version: SyllabusVersion) => {
     try {
       const filename = version.source_filename || `syllabus_v${version.version_number}.pdf`;
@@ -274,19 +296,35 @@ export const SyllabusPage: React.FC = () => {
   };
 
   const getStatusBadge = (status: string, isActive: boolean, curriculumStatus?: string) => {
-    if (isActive || status === 'active') {
+    if (curriculumStatus === 'active') {
       return (
-        <Badge variant="success" size="sm" className="flex items-center gap-1">
-          <CheckCircle2 className="w-3 h-3" />
-          <span>Active</span>
+        <Badge variant="success" size="sm" className="flex items-center gap-1 bg-emerald-500/15 text-emerald-300 border-emerald-500/30">
+          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+          <span>Curriculum Active (State D)</span>
+        </Badge>
+      );
+    }
+    if (curriculumStatus === 'changes_saved') {
+      return (
+        <Badge variant="outline" size="sm" className="flex items-center gap-1 border-indigo-500/40 text-indigo-300 bg-indigo-500/10">
+          <Check className="w-3 h-3 text-indigo-400" />
+          <span>Changes Saved (State C)</span>
         </Badge>
       );
     }
     if (curriculumStatus === 'review_required') {
       return (
-        <Badge variant="outline" size="sm" className="flex items-center gap-1 border-purple-500/40 text-purple-300 bg-purple-500/10">
-          <Sparkles className="w-3 h-3 text-purple-400" />
-          <span>Draft Ready</span>
+        <Badge variant="warning" size="sm" className="flex items-center gap-1 border-amber-500/40 text-amber-300 bg-amber-500/10">
+          <Clock className="w-3 h-3 text-amber-400" />
+          <span>Review Required (State C)</span>
+        </Badge>
+      );
+    }
+    if (isActive || status === 'active') {
+      return (
+        <Badge variant="outline" size="sm" className="flex items-center gap-1 border-sky-500/30 text-sky-300 bg-sky-500/10">
+          <FileText className="w-3 h-3 text-sky-400" />
+          <span>Syllabus Active</span>
         </Badge>
       );
     }
@@ -489,7 +527,7 @@ export const SyllabusPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 self-end sm:self-center">
+                  <div className="flex items-center gap-2 self-end sm:self-center flex-wrap">
                     {activeVer && (activeVer.curriculum_status === 'review_required' || activeVer.curriculum_status === 'active' || activeVer.processing_status === 'completed') && (
                       <Button
                         variant="primary"
@@ -498,7 +536,18 @@ export const SyllabusPage: React.FC = () => {
                         leftIcon={<Eye className="w-3.5 h-3.5" />}
                         onClick={() => handleOpenDraftReview(syl.id, activeVer.id)}
                       >
-                        {activeVer.is_active ? 'View Curriculum' : 'Review Draft'}
+                        {activeVer.curriculum_status === 'active' ? 'View Curriculum' : 'Review Draft'}
+                      </Button>
+                    )}
+                    {activeVer?.curriculum_status === 'active' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
+                        leftIcon={<AlertTriangle className="w-3.5 h-3.5 text-amber-400" />}
+                        onClick={() => setDeactivatingTarget({ syllabusId: syl.id, versionId: activeVer.id })}
+                      >
+                        Cancel Activation
                       </Button>
                     )}
                     <Button
@@ -603,7 +652,19 @@ export const SyllabusPage: React.FC = () => {
                                 leftIcon={<Eye className="w-3.5 h-3.5" />}
                                 onClick={() => handleOpenDraftReview(syl.id, ver.id)}
                               >
-                                {ver.is_active ? 'View Curriculum' : 'Review Draft'}
+                                {ver.curriculum_status === 'active' ? 'View Curriculum' : 'Review Draft'}
+                              </Button>
+                            )}
+
+                            {ver.curriculum_status === 'active' && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-xs border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
+                                leftIcon={<AlertTriangle className="w-3.5 h-3.5 text-amber-400" />}
+                                onClick={() => setDeactivatingTarget({ syllabusId: syl.id, versionId: ver.id })}
+                              >
+                                Cancel Activation
                               </Button>
                             )}
 
@@ -831,6 +892,10 @@ export const SyllabusPage: React.FC = () => {
             setReviewDraft(updatedDraft);
           }}
           onActivated={async (activationRes) => {
+            setActiveDraftVersion((prev) => prev ? {
+              ...prev,
+              version: { ...prev.version, curriculum_status: 'active', is_active: true }
+            } : null);
             await loadSyllabi();
             await refreshSyllabusState();
           }}
@@ -872,6 +937,58 @@ export const SyllabusPage: React.FC = () => {
                 </div>
               </div>
             ) : null}
+          </div>
+        </div>
+      )}
+
+      {/* Phase 6: Visible Cancel Active Curriculum Confirmation Dialog */}
+      {deactivatingTarget && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+          <div className="w-full max-w-lg bg-nexora-surface border border-amber-500/40 rounded-2xl shadow-2xl overflow-hidden p-6 space-y-5 animate-scale-in">
+            <div className="flex items-start gap-4">
+              <div className="w-11 h-11 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold text-white tracking-tight">
+                  Cancel Active Curriculum?
+                </h3>
+                <p className="text-xs text-nexora-muted leading-relaxed">
+                  Cancel the active curriculum for this academic context? The curriculum will no longer be available as the active learning curriculum. Your uploaded syllabus, curriculum draft, saved review changes, source evidence and historical records will be preserved. You can review and activate the curriculum again when eligible.
+                </p>
+              </div>
+            </div>
+
+            {deactivateTargetError && (
+              <div className="p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-rose-200">Cancellation Error</p>
+                  <p className="mt-0.5">{deactivateTargetError}</p>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setDeactivatingTarget(null)}
+                disabled={isDeactivatingTarget}
+              >
+                Keep Active
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                className="bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold shadow-lg shadow-amber-900/30"
+                disabled={isDeactivatingTarget}
+                leftIcon={isDeactivatingTarget ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+                onClick={handleConfirmTargetDeactivation}
+              >
+                {isDeactivatingTarget ? 'Cancelling...' : 'Confirm Cancellation'}
+              </Button>
+            </div>
           </div>
         </div>
       )}

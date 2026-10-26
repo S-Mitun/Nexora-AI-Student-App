@@ -177,6 +177,8 @@ export const PracticePage: React.FC = () => {
                 ? 'Curriculum draft ready. Practice pending activation.'
                 : hasSyllabus && !isCurriculumActive
                 ? 'Syllabus uploaded. Practice not ready yet.'
+                : isCurriculumActive
+                ? 'No practice sets generated yet for this curriculum'
                 : 'No practice available yet'
             }
             description={
@@ -184,11 +186,15 @@ export const PracticePage: React.FC = () => {
                 ? 'Your syllabus document has been structured into draft subjects and units. Practice questions will be generated once curriculum activation is completed.'
                 : hasSyllabus && !isCurriculumActive
                 ? 'Your primary syllabus is uploaded and verified. Practice questions and modules will become available once curriculum activation is completed.'
+                : isCurriculumActive
+                ? 'Your curriculum is active. Practice modules for your active topics are being scheduled or can be launched from the active workspace.'
                 : 'Practice questions are calibrated and generated when your syllabus and learning units are activated.'
             }
             action={
-              <Button variant="primary" size="md" onClick={() => navigate('/syllabus')}>
-                {hasDraft && !isCurriculumActive
+              <Button variant="primary" size="md" onClick={() => navigate(isCurriculumActive ? '/learn' : '/syllabus')}>
+                {isCurriculumActive
+                  ? 'Open Learning Workspace'
+                  : hasDraft && !isCurriculumActive
                   ? 'Review Curriculum Draft'
                   : hasSyllabus
                   ? 'View Syllabus Hub'

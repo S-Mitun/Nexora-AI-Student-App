@@ -513,6 +513,16 @@ export const apiService = {
     );
     return response.data;
   },
+
+  async deactivateCurriculum(
+    syllabusId: string,
+    versionId: string
+  ): Promise<{ message: string; version_id: string; curriculum_status: string; is_curriculum_active: boolean }> {
+    const response = await apiClient.post(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/deactivate`
+    );
+    return response.data;
+  },
 };
 
 

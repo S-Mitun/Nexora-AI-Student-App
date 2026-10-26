@@ -361,6 +361,12 @@ async def lifespan(app: FastAPI):
                         conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN content_source VARCHAR(50) DEFAULT 'syllabus_extracted'"))
                         conn.commit()
 
+                # Sync syllabus_draft_topics table columns
+                dt_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(syllabus_draft_topics)"))}
+                if dt_cols and "entity_category" not in dt_cols:
+                    conn.execute(text("ALTER TABLE syllabus_draft_topics ADD COLUMN entity_category VARCHAR(50) DEFAULT 'topic'"))
+                    conn.commit()
+
                 # Sync notes table columns
                 note_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(notes)"))}
                 if note_cols:
