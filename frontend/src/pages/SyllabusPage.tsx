@@ -42,7 +42,7 @@ import { useAcademicContext } from '../context/AcademicContext';
 import { useSyllabus } from '../context/SyllabusContext';
 
 export const SyllabusPage: React.FC = () => {
-  const { academicContext } = useAcademicContext();
+  const { academicContext, refreshAcademicContext } = useAcademicContext();
   const { refreshSyllabusState } = useSyllabus();
   const [syllabi, setSyllabi] = useState<Syllabus[]>([]);
   const [loading, setLoading] = useState(true);
@@ -163,6 +163,7 @@ export const SyllabusPage: React.FC = () => {
       await apiService.activateSyllabusVersion(syllabusId, versionId);
       await loadSyllabi();
       await refreshSyllabusState();
+      await refreshAcademicContext().catch(() => {});
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Could not activate syllabus version.');
     }
@@ -199,6 +200,7 @@ export const SyllabusPage: React.FC = () => {
       setDeactivatingTarget(null);
       await loadSyllabi();
       await refreshSyllabusState();
+      await refreshAcademicContext().catch(() => {});
     } catch (err: any) {
       setDeactivateTargetError(err.response?.data?.detail || 'Failed to cancel active curriculum.');
     } finally {
@@ -295,12 +297,12 @@ export const SyllabusPage: React.FC = () => {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const getStatusBadge = (status: string, isActive: boolean, curriculumStatus?: string) => {
+  const getStatusBadge = (status: string, isDocumentActive: boolean, curriculumStatus?: string) => {
     if (curriculumStatus === 'active') {
       return (
         <Badge variant="success" size="sm" className="flex items-center gap-1 bg-emerald-500/15 text-emerald-300 border-emerald-500/30">
           <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-          <span>Curriculum Active (State D)</span>
+          <span>Curriculum Active (Live)</span>
         </Badge>
       );
     }
@@ -308,27 +310,27 @@ export const SyllabusPage: React.FC = () => {
       return (
         <Badge variant="outline" size="sm" className="flex items-center gap-1 border-indigo-500/40 text-indigo-300 bg-indigo-500/10">
           <Check className="w-3 h-3 text-indigo-400" />
-          <span>Changes Saved (State C)</span>
+          <span>Review Changes Saved (Pending Activation)</span>
         </Badge>
       );
     }
-    if (curriculumStatus === 'review_required') {
+    if (curriculumStatus === 'review_required' || curriculumStatus === 'draft_ready') {
       return (
         <Badge variant="warning" size="sm" className="flex items-center gap-1 border-amber-500/40 text-amber-300 bg-amber-500/10">
           <Clock className="w-3 h-3 text-amber-400" />
-          <span>Review Required (State C)</span>
+          <span>Draft Ready for Review</span>
         </Badge>
       );
     }
-    if (isActive || status === 'active') {
+    if (isDocumentActive) {
       return (
         <Badge variant="outline" size="sm" className="flex items-center gap-1 border-sky-500/30 text-sky-300 bg-sky-500/10">
           <FileText className="w-3 h-3 text-sky-400" />
-          <span>Syllabus Active</span>
+          <span>Primary File Version</span>
         </Badge>
       );
     }
-    if (status === 'archived') {
+    if (status === 'archived' || curriculumStatus === 'archived') {
       return (
         <Badge variant="outline" size="sm" className="flex items-center gap-1 border-nexora-border text-nexora-muted">
           <Archive className="w-3 h-3" />
@@ -340,7 +342,7 @@ export const SyllabusPage: React.FC = () => {
       return (
         <Badge variant="outline" size="sm" className="flex items-center gap-1 border-rose-500/40 text-rose-300 bg-rose-500/10">
           <AlertCircle className="w-3 h-3" />
-          <span>Failed</span>
+          <span>Processing Failed</span>
         </Badge>
       );
     }
@@ -348,14 +350,14 @@ export const SyllabusPage: React.FC = () => {
       return (
         <Badge variant="warning" size="sm" className="flex items-center gap-1 animate-pulse">
           <Loader2 className="w-3 h-3 animate-spin" />
-          <span>Extracting...</span>
+          <span>Extracting Structure...</span>
         </Badge>
       );
     }
     return (
       <Badge variant="outline" size="sm" className="flex items-center gap-1 border-indigo-500/30 text-indigo-300 bg-indigo-500/10">
         <CheckCircle2 className="w-3 h-3" />
-        <span>Uploaded</span>
+        <span>File Uploaded</span>
       </Badge>
     );
   };
@@ -528,7 +530,7 @@ export const SyllabusPage: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-2 self-end sm:self-center flex-wrap">
-                    {activeVer && (activeVer.curriculum_status === 'review_required' || activeVer.curriculum_status === 'active' || activeVer.processing_status === 'completed') && (
+                    {activeVer && (activeVer.curriculum_status === 'review_required' || activeVer.curriculum_status === 'active' || activeVer.curriculum_status === 'changes_saved' || activeVer.processing_status === 'completed') && (
                       <Button
                         variant="primary"
                         size="sm"
@@ -536,7 +538,7 @@ export const SyllabusPage: React.FC = () => {
                         leftIcon={<Eye className="w-3.5 h-3.5" />}
                         onClick={() => handleOpenDraftReview(syl.id, activeVer.id)}
                       >
-                        {activeVer.curriculum_status === 'active' ? 'View Curriculum' : 'Review Draft'}
+                        {activeVer.curriculum_status === 'active' ? 'View Active Curriculum' : 'Review & Activate'}
                       </Button>
                     )}
                     {activeVer?.curriculum_status === 'active' && (
@@ -546,6 +548,7 @@ export const SyllabusPage: React.FC = () => {
                         className="text-xs border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
                         leftIcon={<AlertTriangle className="w-3.5 h-3.5 text-amber-400" />}
                         onClick={() => setDeactivatingTarget({ syllabusId: syl.id, versionId: activeVer.id })}
+                        title="Cancel curriculum activation and return to review mode"
                       >
                         Cancel Activation
                       </Button>
@@ -643,8 +646,8 @@ export const SyllabusPage: React.FC = () => {
                           </div>
 
                           <div className="flex items-center gap-2 self-end sm:self-center flex-wrap">
-                            {/* 1. Review Draft Button if ready */}
-                            {(ver.curriculum_status === 'review_required' || ver.curriculum_status === 'active' || ver.processing_status === 'completed') && (
+                            {/* 1. Review Draft / View Active Curriculum Button if ready */}
+                            {(ver.curriculum_status === 'review_required' || ver.curriculum_status === 'active' || ver.curriculum_status === 'changes_saved' || ver.processing_status === 'completed') && (
                               <Button
                                 variant="primary"
                                 size="sm"
@@ -652,7 +655,7 @@ export const SyllabusPage: React.FC = () => {
                                 leftIcon={<Eye className="w-3.5 h-3.5" />}
                                 onClick={() => handleOpenDraftReview(syl.id, ver.id)}
                               >
-                                {ver.curriculum_status === 'active' ? 'View Curriculum' : 'Review Draft'}
+                                {ver.curriculum_status === 'active' ? 'View Active Curriculum' : 'Review & Activate'}
                               </Button>
                             )}
 
@@ -663,6 +666,7 @@ export const SyllabusPage: React.FC = () => {
                                 className="text-xs border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
                                 leftIcon={<AlertTriangle className="w-3.5 h-3.5 text-amber-400" />}
                                 onClick={() => setDeactivatingTarget({ syllabusId: syl.id, versionId: ver.id })}
+                                title="Cancel curriculum activation and return to review mode"
                               >
                                 Cancel Activation
                               </Button>
@@ -700,8 +704,9 @@ export const SyllabusPage: React.FC = () => {
                                 size="sm"
                                 className="text-xs text-nexora-primary hover:text-white"
                                 onClick={() => handleActivateVersion(syl.id, ver.id)}
+                                title="Select this version as the primary uploaded syllabus document"
                               >
-                                Set Active
+                                Select as Primary File
                               </Button>
                             )}
                             {ver.status !== 'archived' && !ver.is_active && (
@@ -888,8 +893,17 @@ export const SyllabusPage: React.FC = () => {
           syllabusId={activeDraftVersion.syllabusId}
           version={activeDraftVersion.version}
           draft={reviewDraft}
-          onDraftUpdated={(updatedDraft) => {
+          onDraftUpdated={async (updatedDraft) => {
             setReviewDraft(updatedDraft);
+            setActiveDraftVersion((prev) => prev ? {
+              ...prev,
+              version: {
+                ...prev.version,
+                curriculum_status: updatedDraft.status === 'approved' ? 'active' : 'changes_saved',
+              }
+            } : null);
+            await loadSyllabi();
+            await refreshSyllabusState();
           }}
           onActivated={async (activationRes) => {
             setActiveDraftVersion((prev) => prev ? {
@@ -898,6 +912,16 @@ export const SyllabusPage: React.FC = () => {
             } : null);
             await loadSyllabi();
             await refreshSyllabusState();
+            await refreshAcademicContext().catch(() => {});
+          }}
+          onDeactivated={async () => {
+            setActiveDraftVersion((prev) => prev ? {
+              ...prev,
+              version: { ...prev.version, curriculum_status: 'review_required' }
+            } : null);
+            await loadSyllabi();
+            await refreshSyllabusState();
+            await refreshAcademicContext().catch(() => {});
           }}
         />
       )}
@@ -943,7 +967,7 @@ export const SyllabusPage: React.FC = () => {
 
       {/* Phase 6: Visible Cancel Active Curriculum Confirmation Dialog */}
       {deactivatingTarget && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in" style={{ zIndex: 100 }}>
           <div className="w-full max-w-lg bg-nexora-surface border border-amber-500/40 rounded-2xl shadow-2xl overflow-hidden p-6 space-y-5 animate-scale-in">
             <div className="flex items-start gap-4">
               <div className="w-11 h-11 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0">
@@ -951,10 +975,10 @@ export const SyllabusPage: React.FC = () => {
               </div>
               <div className="space-y-1">
                 <h3 className="text-lg font-bold text-white tracking-tight">
-                  Cancel Active Curriculum?
+                  Cancel Activation?
                 </h3>
                 <p className="text-xs text-nexora-muted leading-relaxed">
-                  Cancel the active curriculum for this academic context? The curriculum will no longer be available as the active learning curriculum. Your uploaded syllabus, curriculum draft, saved review changes, source evidence and historical records will be preserved. You can review and activate the curriculum again when eligible.
+                  This will remove this curriculum as the active curriculum for the selected academic context. Your uploaded syllabus, draft, saved review changes, source evidence and historical records will be preserved.
                 </p>
               </div>
             </div>

@@ -235,9 +235,25 @@ class SyllabusCurriculumActivationService:
                 if not cleaned_name:
                     raise HTTPException(
                         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                        detail="Subject name cannot be blank.",
+                        detail="Subject name cannot be empty.",
                     )
                 subj.name = cleaned_name
+                draft.title = cleaned_name
+                syl = db.query(Syllabus).filter(Syllabus.id == syllabus_id).first()
+                if syl:
+                    syl.title = cleaned_name
+                    syl.updated_at = datetime.now(timezone.utc)
+                # If subject is already active at runtime, also update runtime name immediately
+                rt_sub = (
+                    db.query(Subject)
+                    .filter(
+                        Subject.syllabus_version_id == version_id,
+                        Subject.user_id == user_id,
+                    )
+                    .first()
+                )
+                if rt_sub:
+                    rt_sub.name = cleaned_name
 
             if s_corr.code is not None:
                 subj.code = s_corr.code.strip() or None
@@ -598,16 +614,35 @@ class SyllabusCurriculumActivationService:
                 subj_ids = [s.id for s in existing_subjects]
                 for idx, s in enumerate(existing_subjects):
                     s.is_active = True
+                    s.education_level = canonical_level
                     if idx < len(active_subjects):
                         d_subj = active_subjects[idx]
                         s.name = d_subj.name
                         if d_subj.evidence_text:
                             s.description = d_subj.evidence_text
 
-                db.query(StudentSubject).filter(
-                    StudentSubject.user_id == user_id,
-                    StudentSubject.subject_id.in_(subj_ids),
-                ).update({"is_active": True}, synchronize_session="fetch")
+                # Ensure active student enrollment links with synchronized canonical academic level
+                for s in existing_subjects:
+                    enrollment = (
+                        db.query(StudentSubject)
+                        .filter(
+                            StudentSubject.user_id == user_id,
+                            StudentSubject.subject_id == s.id,
+                        )
+                        .first()
+                    )
+                    if enrollment:
+                        enrollment.is_active = True
+                        enrollment.academic_level = canonical_level
+                    else:
+                        new_enrollment = StudentSubject(
+                            user_id=user_id,
+                            subject_id=s.id,
+                            academic_level=canonical_level,
+                            enrollment_source="curriculum_prescribed",
+                            is_active=True,
+                        )
+                        db.add(new_enrollment)
 
                 db.query(Topic).filter(
                     Topic.subject_id.in_(subj_ids),
@@ -684,6 +719,7 @@ class SyllabusCurriculumActivationService:
                         db.flush()
                     else:
                         existing_enrollment.is_active = True
+                        existing_enrollment.academic_level = canonical_level
 
                 # Iterate non-excluded draft modules -> runtime Topics
                 for d_mod in d_subj.modules:

@@ -2,11 +2,13 @@ import os
 import shutil
 from typing import Optional, List, Tuple
 from datetime import datetime, timezone
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from fastapi import UploadFile, HTTPException, status
 
 from app.models.syllabus import Syllabus, SyllabusVersion
 from app.models.documents import Document
+from app.models.learning import Subject, StudentSubject
 from app.schemas.syllabus import (
     SyllabusRead,
     SyllabusVersionRead,
@@ -93,22 +95,21 @@ class SyllabusLifecycleService:
                 message="Duplicate syllabus detected. This exact syllabus content has already been uploaded.",
             )
 
-        # 4. Resolve or create parent Syllabus record
-        # Match syllabus in same context/level
-        syllabus = (
-            db.query(Syllabus)
-            .filter(
-                Syllabus.user_id == user_id,
-                (Syllabus.academic_context_id == target_context_id) | (Syllabus.academic_level == context.academic_level),
-            )
-            .order_by(Syllabus.created_at.desc())
-            .first()
-        )
-
         syl_title = title.strip() if title and title.strip() else None
         if not syl_title:
             name_no_ext = os.path.splitext(safe_name)[0].replace("_", " ").title()
             syl_title = f"{name_no_ext} Syllabus"
+
+        # Check if an existing syllabus with the same title exists for this user in this context
+        syllabus = (
+            db.query(Syllabus)
+            .filter(
+                Syllabus.user_id == user_id,
+                Syllabus.academic_level == context.academic_level,
+                func.lower(Syllabus.title) == syl_title.lower(),
+            )
+            .first()
+        )
 
         if not syllabus:
             syllabus = Syllabus(
@@ -128,8 +129,6 @@ class SyllabusLifecycleService:
             # Increment version for existing syllabus
             max_ver = max([v.version_number for v in syllabus.versions], default=0)
             version_number = max_ver + 1
-            if title and title.strip():
-                syllabus.title = title.strip()
             syllabus.status = "uploaded"
             syllabus.updated_at = datetime.now(timezone.utc)
 
@@ -193,6 +192,7 @@ class SyllabusLifecycleService:
         db.commit()
         db.refresh(syllabus)
         db.refresh(version)
+
 
         logger.info(
             f"[SyllabusLifecycle] syllabus_upload_completed: user={user_id[:8]} "
@@ -320,6 +320,7 @@ class SyllabusLifecycleService:
         syllabus.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(version)
+
 
         logger.info(
             f"[SyllabusLifecycle] syllabus_version_created: user={user_id[:8]} "
@@ -468,38 +469,103 @@ class SyllabusLifecycleService:
         version_id: str,
     ) -> SyllabusRead:
         """
-        Activates a specific version. Guarantees that exactly one version is active.
-        Does not silently delete old versions.
+        Activates a specific syllabus version as the student's primary academic curriculum file.
+        Guarantees that exactly one version across all syllabi in this academic context is primary (is_active=True).
+        Preserves curriculum draft status across non-primary versions and synchronizes runtime learning entities.
         """
         version = cls.get_version_by_id(db, user_id, syllabus_id, version_id)
         syllabus = db.query(Syllabus).filter(Syllabus.id == syllabus_id).first()
+        if not syllabus or not version:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Syllabus or version not found.",
+            )
 
-        # Deactivate all sibling versions
-        db.query(SyllabusVersion).filter(
-            SyllabusVersion.syllabus_id == syllabus_id,
-            SyllabusVersion.id != version_id,
-        ).update({"is_active": False, "curriculum_status": "not_built"}, synchronize_session="fetch")
+        # 1. Deactivate all other versions in this academic level and synchronize runtime entities
+        user_syllabi = (
+            db.query(Syllabus)
+            .filter(
+                Syllabus.user_id == user_id,
+                Syllabus.academic_level == syllabus.academic_level,
+            )
+            .all()
+        )
 
-        # Activate selected version
+        for s in user_syllabi:
+            for v in s.versions:
+                if v.id != version_id and v.is_active:
+                    v.is_active = False
+                    # Deactivate runtime entities for previously active version
+                    old_subjs = [sub.id for sub in db.query(Subject.id).filter(
+                        Subject.syllabus_version_id == v.id,
+                        Subject.user_id == user_id,
+                    ).all()]
+                    if old_subjs:
+                        db.query(Subject).filter(Subject.id.in_(old_subjs)).update({"is_active": False}, synchronize_session="fetch")
+                        db.query(StudentSubject).filter(
+                            StudentSubject.user_id == user_id,
+                            StudentSubject.subject_id.in_(old_subjs),
+                        ).update({"is_active": False}, synchronize_session="fetch")
+            if s.id != syllabus_id and s.status == "active":
+                s.status = "uploaded"
+
+        # 2. Activate target version
         version.is_active = True
         version.status = "active"
-        if version.curriculum_draft and version.curriculum_draft.status in ["active", "approved"]:
-            version.curriculum_status = "active"
-        elif version.curriculum_draft and version.curriculum_draft.status in ["review_required", "draft", "changes_saved", "draft_ready"]:
-            version.curriculum_status = "review_required"
-        else:
-            version.curriculum_status = "not_built"
-        version.processing_status = "completed"
         version.activated_at = datetime.now(timezone.utc)
         syllabus.status = "active"
         syllabus.updated_at = datetime.now(timezone.utc)
 
+        # 3. Synchronize runtime learning entities for this primary version
+        existing_version_subjects = (
+            db.query(Subject)
+            .filter(
+                Subject.syllabus_version_id == version.id,
+                Subject.user_id == user_id,
+            )
+            .all()
+        )
+        if existing_version_subjects:
+            # Runtime entities exist from prior activation -> reactivate them immediately
+            subj_ids = [sub.id for sub in existing_version_subjects]
+            db.query(Subject).filter(Subject.id.in_(subj_ids)).update({"is_active": True}, synchronize_session="fetch")
+            db.query(StudentSubject).filter(
+                StudentSubject.user_id == user_id,
+                StudentSubject.subject_id.in_(subj_ids),
+            ).update({"is_active": True}, synchronize_session="fetch")
+            version.curriculum_status = "active"
+        elif version.curriculum_draft:
+            if version.curriculum_draft.status in ["active", "approved"]:
+                version.curriculum_status = "changes_saved"
+            elif version.curriculum_draft.status in ["review_required", "draft", "changes_saved", "draft_ready"]:
+                version.curriculum_status = "review_required"
+            else:
+                version.curriculum_status = "review_required"
+        else:
+            version.curriculum_status = "not_built"
+
+        # 4. If not yet extracted/analyzed, auto-dispatch the processing job
+        if version.processing_status != "completed":
+            from app.services.syllabus.job_runner import SyllabusJobRunner
+            try:
+                SyllabusJobRunner.start_processing_job(
+                    db=db,
+                    syllabus_id=syllabus_id,
+                    version_id=version_id,
+                    user_id=user_id,
+                    run_async=True,
+                )
+            except Exception as e:
+                logger.warning(f"[SyllabusLifecycle] Auto-dispatch processing job failed: {e}")
+
         db.commit()
         db.refresh(syllabus)
+        db.refresh(version)
 
         logger.info(
             f"[SyllabusLifecycle] syllabus_version_activated: user={user_id[:8]} "
-            f"syllabus_id={syllabus_id} version_id={version_id} v={version.version_number}"
+            f"syllabus_id={syllabus_id} version_id={version_id} v={version.version_number} "
+            f"curriculum_status={version.curriculum_status}"
         )
         return cls.get_syllabus_by_id(db, user_id, syllabus_id)
 

@@ -45,31 +45,7 @@ import { Badge } from '../components/ui/Badge';
 import { SkeletonCard } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
 
-const getExampleQueries = (category?: string, level?: string) => {
-  const norm = (category || level || '').toLowerCase();
-  if (norm.includes('primary') || norm.includes('class-1-5') || norm.includes('1-5')) {
-    return [
-      { label: "Force & Pressure Dynamics (F = ma)", domain: 'General Science' },
-      { label: 'Linear Equations (y = mx + c)', domain: 'Mathematics' },
-      { label: 'The Constitution & Rights', domain: 'Social Science' },
-      { label: 'Active and Passive Voice', domain: 'Languages' },
-    ];
-  }
-  if (norm.includes('higher') || norm.includes('11-12')) {
-    return [
-      { label: 'Wave Mechanics & Doppler Effect', domain: 'Physics' },
-      { label: 'Chemical Bonding & Kinetics', domain: 'Chemistry' },
-      { label: 'Cell Biology & Genetics', domain: 'Biology' },
-      { label: 'Calculus & Derivatives', domain: 'Mathematics' },
-    ];
-  }
-  return [
-    { label: 'Doppler Effect', domain: 'Physics' },
-    { label: 'Wave Mechanics', domain: 'Physics' },
-    { label: 'Operating Systems Deadlock', domain: 'Computer Science' },
-    { label: 'Database Normalization', domain: 'Computer Science' },
-  ];
-};
+
 
 export const HomePage: React.FC = () => {
   const { user, profile } = useAuth();
@@ -109,6 +85,26 @@ export const HomePage: React.FC = () => {
     overallProgressPercent: 0,
     studyMinutes: 0,
   });
+
+  // Derive genuine suggested topics strictly from the student's active enrolled curriculum
+  const activeSuggestedTopics = React.useMemo(() => {
+    if (!isCurriculumActive || !workspace?.enrolled_subjects || workspace.enrolled_subjects.length === 0) {
+      return [];
+    }
+    const topicLabels: string[] = [];
+    for (const sub of workspace.enrolled_subjects) {
+      if (sub.name && !topicLabels.includes(sub.name)) {
+        topicLabels.push(sub.name);
+      }
+    }
+    for (const rec of recommendations) {
+      if (rec.concept && !topicLabels.includes(rec.concept)) {
+        topicLabels.push(rec.concept);
+      }
+      if (topicLabels.length >= 4) break;
+    }
+    return topicLabels.slice(0, 4);
+  }, [isCurriculumActive, workspace, recommendations]);
 
   const fetchWorkspaceData = () => {
     apiService
@@ -426,7 +422,7 @@ export const HomePage: React.FC = () => {
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-purple-300 bg-purple-500/20 px-2.5 py-0.5 rounded-full border border-purple-500/40 flex items-center gap-1.5">
                   <Sparkles className="w-3 h-3 text-purple-400" />
-                  Curriculum Draft Ready (State C: Review Required)
+                  Curriculum Draft Ready (Review Required)
                 </span>
                 <span className="text-xs text-nexora-muted">&bull;</span>
                 <span className="text-xs text-nexora-subtext font-mono">
@@ -457,7 +453,7 @@ export const HomePage: React.FC = () => {
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-purple-400 bg-purple-500/15 px-2.5 py-0.5 rounded-full border border-purple-500/30">
-                  Syllabus Uploaded (State B)
+                  Syllabus Uploaded
                 </span>
                 <span className="text-xs text-nexora-muted">&bull;</span>
                 <span className="text-xs text-nexora-subtext font-mono">
@@ -505,20 +501,20 @@ export const HomePage: React.FC = () => {
           </Button>
         </form>
 
-        {isCurriculumActive ? (
+        {isCurriculumActive && activeSuggestedTopics.length > 0 ? (
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="text-nexora-muted font-medium">Suggested topics:</span>
-            {getExampleQueries(profile?.education_category, profile?.education_level).map((item, idx) => (
+            <span className="text-nexora-muted font-medium">Curriculum tracks:</span>
+            {activeSuggestedTopics.map((topic, idx) => (
               <button
                 key={idx}
-                onClick={() => navigate(`/learn?q=${encodeURIComponent(item.label)}`)}
+                onClick={() => navigate(`/learn?q=${encodeURIComponent(topic)}`)}
                 className="px-2.5 py-1 rounded-lg bg-nexora-bg/90 border border-nexora-border text-nexora-subtext hover:text-white hover:border-nexora-primary/50 transition-colors cursor-pointer"
               >
-                {item.label}
+                {topic}
               </button>
             ))}
           </div>
-        ) : (
+        ) : !isCurriculumActive ? (
           <div className="text-xs text-nexora-muted flex items-center gap-2 py-1">
             <Sparkles className="w-3.5 h-3.5 text-nexora-primary" />
             <span>
@@ -527,7 +523,7 @@ export const HomePage: React.FC = () => {
                 : "Upload and activate your syllabus to populate curriculum topics and lessons for exploration."}
             </span>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* 3. My Enrolled Subjects (Master Prompt 06) */}

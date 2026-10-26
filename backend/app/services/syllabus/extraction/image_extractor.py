@@ -19,7 +19,7 @@ class ImageExtractor(BaseDocumentExtractor):
         logger.info(f"[ImageExtractor] Processing image {file_path} (Dimensions: {meta.get('width')}x{meta.get('height')}, Ratio: {meta.get('aspect_ratio')})")
 
         # Run OCR fallback
-        ocr_text, confidence = OCRFallbackService.run_ocr_on_image(file_path)
+        ocr_text, confidence, _ = OCRFallbackService.run_ocr_on_image(file_path)
 
         page = ExtractedPage(
             page_number=1,

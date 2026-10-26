@@ -139,9 +139,13 @@ class SyllabusDraftEngine:
 
             for line_idx, line in enumerate(lines):
                 # Check for Outcomes Header
-                if re.search(r"(?i)\bCOURSE\s*OUTCOMES\b", line):
+                if re.search(r"(?i)\b(COURSE\s*OUTCOMES|LEARNING\s*OUTCOMES|PROGRAM\s*OUTCOMES)\b", line):
                     skip_section = True
                     continue
+
+                # Break out of skip_section if an explicit unit header or major section is encountered
+                if cls.UNIT_HEADER_PATTERN.match(line) or re.search(r"(?i)\b(TEXT\s*BOOKS|REFERENCE\s*BOOKS|PRESCRIBED\s*BOOKS|ASSESSMENT|EVALUATION)\b", line):
+                    skip_section = False
 
                 if skip_section:
                     # Look for outcome lines: CO1, CO2, etc. or numbered lines
@@ -174,13 +178,10 @@ class SyllabusDraftEngine:
                                 confidence="high",
                             )
                         )
-                    # Break out of skip if next major header found
-                    if "TEXT BOOKS" in line.upper() or "REFERENCE BOOKS" in line.upper():
-                        skip_section = False
                     continue
 
                 # Ignore general metadata lines and course objectives header
-                if re.search(r"(?i)\b(SDG\s*NO|TOTAL\s*\(|TEXT\s*BOOKS|REFERENCE\s*BOOKS|WEB\s*REFERENCES|COURSE\s*OBJECTIVES)\b", line):
+                if re.search(r"(?i)\b(SDG\s*NO|TOTAL\s*\(|TEXT\s*BOOKS|REFERENCE\s*BOOKS|PRESCRIBED\s*BOOKS|RECOMMENDED\s*BOOKS|WEB\s*REFERENCES|COURSE\s*OBJECTIVES|ASSESSMENT\s*SCHEME|INTERNAL\s*ASSESSMENT)\b", line):
                     continue
 
                 # Ignore line if it is the course title or course code

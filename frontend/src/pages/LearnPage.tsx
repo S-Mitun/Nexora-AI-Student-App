@@ -44,6 +44,7 @@ export const LearnPage: React.FC = () => {
   const [loadingWorkspace, setLoadingWorkspace] = useState(true);
 
   useEffect(() => {
+    setLoadingWorkspace(true);
     apiService
       .getWorkspace()
       .then((data) => {
@@ -53,7 +54,7 @@ export const LearnPage: React.FC = () => {
       .catch(() => {
         setLoadingWorkspace(false);
       });
-  }, []);
+  }, [isCurriculumActive, lifecycleState]);
 
   // Strictly derive registered courses from active syllabus & enrolled subjects
   const registeredCourses = (isCurriculumActive && workspace?.enrolled_subjects)

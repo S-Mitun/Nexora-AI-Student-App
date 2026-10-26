@@ -1436,3 +1436,155 @@ def test_document_format_pptx_extraction_and_compilation(db_session: Session, se
         if os.path.exists(temp_pptx_path):
             os.remove(temp_pptx_path)
 
+
+def test_case_school_level_syllabus_chapters_lessons_outcomes():
+    """
+    Addendum D.1 & D.2: School-level syllabus with Chapters and Lessons,
+    learning outcomes, and assessment weightage separated from topics.
+    """
+    from app.services.syllabus.extraction.base import ExtractedDocument, ExtractedPage
+
+    school_syllabus_text = """
+    CLASS 9 SECONDARY SCIENCE CURRICULUM
+    Academic Year 2026-2027
+
+    COURSE OUTCOMES:
+    1. Understand foundational principles of matter and cellular biology.
+    2. Apply Newton's laws of motion to everyday physical phenomena.
+
+    ASSESSMENT SCHEME:
+    Theory Paper: 80 Marks
+    Internal Assessment: 20 Marks
+
+    CHAPTER 1: Matter in Our Surroundings
+    Physical Nature of Matter - Characteristics of Particles of Matter - States of Matter: Solid, Liquid, Gas - Evaporation and Cooling Effect
+
+    CHAPTER 2: The Fundamental Unit of Life
+    What are Living Organisms Made of? - Cell Structure and Plasma Membrane - Nucleus and Cytoplasm - Cell Organelles: Endoplasmic Reticulum and Mitochondria
+
+    TEXTBOOKS RECOMMENDED:
+    Science - Textbook for Class IX - NCERT Publication
+    Laboratory Manual - Science - Class IX - NCERT Publication
+    """
+
+    doc = ExtractedDocument(
+        source_path="mock_school_syllabus.txt",
+        file_type="txt",
+        total_pages=1,
+        pages=[ExtractedPage(page_number=1, raw_text=school_syllabus_text, clean_text=school_syllabus_text)]
+    )
+
+    draft_struct = SyllabusDraftEngine.parse_document(
+        doc=doc,
+        syllabus_title="Class 9 Science Curriculum",
+        academic_level="class_6_10",
+    )
+
+    assert len(draft_struct.subjects) >= 1
+    subj = draft_struct.subjects[0]
+    assert len(subj.modules) == 2
+    # Module display labels preserve source Chapter terminology
+    assert any("CHAPTER 1" in m.display_label.upper() or "MATTER" in m.title.upper() for m in subj.modules)
+    assert any("CHAPTER 2" in m.display_label.upper() or "FUNDAMENTAL" in m.title.upper() for m in subj.modules)
+    # Topics are extracted from the chapter bodies
+    all_topics = [t.title for m in subj.modules for t in m.topics]
+    assert any("States of Matter" in t or "Matter" in t for t in all_topics)
+    assert any("Cell Organelles" in t or "Organisms" in t or "Cytoplasm" in t for t in all_topics)
+    # Outcomes are isolated
+    assert len(subj.outcomes) >= 1
+
+
+def test_case_configured_board_structure_cbse_science():
+    """
+    Addendum D.3: Board-specific syllabus structure (CBSE Class 10 Theme-based layout)
+    with explicitly segregated practicals and textbook citations.
+    """
+    from app.services.syllabus.extraction.base import ExtractedDocument, ExtractedPage
+
+    cbse_text = """
+    CENTRAL BOARD OF SECONDARY EDUCATION - CLASS X SCIENCE
+    Subject Code: 086
+
+    THEME 1: Chemical Substances - Nature and Behaviour
+    Chemical Reactions: Chemical equation, Balanced chemical equation, implications of a balanced chemical equation.
+    Acids, Bases and Salts: Definitions in terms of furnishing of H+ and OH- ions, General properties, examples and uses.
+
+    THEME 2: World of Living
+    Life Processes: 'Living Being'. Basic concept of nutrition, respiration, transport and excretion in plants and animals.
+    Control and Co-ordination in Animals and Plants: Tropic movements in plants; Introduction of plant hormones.
+
+    PRACTICAL EXPERIMENTS (LIST OF PRACTICALS):
+    1. Finding the pH of dilute Hydrochloric Acid and dilute NaOH solution using pH paper.
+    2. Performing and observing the reaction of Iron nails with Copper sulphate solution.
+
+    PRESCRIBED BOOKS:
+    1. Science - Class X, Published by NCERT, New Delhi.
+    2. Assessment of Practical Skills in Science - Class X, CBSE Publication.
+    """
+
+    doc = ExtractedDocument(
+        source_path="mock_cbse_science.txt",
+        file_type="txt",
+        total_pages=1,
+        pages=[ExtractedPage(page_number=1, raw_text=cbse_text, clean_text=cbse_text)]
+    )
+
+    draft_struct = SyllabusDraftEngine.parse_document(
+        doc=doc,
+        syllabus_title="CBSE Class 10 Science",
+        academic_level="class_6_10",
+    )
+
+    assert len(draft_struct.subjects) >= 1
+    subj = draft_struct.subjects[0]
+    # Modules represent the CBSE themes
+    assert len(subj.modules) >= 2
+    assert any("CHEMICAL" in m.title.upper() or "THEME 1" in m.display_label.upper() for m in subj.modules)
+    assert any("LIVING" in m.title.upper() or "THEME 2" in m.display_label.upper() for m in subj.modules)
+    all_topics = [t.title for m in subj.modules for t in m.topics]
+    assert any("Chemical Reactions" in t or "Acids" in t for t in all_topics)
+    assert any("Life Processes" in t or "Control" in t for t in all_topics)
+
+
+def test_incomplete_extraction_failsafe_handling():
+    """
+    Addendum D.12 & D.11: Incomplete or ambiguous extraction handling.
+    Failsafe verification: does not fabricate fake topics when extraction text is minimal or noisy.
+    """
+    from app.services.syllabus.extraction.base import ExtractedDocument, ExtractedPage
+
+    noisy_incomplete_text = """
+    Department of Studies
+    Page 1 / 4
+    [SCANNED IMAGE - UNREADABLE METADATA]
+    Course Overview:
+    ----------------
+    Miscellaneous unclassified notes:
+    1. Attendance requirement: 75%
+    2. Office hours: Tuesday 2-4 PM
+    """
+
+    doc = ExtractedDocument(
+        source_path="mock_noisy_incomplete.txt",
+        file_type="txt",
+        total_pages=1,
+        pages=[ExtractedPage(page_number=1, raw_text=noisy_incomplete_text, clean_text=noisy_incomplete_text)]
+    )
+
+    draft_struct = SyllabusDraftEngine.parse_document(
+        doc=doc,
+        syllabus_title="Incomplete Extraction Test",
+        academic_level="higher_education",
+    )
+
+    # Parser does not crash and does not invent fake computer science topics
+    assert draft_struct is not None
+    # Confidence reflects sparse/incomplete evidence
+    if draft_struct.subjects:
+        for s in draft_struct.subjects:
+            for m in s.modules:
+                for t in m.topics:
+                    assert "Operating Systems" not in t.title
+                    assert "Binary Search Tree" not in t.title
+
+

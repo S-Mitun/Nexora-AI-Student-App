@@ -37,6 +37,8 @@ class SyllabusCanonicalStateResponse(BaseModel):
     processing_status: str = "not_started"  # not_started, processing, completed, failed
     curriculum_status: str = "none"  # none, not_built, draft, review_required, active, archived
     is_curriculum_active: bool = False
+    is_runtime_ready: bool = False
+    rag_status: str = "not_indexed"  # not_indexed, processing, indexed, failed
     title: Optional[str] = None
     active_version_number: Optional[int] = None
     source_filename: Optional[str] = None

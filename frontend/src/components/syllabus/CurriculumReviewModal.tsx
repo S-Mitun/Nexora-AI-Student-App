@@ -53,6 +53,7 @@ interface CurriculumReviewModalProps {
   draft: SyllabusCurriculumDraft;
   onDraftUpdated: (updatedDraft: SyllabusCurriculumDraft) => void;
   onActivated: (result: SyllabusCurriculumActivationResponse) => void;
+  onDeactivated?: () => void;
 }
 
 export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
@@ -63,6 +64,7 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
   draft,
   onDraftUpdated,
   onActivated,
+  onDeactivated,
 }) => {
   const navigate = useNavigate();
   const { academicContext, refreshAcademicContext } = useAcademicContext();
@@ -282,9 +284,12 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
       };
 
       const updatedDraft = await apiService.saveDraftCorrections(syllabusId, version.id, payload);
+      if (version.curriculum_status !== 'active') {
+        version.curriculum_status = 'changes_saved';
+      }
       onDraftUpdated(updatedDraft);
       setEditedDraft(JSON.parse(JSON.stringify(updatedDraft)));
-      setSaveSuccessMsg('Review changes saved successfully. Your draft is authoritative.');
+      setSaveSuccessMsg('Review changes saved to draft. To apply your changes to your live learning workspace, click "Review & Activate Curriculum".');
       await refreshSyllabusState();
     } catch (err: any) {
       setSaveError(err.response?.data?.detail || 'Failed to save curriculum corrections. Please try again.');
@@ -328,7 +333,9 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
 
       version.curriculum_status = 'active';
       version.is_active = true;
-      setEditedDraft((prev) => ({ ...prev, status: 'approved' }));
+      const approvedDraft = { ...editedDraft, status: 'approved' as const };
+      setEditedDraft(approvedDraft);
+      onDraftUpdated(approvedDraft);
 
       setActivationResult(res);
       setIsConfirmModalOpen(false);
@@ -352,18 +359,21 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
       setDeactivateError(null);
       await apiService.deactivateCurriculum(syllabusId, version.id);
 
-      setEditedDraft((prev) => ({
-        ...prev,
-        status: 'review_required',
-      }));
+      const deactivatedDraft = {
+        ...editedDraft,
+        status: 'review_required' as const,
+      };
+      setEditedDraft(deactivatedDraft);
+      onDraftUpdated(deactivatedDraft);
       version.curriculum_status = 'review_required';
       setIsDeactivateConfirmOpen(false);
-      setSaveSuccessMsg('Curriculum safely returned to review (State C). Source evidence and draft remain preserved.');
+      setSaveSuccessMsg('Curriculum safely returned to review. Your syllabus, draft, source evidence, and corrections remain preserved.');
 
       await Promise.all([
         refreshSyllabusState().catch(() => {}),
         refreshAcademicContext().catch(() => {}),
       ]);
+      onDeactivated?.();
     } catch (err: any) {
       setDeactivateError(err.response?.data?.detail || 'Failed to return curriculum to review.');
     } finally {
@@ -380,10 +390,7 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
     onClose();
   };
 
-  const isAlreadyActive =
-    version.curriculum_status === 'active' ||
-    editedDraft.status === 'approved' ||
-    editedDraft.status === 'active';
+  const isAlreadyActive = version.curriculum_status === 'active';
 
   return (
     <>
@@ -404,17 +411,17 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
                   {isAlreadyActive ? (
                     <Badge variant="success" size="sm" className="bg-emerald-500/15 text-emerald-300 border-emerald-500/30 flex items-center gap-1">
                       <CheckCircle2 className="w-3 h-3" />
-                      <span>Curriculum Active (State D)</span>
+                      <span>Curriculum Active (Live)</span>
                     </Badge>
                   ) : editedDraft.status === 'changes_saved' ? (
                     <Badge variant="outline" size="sm" className="bg-indigo-500/15 text-indigo-300 border-indigo-500/30 flex items-center gap-1">
                       <Check className="w-3 h-3" />
-                      <span>Changes Saved (State C)</span>
+                      <span>Review Changes Saved (Pending Activation)</span>
                     </Badge>
                   ) : (
                     <Badge variant="warning" size="sm" className="bg-amber-500/15 text-amber-300 border-amber-500/30 flex items-center gap-1">
                       <Clock className="w-3 h-3" />
-                      <span>Review Required (State C)</span>
+                      <span>Draft Ready for Review</span>
                     </Badge>
                   )}
                   {hasUnsavedChanges && (
@@ -462,7 +469,7 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
                 leftIcon={isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                 onClick={handleSaveCorrections}
               >
-                {isSaving ? 'Saving...' : 'Save Changes'}
+                {isSaving ? 'Saving...' : 'Save Review Changes'}
               </Button>
 
               {isAlreadyActive && (
@@ -473,6 +480,7 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
                   leftIcon={<AlertTriangle className="w-3.5 h-3.5 text-amber-400" />}
                   onClick={() => setIsDeactivateConfirmOpen(true)}
                   disabled={isDeactivating}
+                  title="Cancel active curriculum and return to review mode"
                 >
                   Cancel Activation
                 </Button>
@@ -490,7 +498,7 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
                 disabled={isCheckingEligibility}
                 onClick={handleOpenActivationModal}
               >
-                {isAlreadyActive ? 'Re-activate / Update' : 'Review & Activate'}
+                {isAlreadyActive ? 'Re-activate / Update Live Curriculum' : 'Review & Activate Curriculum'}
               </Button>
 
               <button
@@ -545,7 +553,7 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
                 <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <p className="font-semibold text-amber-300">
-                    Draft Review & Correction Workflow (State C: review_required)
+                    Draft Review & Correction Workflow (Review Required)
                   </p>
                   <p className="text-amber-200/90 leading-relaxed">
                     Review and refine the extracted curriculum below before activation. You can rename subjects, units, or topics, toggle items to exclude irrelevant detections, and reorder modules. Once verified, click <strong>&quot;Review &amp; Activate&quot;</strong> to atomically deploy your curriculum to the runtime workspace.
@@ -1065,7 +1073,13 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
               <span>
                 Status:{' '}
                 <strong className="text-white">
-                  {isAlreadyActive ? 'active (State D)' : hasUnsavedChanges ? 'unsaved changes' : editedDraft.status}
+                  {isAlreadyActive
+                    ? 'Curriculum Active (Live)'
+                    : hasUnsavedChanges
+                    ? 'Unsaved Review Changes'
+                    : editedDraft.status === 'changes_saved'
+                    ? 'Review Changes Saved (Pending Activation)'
+                    : 'Draft Ready for Review'}
                 </strong>
               </span>
             </div>
@@ -1074,6 +1088,20 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
               <Button variant="ghost" size="sm" onClick={handleCloseReview}>
                 Close
               </Button>
+
+              {isAlreadyActive && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
+                  leftIcon={<AlertTriangle className="w-3.5 h-3.5 text-amber-400" />}
+                  onClick={() => setIsDeactivateConfirmOpen(true)}
+                  disabled={isDeactivating}
+                  title="Cancel active curriculum and return to review mode"
+                >
+                  Cancel Activation
+                </Button>
+              )}
 
               <Button
                 variant="outline"
@@ -1096,7 +1124,7 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
                 disabled={isCheckingEligibility}
                 onClick={handleOpenActivationModal}
               >
-                {isAlreadyActive ? 'Re-activate Curriculum' : 'Review & Activate Curriculum'}
+                {isAlreadyActive ? 'Re-activate / Update Live Curriculum' : 'Review & Activate Curriculum'}
               </Button>
             </div>
           </div>
@@ -1105,7 +1133,7 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
 
       {/* 2. Pre-Activation Confirmation Dialog */}
       {isConfirmModalOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in" style={{ zIndex: 100 }}>
           <div className="w-full max-w-lg bg-nexora-surface border border-nexora-border rounded-2xl shadow-2xl overflow-hidden p-6 space-y-5 animate-scale-in">
             <div className="flex items-start gap-4">
               <div className="w-11 h-11 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300 shrink-0">
@@ -1209,7 +1237,7 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
 
       {/* 3. Post-Activation Success Dialog */}
       {activationResult && (
-        <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in" style={{ zIndex: 100 }}>
           <div className="w-full max-w-md bg-nexora-surface border border-emerald-500/40 rounded-2xl shadow-2xl overflow-hidden p-6 space-y-5 text-center animate-scale-in">
             <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mx-auto shadow-inner">
               <CheckCircle2 className="w-8 h-8" />
@@ -1276,7 +1304,7 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
 
       {/* 4. Cancel Active Curriculum Confirmation Dialog (Phase 6) */}
       {isDeactivateConfirmOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in" style={{ zIndex: 100 }}>
           <div className="w-full max-w-lg bg-nexora-surface border border-amber-500/40 rounded-2xl shadow-2xl overflow-hidden p-6 space-y-5 animate-scale-in">
             <div className="flex items-start gap-4">
               <div className="w-11 h-11 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0">
@@ -1284,10 +1312,10 @@ export const CurriculumReviewModal: React.FC<CurriculumReviewModalProps> = ({
               </div>
               <div className="space-y-1">
                 <h3 className="text-lg font-bold text-white tracking-tight">
-                  Cancel Active Curriculum?
+                  Cancel Activation?
                 </h3>
                 <p className="text-xs text-nexora-muted leading-relaxed">
-                  Cancel the active curriculum for this academic context? The curriculum will no longer be available as the active learning curriculum. Your uploaded syllabus, curriculum draft, saved review changes, source evidence and historical records will be preserved. You can review and activate the curriculum again when eligible.
+                  This will remove this curriculum as the active curriculum for the selected academic context. Your uploaded syllabus, draft, saved review changes, source evidence and historical records will be preserved.
                 </p>
               </div>
             </div>

@@ -58,6 +58,8 @@ export interface SyllabusCanonicalState {
   processing_status: 'not_started' | 'processing' | 'completed' | 'failed' | string;
   curriculum_status: 'none' | 'not_built' | 'draft' | 'review_required' | 'active' | 'archived' | string;
   is_curriculum_active: boolean;
+  is_runtime_ready?: boolean;
+  rag_status?: 'not_indexed' | 'processing' | 'indexed' | 'failed' | string;
   title: string | null;
   active_version_number: number | null;
   source_filename: string | null;

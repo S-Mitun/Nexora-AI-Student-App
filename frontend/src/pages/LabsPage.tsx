@@ -71,11 +71,22 @@ export const LabsPage: React.FC = () => {
   const currentTier = academicContext?.academic_level;
   const displayCategory = academicContext?.education_category || currentTier;
 
-  // Filter lab tracks that genuinely match the student's active academic tier and enrolled syllabus
+  // Filter lab tracks that genuinely match the student's active enrolled subjects
   const applicableTracks = currentTier && enrolledSubjects && enrolledSubjects.length > 0 && isCurriculumActive
-    ? ALL_LAB_TRACKS.filter((track) =>
-        track.applicableTiers.some((tier) => tier === currentTier || tier === displayCategory)
-      )
+    ? ALL_LAB_TRACKS.filter((track) => {
+        const matchesTier = track.applicableTiers.some((tier) => tier === currentTier || tier === displayCategory);
+        if (!matchesTier) return false;
+        // Verify that at least one enrolled subject genuinely relates to this lab track domain
+        const trackKeywords =
+          track.id === 'track-systems'
+            ? ['operating system', 'concurrency', 'computer system', 'distributed system', 'cache']
+            : track.id === 'track-physics'
+            ? ['physics', 'kinematics', 'mechanics', 'wave']
+            : ['general science', 'pressure', 'force'];
+        return enrolledSubjects.some((s) =>
+          trackKeywords.some((kw) => s.name.toLowerCase().includes(kw))
+        );
+      })
     : [];
 
   return (

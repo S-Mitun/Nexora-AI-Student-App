@@ -39,11 +39,15 @@ class SyllabusStateResolver:
             .filter(Syllabus.user_id == user_id)
         )
 
-        # Context-matching logic: exact context_id or academic_level match
-        context_syllabi = syllabus_query.filter(
-            (Syllabus.academic_context_id == effective_context_id) |
-            (Syllabus.academic_level == canonical_level)
-        ).all()
+        # Context-matching logic: exact context_id or normalized academic_level match
+        user_syllabi = syllabus_query.all()
+        context_syllabi = [
+            s for s in user_syllabi
+            if s.academic_context_id == effective_context_id
+            or (s.academic_level and AcademicContextResolver.level_matches(s.academic_level, canonical_level))
+        ]
+        if not context_syllabi and user_syllabi:
+            context_syllabi = user_syllabi
 
         if not context_syllabi:
             # STATE A: No syllabus exists for this student in this context
@@ -56,6 +60,8 @@ class SyllabusStateResolver:
                 processing_status="not_started",
                 curriculum_status="none",
                 is_curriculum_active=False,
+                is_runtime_ready=False,
+                rag_status="not_indexed",
                 title=None,
                 active_version_number=None,
                 source_filename=None,
@@ -64,16 +70,26 @@ class SyllabusStateResolver:
                 updated_at=None,
             )
 
-        # Prioritize exact academic_context_id match, then latest updated
-        exact_match = next((s for s in context_syllabi if s.academic_context_id == effective_context_id), None)
-        active_syllabus: Syllabus = exact_match or sorted(context_syllabi, key=lambda s: s.updated_at, reverse=True)[0]
+        # Determine active syllabus:
+        # 1. Syllabus with a version currently marked is_active
+        active_syllabus = next((s for s in context_syllabi if any(v.is_active for v in s.versions)), None)
+        # 2. Syllabus with status == 'active'
+        if not active_syllabus:
+            active_syllabus = next((s for s in context_syllabi if s.status == "active"), None)
+        # 3. Exact academic_context_id match with most recent update
+        if not active_syllabus:
+            matching_ctx = [s for s in context_syllabi if s.academic_context_id == effective_context_id]
+            if matching_ctx:
+                active_syllabus = sorted(matching_ctx, key=lambda s: s.updated_at or s.created_at, reverse=True)[0]
+            else:
+                active_syllabus = sorted(context_syllabi, key=lambda s: s.updated_at or s.created_at, reverse=True)[0]
 
-        # 3. Determine target version (curriculum active takes highest precedence, then active document, then latest version)
+        # 3. Determine target version (active document takes highest precedence, then curriculum active, then latest version)
         versions = active_syllabus.versions
-        curriculum_active_ver = next((v for v in versions if v.curriculum_status == "active"), None)
         active_ver = next((v for v in versions if v.is_active), None)
+        curriculum_active_ver = next((v for v in versions if v.curriculum_status == "active"), None)
         latest_ver = max(versions, key=lambda v: v.version_number) if versions else None
-        target_version: Optional[SyllabusVersion] = curriculum_active_ver or active_ver or latest_ver
+        target_version: Optional[SyllabusVersion] = active_ver or curriculum_active_ver or latest_ver
 
         if not target_version:
             # Syllabus record exists but has no versions (transient State B)
@@ -86,6 +102,8 @@ class SyllabusStateResolver:
                 processing_status="not_started",
                 curriculum_status="not_built",
                 is_curriculum_active=False,
+                is_runtime_ready=False,
+                rag_status="not_indexed",
                 title=active_syllabus.title,
                 active_version_number=None,
                 source_filename=None,
@@ -132,7 +150,7 @@ class SyllabusStateResolver:
 
         if (
             target_version.curriculum_status == "active"
-            and target_version.is_active
+            and (target_version.is_active or has_runtime_subjects)
             and (draft is None or draft.status in ["approved", "active", "changes_saved"])
         ):
             # STATE D: Curriculum active
@@ -168,6 +186,22 @@ class SyllabusStateResolver:
         has_draft = bool(target_version.curriculum_draft)
         draft_id = target_version.curriculum_draft.id if target_version.curriculum_draft else None
 
+        # 8. Resolve RAG supporting-material status
+        from app.models.documents import Document, DocumentChunk
+        rag_status = "not_indexed"
+        if target_version.document_id:
+            doc = db.query(Document).filter(Document.id == target_version.document_id).first()
+            if doc:
+                has_chunks = db.query(DocumentChunk).filter(DocumentChunk.document_id == doc.id).first() is not None
+                if doc.processing_stage == "completed" or has_chunks:
+                    rag_status = "indexed"
+                elif doc.status == "failed" or doc.processing_stage == "failed":
+                    rag_status = "failed"
+                elif doc.status in ["processing", "queued"] or doc.processing_stage in ["extracting", "chunking"]:
+                    rag_status = "processing"
+
+        is_runtime_ready = bool(is_curriculum_active and has_runtime_subjects)
+
         return SyllabusCanonicalStateResponse(
             has_syllabus=True,
             syllabus_id=active_syllabus.id,
@@ -177,6 +211,8 @@ class SyllabusStateResolver:
             processing_status=processing_status,
             curriculum_status=curriculum_status,
             is_curriculum_active=is_curriculum_active,
+            is_runtime_ready=is_runtime_ready,
+            rag_status=rag_status,
             title=active_syllabus.title,
             active_version_number=target_version.version_number,
             source_filename=target_version.source_filename,

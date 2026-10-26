@@ -181,26 +181,37 @@ def get_academic_workspace(
         db, current_user.id, target_context_id=academic_context.context_id
     )
 
-    active_syl_model = (
-        db.query(Syllabus)
+    # Prioritize syllabus with active version
+    active_ver = (
+        db.query(SyllabusVersion)
+        .join(Syllabus, Syllabus.id == SyllabusVersion.syllabus_id)
         .filter(
             Syllabus.user_id == current_user.id,
             (Syllabus.academic_context_id == academic_context.context_id) | (Syllabus.academic_level == academic_context.academic_level),
-            Syllabus.status.in_(["confirmed", "extracted", "active"]),
+            SyllabusVersion.is_active == True,
         )
         .first()
     )
-
-    active_syllabus_read = None
-    if active_syl_model:
-        active_ver = (
-            db.query(SyllabusVersion)
+    if active_ver:
+        active_syl_model = active_ver.syllabus
+    else:
+        active_syl_model = (
+            db.query(Syllabus)
             .filter(
-                SyllabusVersion.syllabus_id == active_syl_model.id,
-                SyllabusVersion.is_active == True,
+                Syllabus.user_id == current_user.id,
+                (Syllabus.academic_context_id == academic_context.context_id) | (Syllabus.academic_level == academic_context.academic_level),
+                Syllabus.status.in_(["confirmed", "extracted", "active"]),
             )
             .first()
         )
+    active_syllabus_read = None
+    if active_syl_model:
+        if not active_ver:
+            active_ver = (
+                db.query(SyllabusVersion)
+                .filter(SyllabusVersion.syllabus_id == active_syl_model.id, SyllabusVersion.is_active == True)
+                .first()
+            )
         active_syllabus_read = SyllabusRead(
             id=active_syl_model.id,
             user_id=active_syl_model.user_id,

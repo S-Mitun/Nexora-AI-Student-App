@@ -8,6 +8,7 @@ from app.api.dependencies import get_optional_user, get_current_user
 from app.core.security import AuthenticatedUser
 from app.models.learning import Curriculum, Subject, Topic, Concept, LearningModule, Lesson
 from app.models.profile import UserProfile
+from app.models.syllabus import Syllabus, SyllabusVersion
 from app.schemas.learning import (
     CurriculumRead,
     SubjectRead,
@@ -148,31 +149,43 @@ def list_subjects(
             )
             .all()
         )
-        active_syl = next((s for s in user_syllabi if s.academic_level == target_level), None)
-        if not active_syl:
-            active_syl = next((s for s in user_syllabi if AcademicContextResolver.level_matches(s.academic_level, target_level)), None)
-        if not active_syl and user_syllabi:
-            active_syl = user_syllabi[0]
-        if active_syl:
-            active_ver = (
-                db.query(SyllabusVersion)
-                .filter(
-                    SyllabusVersion.syllabus_id == active_syl.id,
-                    SyllabusVersion.curriculum_status == "active",
-                )
-                .first()
+        active_ver = (
+            db.query(SyllabusVersion)
+            .join(Syllabus, Syllabus.id == SyllabusVersion.syllabus_id)
+            .filter(
+                Syllabus.user_id == current_user.id,
+                SyllabusVersion.is_active == True,
             )
-            if not active_ver:
+            .first()
+        )
+        if active_ver and active_ver.curriculum_status not in ["review_required", "archived", "draft", "changes_saved"]:
+            active_version_id = active_ver.id
+        else:
+            active_syl = next((s for s in user_syllabi if s.academic_level == target_level), None)
+            if not active_syl:
+                active_syl = next((s for s in user_syllabi if AcademicContextResolver.level_matches(s.academic_level, target_level)), None)
+            if not active_syl and user_syllabi:
+                active_syl = user_syllabi[0]
+            if active_syl:
                 active_ver = (
                     db.query(SyllabusVersion)
                     .filter(
                         SyllabusVersion.syllabus_id == active_syl.id,
-                        SyllabusVersion.is_active == True,
+                        SyllabusVersion.curriculum_status == "active",
                     )
                     .first()
                 )
-            if active_ver and active_ver.curriculum_status not in ["review_required", "archived", "draft"]:
-                active_version_id = active_ver.id
+                if not active_ver:
+                    active_ver = (
+                        db.query(SyllabusVersion)
+                        .filter(
+                            SyllabusVersion.syllabus_id == active_syl.id,
+                            SyllabusVersion.is_active == True,
+                        )
+                        .first()
+                    )
+                if active_ver and active_ver.curriculum_status not in ["review_required", "archived", "draft", "changes_saved"]:
+                    active_version_id = active_ver.id
 
     subjects = CurriculumService.get_subjects(
         db,
@@ -428,24 +441,35 @@ def list_concepts(
         ctx = AcademicContextResolver.resolve_context(db, current_user.id)
         if not target_level:
             target_level = ctx.academic_level
-        from app.models.syllabus import Syllabus, SyllabusVersion
-        active_syl = (
-            db.query(Syllabus)
+        active_ver = (
+            db.query(SyllabusVersion)
+            .join(Syllabus, Syllabus.id == SyllabusVersion.syllabus_id)
             .filter(
                 Syllabus.user_id == current_user.id,
-                Syllabus.academic_level == target_level,
-                Syllabus.status.in_(["confirmed", "extracted", "active"]),
+                SyllabusVersion.is_active == True,
             )
             .first()
         )
-        if active_syl:
-            active_ver = (
-                db.query(SyllabusVersion)
-                .filter(SyllabusVersion.syllabus_id == active_syl.id, SyllabusVersion.is_active == True)
+        if active_ver:
+            active_version_id = active_ver.id
+        else:
+            active_syl = (
+                db.query(Syllabus)
+                .filter(
+                    Syllabus.user_id == current_user.id,
+                    Syllabus.academic_level == target_level,
+                    Syllabus.status.in_(["confirmed", "extracted", "active"]),
+                )
                 .first()
             )
-            if active_ver:
-                active_version_id = active_ver.id
+            if active_syl:
+                active_ver = (
+                    db.query(SyllabusVersion)
+                    .filter(SyllabusVersion.syllabus_id == active_syl.id, SyllabusVersion.is_active == True)
+                    .first()
+                )
+                if active_ver:
+                    active_version_id = active_ver.id
 
     if not active_version_id and not include_reference:
         return []
@@ -603,24 +627,35 @@ def list_learning_modules(
         ctx = AcademicContextResolver.resolve_context(db, current_user.id)
         if not target_level:
             target_level = ctx.academic_level
-        from app.models.syllabus import Syllabus, SyllabusVersion
-        active_syl = (
-            db.query(Syllabus)
+        active_ver = (
+            db.query(SyllabusVersion)
+            .join(Syllabus, Syllabus.id == SyllabusVersion.syllabus_id)
             .filter(
                 Syllabus.user_id == current_user.id,
-                Syllabus.academic_level == target_level,
-                Syllabus.status.in_(["confirmed", "extracted", "active"]),
+                SyllabusVersion.is_active == True,
             )
             .first()
         )
-        if active_syl:
-            active_ver = (
-                db.query(SyllabusVersion)
-                .filter(SyllabusVersion.syllabus_id == active_syl.id, SyllabusVersion.is_active == True)
+        if active_ver:
+            active_version_id = active_ver.id
+        else:
+            active_syl = (
+                db.query(Syllabus)
+                .filter(
+                    Syllabus.user_id == current_user.id,
+                    Syllabus.academic_level == target_level,
+                    Syllabus.status.in_(["confirmed", "extracted", "active"]),
+                )
                 .first()
             )
-            if active_ver:
-                active_version_id = active_ver.id
+            if active_syl:
+                active_ver = (
+                    db.query(SyllabusVersion)
+                    .filter(SyllabusVersion.syllabus_id == active_syl.id, SyllabusVersion.is_active == True)
+                    .first()
+                )
+                if active_ver:
+                    active_version_id = active_ver.id
 
     if not active_version_id and not include_reference:
         return []
@@ -780,24 +815,35 @@ def list_lessons(
         ctx = AcademicContextResolver.resolve_context(db, current_user.id)
         if not target_level:
             target_level = ctx.academic_level
-        from app.models.syllabus import Syllabus, SyllabusVersion
-        active_syl = (
-            db.query(Syllabus)
+        active_ver = (
+            db.query(SyllabusVersion)
+            .join(Syllabus, Syllabus.id == SyllabusVersion.syllabus_id)
             .filter(
                 Syllabus.user_id == current_user.id,
-                Syllabus.academic_level == target_level,
-                Syllabus.status.in_(["confirmed", "extracted", "active"]),
+                SyllabusVersion.is_active == True,
             )
             .first()
         )
-        if active_syl:
-            active_ver = (
-                db.query(SyllabusVersion)
-                .filter(SyllabusVersion.syllabus_id == active_syl.id, SyllabusVersion.is_active == True)
+        if active_ver:
+            active_version_id = active_ver.id
+        else:
+            active_syl = (
+                db.query(Syllabus)
+                .filter(
+                    Syllabus.user_id == current_user.id,
+                    Syllabus.academic_level == target_level,
+                    Syllabus.status.in_(["confirmed", "extracted", "active"]),
+                )
                 .first()
             )
-            if active_ver:
-                active_version_id = active_ver.id
+            if active_syl:
+                active_ver = (
+                    db.query(SyllabusVersion)
+                    .filter(SyllabusVersion.syllabus_id == active_syl.id, SyllabusVersion.is_active == True)
+                    .first()
+                )
+                if active_ver:
+                    active_version_id = active_ver.id
 
     if not active_version_id and not include_reference:
         return []
@@ -963,17 +1009,29 @@ def get_recommendations(
     if not current_user:
         return []
 
-    from app.models.syllabus import Syllabus
-    active_syl = (
-        db.query(Syllabus)
+    from app.models.syllabus import Syllabus, SyllabusVersion
+    active_ver = (
+        db.query(SyllabusVersion)
+        .join(Syllabus, Syllabus.id == SyllabusVersion.syllabus_id)
         .filter(
             Syllabus.user_id == current_user.id,
-            Syllabus.status.in_(["confirmed", "extracted", "active"]),
+            SyllabusVersion.is_active == True,
         )
         .first()
     )
-    if not active_syl:
-        return []
+    if not active_ver:
+        active_syl = (
+            db.query(Syllabus)
+            .filter(
+                Syllabus.user_id == current_user.id,
+                Syllabus.status.in_(["confirmed", "extracted", "active"]),
+            )
+            .first()
+        )
+        if not active_syl:
+            return []
+    else:
+        active_syl = active_ver.syllabus
 
     student_interests = []
     favorite_subjects = []
@@ -1072,18 +1130,28 @@ def list_practice_sets(
     if not include_reference:
         if not current_user:
             return []
-        from app.models.syllabus import Syllabus
-        active_syl = (
-            db.query(Syllabus)
+        from app.models.syllabus import Syllabus, SyllabusVersion
+        active_ver = (
+            db.query(SyllabusVersion)
+            .join(Syllabus, Syllabus.id == SyllabusVersion.syllabus_id)
             .filter(
                 Syllabus.user_id == current_user.id,
-                Syllabus.academic_level == target_level,
-                Syllabus.status.in_(["confirmed", "extracted", "active"]),
+                SyllabusVersion.is_active == True,
             )
             .first()
         )
-        if not active_syl:
-            return []
+        if not active_ver:
+            active_syl = (
+                db.query(Syllabus)
+                .filter(
+                    Syllabus.user_id == current_user.id,
+                    Syllabus.academic_level == target_level,
+                    Syllabus.status.in_(["confirmed", "extracted", "active"]),
+                )
+                .first()
+            )
+            if not active_syl:
+                return []
 
     # Normalize tier (e.g. class-1-5 -> class_1_5)
     normalized_level = target_level.replace("-", "_")
@@ -1092,6 +1160,18 @@ def list_practice_sets(
         PracticeSet.academic_level.in_([target_level, normalized_level]),
         PracticeSet.is_active == True,
     )
+
+    if not include_reference and current_user:
+        from app.models.learning import StudentSubject
+        enrolled_subs = (
+            db.query(StudentSubject)
+            .filter(StudentSubject.user_id == current_user.id, StudentSubject.is_active == True)
+            .all()
+        )
+        if enrolled_subs:
+            enrolled_sub_ids = [ss.subject_id for ss in enrolled_subs]
+            if not subject_id:
+                query = query.filter(PracticeSet.subject_id.in_(enrolled_sub_ids))
 
     if subject_id:
         query = query.filter(PracticeSet.subject_id == subject_id)

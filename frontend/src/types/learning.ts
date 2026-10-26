@@ -155,6 +155,7 @@ export interface Lesson {
   order_index: number;
   estimated_minutes: number;
   is_active: boolean;
+  content_source?: string;
 }
 
 export interface LessonDetail extends Lesson {

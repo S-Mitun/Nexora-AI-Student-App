@@ -220,6 +220,19 @@ export const LessonPage: React.FC = () => {
         </div>
       )}
 
+      {/* Syllabus Grounding & Scope Transparency Card */}
+      {Boolean(lesson.content_source === 'syllabus_extracted' || (lesson.content && lesson.content.includes('Evidence from Syllabus'))) && (
+        <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300 flex items-start gap-3">
+          <BookOpen className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-semibold text-indigo-200">Official Syllabus Grounding</p>
+            <p className="text-indigo-300/80 leading-relaxed text-[11px]">
+              This lesson blueprint, topic hierarchy, and evidence excerpt are directly derived from your verified prescribed syllabus. Complete grounded instructional textbooks, step-by-step mathematical breakdowns, code implementations, and interactive concept simulations are generated during active learning sessions (Prompt 06R / 07R).
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Core Educational Reading Content */}
       <div className="p-6 sm:p-8 rounded-2xl bg-nexora-surface/80 border border-nexora-border/60 shadow-xl space-y-6">
         <AcademicContentRenderer content={lesson.content} />
