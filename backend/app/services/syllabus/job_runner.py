@@ -78,6 +78,7 @@ class SyllabusJobRunner:
         syllabus_id: str,
         version_id: str,
         user_id: str,
+        academic_context_id: Optional[str] = None,
         force_reprocess: bool = False,
         run_async: bool = True,
     ) -> SyllabusProcessingJob:
@@ -118,6 +119,8 @@ class SyllabusJobRunner:
             logger.info(f"[JobRunner] Job {existing_job.id} already active for version {version_id}.")
             return existing_job
 
+        effective_context_id = academic_context_id or syllabus.academic_context_id
+
         # 3. Create new job record
         job_id = str(uuid.uuid4())
         job = SyllabusProcessingJob(
@@ -125,7 +128,7 @@ class SyllabusJobRunner:
             syllabus_id=syllabus_id,
             syllabus_version_id=version_id,
             user_id=user_id,
-            academic_context_id=syllabus.academic_context_id,
+            academic_context_id=effective_context_id,
             status="queued",
             stage="queued",
             progress_percent=0,
@@ -145,12 +148,12 @@ class SyllabusJobRunner:
         if run_async:
             thread = threading.Thread(
                 target=cls._execute_job_in_thread,
-                args=(job_id, syllabus_id, version_id, user_id, syllabus.academic_context_id),
+                args=(job_id, syllabus_id, version_id, user_id, effective_context_id),
                 daemon=True,
             )
             thread.start()
         else:
-            cls._execute_job(db, job_id, syllabus_id, version_id, user_id, syllabus.academic_context_id)
+            cls._execute_job(db, job_id, syllabus_id, version_id, user_id, effective_context_id)
             db.refresh(job)
 
         return job

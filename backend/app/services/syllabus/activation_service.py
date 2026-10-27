@@ -29,6 +29,7 @@ from app.schemas.syllabus import (
     SyllabusActivationEligibilityResponse,
 )
 from app.services.learning.context_service import AcademicContextResolver
+from app.services.syllabus.academic_heading_curator import AcademicHeadingCurator
 
 
 def _generate_unique_slug(db: Session, model_cls: Type, base_text: str, prefix: str = "") -> str:
@@ -729,9 +730,23 @@ class SyllabusCurriculumActivationService:
                         if getattr(d_top, "entity_category", "topic") in ["metadata", "reference"]:
                             continue
 
-                        top_name = d_top.lesson_candidate_title or d_top.title
+                        raw_title = d_top.lesson_candidate_title or d_top.title
+                        curation = AcademicHeadingCurator.curate_topic_hierarchy(
+                            raw_title,
+                            unit_label=mod_label,
+                            unit_title=d_mod.title,
+                        )
+                        if curation["is_reference"]:
+                            # Bibliographic textbook reference or URL - skip creating runtime learning entity
+                            continue
+
+                        concept_name = curation["concept_name"]
+                        module_title = curation["module_title"]
+                        learning_obj = curation["learning_objective"]
+                        lesson_titles = curation["lesson_titles"] or [f"{concept_name} Fundamentals"]
+
                         is_lab = any(
-                            k in top_name.lower() or k in mod_full_name.lower()
+                            k in concept_name.lower() or k in mod_full_name.lower()
                             for k in ["lab", "practical", "experiment", "implementation"]
                         )
 
@@ -739,10 +754,10 @@ class SyllabusCurriculumActivationService:
                             id=str(uuid.uuid4()),
                             topic_id=runtime_topic.id,
                             content_source="syllabus_extracted",
-                            name=top_name,
-                            slug=_generate_unique_slug(db, Concept, top_name),
-                            summary=d_top.evidence_text or f"Concept extracted from {syllabus.title}",
-                            short_description=f"Curriculum candidate: {top_name}",
+                            name=concept_name,
+                            slug=_generate_unique_slug(db, Concept, concept_name),
+                            summary=d_top.evidence_text or learning_obj,
+                            short_description=f"Curriculum heading: {concept_name}",
                             difficulty="intermediate",
                             difficulty_level="intermediate",
                             order_index=d_top.sort_order if d_top.sort_order is not None else topics_activated,
@@ -758,15 +773,15 @@ class SyllabusCurriculumActivationService:
                         db.flush()
                         topics_activated += 1
 
-                        # Structured LearningModule
+                        # Structured LearningModule with distinct heading
                         runtime_lm = LearningModule(
                             id=str(uuid.uuid4()),
                             concept_id=runtime_concept.id,
                             content_source="syllabus_extracted",
-                            title=top_name,
-                            slug=_generate_unique_slug(db, LearningModule, top_name),
-                            description=d_top.evidence_text or f"Structured module for {top_name}",
-                            learning_objective=f"Understand and master concepts of {top_name} as outlined in syllabus.",
+                            title=module_title,
+                            slug=_generate_unique_slug(db, LearningModule, module_title),
+                            description=learning_obj,
+                            learning_objective=learning_obj,
                             difficulty_level="intermediate",
                             estimated_minutes=15,
                             order_index=0,
@@ -775,16 +790,21 @@ class SyllabusCurriculumActivationService:
                         db.add(runtime_lm)
                         db.flush()
 
-                        # Lesson
+                        # Discrete, clean Lesson entity (1 per draft candidate)
+                        lesson_title = d_top.lesson_candidate_title or concept_name
+                        subtopics_list = curation.get("lesson_titles", [])
+                        subtopics_md = "\n".join(f"- {st}" for st in subtopics_list) if subtopics_list else ""
+                        subtopics_section = f"\n\n### Core Topics & Concepts Covered:\n{subtopics_md}" if subtopics_md else ""
                         citation = f"Source: {syllabus.title}, Page {d_top.source_page or 1}"
+
                         runtime_lesson = Lesson(
                             id=str(uuid.uuid4()),
                             module_id=runtime_lm.id,
                             content_source="syllabus_extracted",
-                            title=top_name,
-                            slug=_generate_unique_slug(db, Lesson, top_name),
+                            title=lesson_title,
+                            slug=_generate_unique_slug(db, Lesson, lesson_title),
                             content_type="explanation",
-                            content=f"# {top_name}\n\n*{citation}*\n\nEvidence from Syllabus:\n> {d_top.evidence_text or 'Extracted topic from verified syllabus.'}\n\n*Lesson instruction and interactive concepts will be developed during learning sessions.*",
+                            content=f"# {lesson_title}\n\n*{citation}*\n\nEvidence from Syllabus:\n> {d_top.evidence_text or 'Extracted topic from verified syllabus.'}{subtopics_section}\n\n*Lesson instruction and interactive concepts will be developed during learning sessions.*",
                             order_index=0,
                             estimated_minutes=15,
                             is_active=True,

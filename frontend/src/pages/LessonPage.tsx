@@ -220,18 +220,23 @@ export const LessonPage: React.FC = () => {
         </div>
       )}
 
-      {/* Syllabus Grounding & Scope Transparency Card */}
-      {Boolean(lesson.content_source === 'syllabus_extracted' || (lesson.content && lesson.content.includes('Evidence from Syllabus'))) && (
-        <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300 flex items-start gap-3">
-          <BookOpen className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <p className="font-semibold text-indigo-200">Official Syllabus Grounding</p>
-            <p className="text-indigo-300/80 leading-relaxed text-[11px]">
-              This lesson blueprint, topic hierarchy, and evidence excerpt are directly derived from your verified prescribed syllabus. Complete grounded instructional textbooks, step-by-step mathematical breakdowns, code implementations, and interactive concept simulations are generated during active learning sessions (Prompt 06R / 07R).
+      {/* Syllabus Grounding & Honest Availability State Card (Master Prompt 06R Contract) */}
+      {Boolean(lesson.content_source === 'syllabus_extracted' || (lesson.content && lesson.content.includes('Evidence from Syllabus'))) ? (
+        <div className="p-5 rounded-2xl bg-gradient-to-r from-indigo-950/40 via-nexora-surface to-nexora-surface border border-indigo-500/30 text-xs text-indigo-300 flex items-start gap-3.5">
+          <BookOpen className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+          <div className="space-y-1.5 flex-1">
+            <div className="flex items-center gap-2">
+              <p className="font-semibold text-white">Curriculum Blueprint Active — Grounded Content Generation In Progress</p>
+              <Badge variant="primary" size="sm" className="text-[10px]">
+                Master Prompt 06R
+              </Badge>
+            </div>
+            <p className="text-indigo-200/80 leading-relaxed text-[11px]">
+              This lesson candidate, parent module taxonomy, and citation evidence are directly derived from your verified active syllabus. In accordance with the syllabus-first architecture, detailed instructional chapters, mathematical proofs, step-by-step worked examples, and interactive code implementations are populated through evidence-grounded RAG during upcoming learning sessions (Prompts 07R+). No ungrounded filler content is fabricated.
             </p>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Core Educational Reading Content */}
       <div className="p-6 sm:p-8 rounded-2xl bg-nexora-surface/80 border border-nexora-border/60 shadow-xl space-y-6">

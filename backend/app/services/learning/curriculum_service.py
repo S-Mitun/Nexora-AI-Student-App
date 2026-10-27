@@ -64,6 +64,79 @@ class CurriculumService:
         return query.order_by(Subject.order_index.asc(), Subject.name.asc()).all()
 
     @staticmethod
+    def get_subject_draft_metadata(db: Session, subject: Subject) -> Dict[str, Any]:
+        """
+        Retrieves syllabus-prescribed draft metadata (code, credits, semester, outcomes)
+        from the underlying SyllabusCurriculumDraft if this subject was extracted from a syllabus.
+        """
+        meta: Dict[str, Any] = {
+            "code": None,
+            "credits": None,
+            "semester": None,
+            "learning_outcomes": [],
+            "module_meta": {},
+        }
+        if not subject.syllabus_version_id:
+            return meta
+
+        from app.models.syllabus import SyllabusCurriculumDraft
+        draft = (
+            db.query(SyllabusCurriculumDraft)
+            .filter(SyllabusCurriculumDraft.syllabus_version_id == subject.syllabus_version_id)
+            .order_by(SyllabusCurriculumDraft.compilation_version.desc())
+            .first()
+        )
+        if not draft:
+            return meta
+
+        d_subj = next((ds for ds in draft.subjects if ds.name.lower() == subject.name.lower()), None)
+        if not d_subj and draft.subjects:
+            d_subj = draft.subjects[0]
+
+        if d_subj:
+            meta["code"] = d_subj.code
+            meta["credits"] = d_subj.credits
+            meta["semester"] = d_subj.semester
+            if hasattr(d_subj, "outcomes") and d_subj.outcomes:
+                meta["learning_outcomes"] = [o.description for o in d_subj.outcomes if o.description]
+
+            for mod in d_subj.modules:
+                mod_key = mod.title.lower().strip()
+                meta["module_meta"][mod_key] = {
+                    "evidence_text": mod.evidence_text,
+                    "source_page": mod.source_page,
+                    "unit_label": mod.original_label or mod.display_label or "Unit",
+                }
+
+        return meta
+
+    @staticmethod
+    def get_topic_draft_metadata(db: Session, topic: Topic) -> Dict[str, Any]:
+        """
+        Retrieves draft module metadata (evidence_text, source_page, unit_label, is_lab)
+        for an activated topic.
+        """
+        meta: Dict[str, Any] = {
+            "evidence_text": topic.description,
+            "source_page": None,
+            "unit_label": "Unit",
+            "is_lab": any(k in topic.name.lower() for k in ["lab", "practical", "experiment"]),
+            "learning_outcomes": [],
+        }
+        if not topic.subject or not topic.subject.syllabus_version_id:
+            return meta
+
+        subj_meta = CurriculumService.get_subject_draft_metadata(db, topic.subject)
+        for mod_key, m_info in subj_meta.get("module_meta", {}).items():
+            if mod_key in topic.name.lower() or topic.name.lower() in mod_key:
+                meta["evidence_text"] = m_info.get("evidence_text") or meta["evidence_text"]
+                meta["source_page"] = m_info.get("source_page")
+                meta["unit_label"] = m_info.get("unit_label") or "Unit"
+                break
+
+        return meta
+
+    @staticmethod
     def get_subject(db: Session, identifier: str) -> Optional[Subject]:
         """Looks up a subject by UUID id or unique slug."""
         return (
@@ -1127,3 +1200,111 @@ class CurriculumSeedService:
             db.rollback()
             logger.error(f"Error seeding starter curriculum: {str(e)}")
             return False
+
+
+class CurriculumCurationService:
+    """
+    Curates and upgrades existing curriculum hierarchy in the database:
+    1. Prunes bibliographic textbook citations and web URLs from runtime Concept/Module/Lesson entities.
+    2. Uses AcademicHeadingCurator to upgrade raw OCR sentences into realistic, concise, textbook-grade academic headings.
+    3. Guarantees multi-tier distinct headings across Concept -> LearningModule -> Lessons.
+    """
+    @classmethod
+    def curate_database_curriculum(cls, db: Session) -> Dict[str, int]:
+        import uuid
+        from app.services.syllabus.academic_heading_curator import AcademicHeadingCurator
+        from app.models.learning import Subject, Topic, Concept, LearningModule, Lesson
+        from app.models.syllabus import SyllabusDraftTopic
+
+        stats = {
+            "concepts_curated": 0,
+            "modules_curated": 0,
+            "lessons_curated": 0,
+            "references_pruned": 0,
+            "draft_topics_curated": 0,
+        }
+
+        try:
+            # 1. Curate runtime Subject -> Topic -> Concept -> LearningModule -> Lesson entities
+            subjects = db.query(Subject).all()
+            for subj in subjects:
+                for topic in subj.topics:
+                    concepts = list(topic.concepts)
+                    for concept in concepts:
+                        # Check if this concept is actually a textbook reference or web URL
+                        if AcademicHeadingCurator.is_reference_or_url(concept.name):
+                            modules = db.query(LearningModule).filter(LearningModule.concept_id == concept.id).all()
+                            for m in modules:
+                                db.query(Lesson).filter(Lesson.module_id == m.id).delete()
+                                db.delete(m)
+                            db.delete(concept)
+                            stats["references_pruned"] += 1
+                            continue
+
+                        curation = AcademicHeadingCurator.curate_topic_hierarchy(concept.name)
+                        if curation["is_reference"]:
+                            modules = db.query(LearningModule).filter(LearningModule.concept_id == concept.id).all()
+                            for m in modules:
+                                db.query(Lesson).filter(Lesson.module_id == m.id).delete()
+                                db.delete(m)
+                            db.delete(concept)
+                            stats["references_pruned"] += 1
+                            continue
+
+                        # Update Concept
+                        concept.name = curation["concept_name"]
+                        concept.short_description = f"Curriculum heading: {curation['concept_name']}"
+                        stats["concepts_curated"] += 1
+
+                        # Update Modules
+                        modules = db.query(LearningModule).filter(LearningModule.concept_id == concept.id).all()
+                        for m in modules:
+                            m.title = curation["module_title"]
+                            m.description = curation["learning_objective"]
+                            m.learning_objective = curation["learning_objective"]
+                            stats["modules_curated"] += 1
+
+                            lessons = list(m.lessons)
+                            expected_lessons = curation["lesson_titles"]
+                            if lessons and expected_lessons:
+                                for i, l in enumerate(lessons):
+                                    if i < len(expected_lessons):
+                                        l.title = expected_lessons[i]
+                                        stats["lessons_curated"] += 1
+                                if len(expected_lessons) > len(lessons):
+                                    for new_title in expected_lessons[len(lessons):]:
+                                        new_l = Lesson(
+                                            id=str(uuid.uuid4()),
+                                            module_id=m.id,
+                                            content_source=m.content_source or "syllabus_extracted",
+                                            title=new_title,
+                                            slug=new_title.lower().replace(" ", "-")[:80] + f"-{uuid.uuid4().hex[:6]}",
+                                            content_type="explanation",
+                                            content=f"# {new_title}\n\n*Curriculum lesson grounded in syllabus learning objectives.*\n\n{m.learning_objective}",
+                                            order_index=len(lessons) + 1,
+                                            estimated_minutes=15,
+                                            is_active=True,
+                                        )
+                                        db.add(new_l)
+                                        stats["lessons_curated"] += 1
+
+            # 2. Curate Draft Topics in SyllabusCurriculumDraft
+            draft_topics = db.query(SyllabusDraftTopic).all()
+            for d_top in draft_topics:
+                if AcademicHeadingCurator.is_reference_or_url(d_top.title):
+                    d_top.is_excluded = True
+                    d_top.entity_category = "reference"
+                    d_top.is_lesson_candidate = False
+                    stats["references_pruned"] += 1
+                else:
+                    curation = AcademicHeadingCurator.curate_topic_hierarchy(d_top.title)
+                    d_top.lesson_candidate_title = curation["concept_name"]
+                    stats["draft_topics_curated"] += 1
+
+            db.commit()
+            logger.info(f"[CurriculumCurationService] Database curriculum curation complete: {stats}")
+            return stats
+        except Exception as e:
+            db.rollback()
+            logger.error(f"[CurriculumCurationService] Error during curriculum curation: {str(e)}")
+            return stats

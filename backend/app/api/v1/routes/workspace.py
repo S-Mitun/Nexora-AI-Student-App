@@ -24,7 +24,9 @@ from app.schemas.learning import SubjectRead, StudentSubjectRead, StudentSubject
 from app.schemas.documents import DocumentRead
 from app.schemas.context import AcademicContextResponse
 from app.services.learning.context_service import AcademicContextResolver
+from app.services.learning.curriculum_service import CurriculumService
 from app.services.profile.completion_service import ProfileCompletionService
+from app.services.syllabus.state_resolver import SyllabusStateResolver
 
 workspace_router = APIRouter(tags=["Academic Workspace"])
 
@@ -127,11 +129,17 @@ def get_academic_workspace(
     enrolled_subjects = []
     for link in enrolled_links:
         if link.subject and link.subject.is_active and AcademicContextResolver.level_matches(link.subject.education_level, academic_context.academic_level):
+            draft_meta = CurriculumService.get_subject_draft_metadata(db, link.subject) if link.subject.syllabus_version_id else {}
             subj_read = SubjectRead(
                 id=link.subject.id,
                 curriculum_id=link.subject.curriculum_id,
                 name=link.subject.name,
                 slug=link.subject.slug,
+                code=draft_meta.get("code"),
+                credits=draft_meta.get("credits"),
+                semester=draft_meta.get("semester"),
+                syllabus_version_id=link.subject.syllabus_version_id,
+                content_source=link.subject.content_source,
                 description=link.subject.description,
                 icon=link.subject.icon,
                 category=link.subject.category,
@@ -144,6 +152,7 @@ def get_academic_workspace(
                 is_active=link.subject.is_active,
                 topic_count=len(link.subject.topics) if link.subject.topics else 0,
                 concept_count=sum(len(t.concepts) for t in link.subject.topics) if link.subject.topics else 0,
+                learning_outcomes=draft_meta.get("learning_outcomes", []),
             )
             enrolled_subjects.append(subj_read)
 
@@ -349,9 +358,16 @@ def list_enrolled_subjects(
     Returns only the subjects actively enrolled by the current student for the active academic level.
     """
     target_level = academic_level
+    ctx = AcademicContextResolver.resolve_context(db, current_user.id)
     if not target_level:
-        ctx = AcademicContextResolver.resolve_context(db, current_user.id)
         target_level = ctx.academic_level
+
+    # Strictly check canonical syllabus state: if student has a syllabus and no curriculum is active, enrolled subjects are quarantined
+    canonical_syllabus_state = SyllabusStateResolver.resolve_state(
+        db, current_user.id, target_context_id=ctx.context_id
+    )
+    if canonical_syllabus_state.has_syllabus and not canonical_syllabus_state.is_curriculum_active:
+        return []
 
     enrolled_links = (
         db.query(StudentSubject)
@@ -372,12 +388,18 @@ def list_enrolled_subjects(
     results = []
     for link in enrolled_links:
         if link.subject and link.subject.is_active and AcademicContextResolver.level_matches(link.subject.education_level, target_level):
+            draft_meta = CurriculumService.get_subject_draft_metadata(db, link.subject) if link.subject.syllabus_version_id else {}
             results.append(
                 SubjectRead(
                     id=link.subject.id,
                     curriculum_id=link.subject.curriculum_id,
                     name=link.subject.name,
                     slug=link.subject.slug,
+                    code=draft_meta.get("code"),
+                    credits=draft_meta.get("credits"),
+                    semester=draft_meta.get("semester"),
+                    syllabus_version_id=link.subject.syllabus_version_id,
+                    content_source=link.subject.content_source,
                     description=link.subject.description,
                     icon=link.subject.icon,
                     category=link.subject.category,
@@ -390,6 +412,7 @@ def list_enrolled_subjects(
                     is_active=link.subject.is_active,
                     topic_count=len(link.subject.topics) if link.subject.topics else 0,
                     concept_count=sum(len(t.concepts) for t in link.subject.topics) if link.subject.topics else 0,
+                    learning_outcomes=draft_meta.get("learning_outcomes", []),
                 )
             )
     return results

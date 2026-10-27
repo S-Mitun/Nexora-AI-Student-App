@@ -468,10 +468,11 @@ async def lifespan(app: FastAPI):
                     conn.commit()
 
         with SessionLocal() as session:
-            from app.services.learning.curriculum_service import CurriculumSeedService
+            from app.services.learning.curriculum_service import CurriculumSeedService, CurriculumCurationService
             CurriculumSeedService.seed_boards_if_empty(session)
+            CurriculumCurationService.curate_database_curriculum(session)
 
-        logger.info("Database schema synchronized. Syllabus-First architecture active (reference board presets available, runtime auto-seeding detached).")
+        logger.info("Database schema synchronized. Syllabus-First architecture active and headings curated.")
     except Exception as e:
         logger.error(f"Error creating database tables: {str(e)}")
 

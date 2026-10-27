@@ -319,7 +319,17 @@ export const SubjectsPage: React.FC = () => {
                     <div className="w-12 h-12 rounded-xl bg-nexora-elevated flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
                       {getSubjectIcon(sub.icon)}
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {sub.code && (
+                        <Badge variant="accent" size="sm" className="font-mono font-semibold">
+                          {sub.code}
+                        </Badge>
+                      )}
+                      {sub.credits && (
+                        <Badge variant="neutral" size="sm">
+                          {sub.credits}
+                        </Badge>
+                      )}
                       {isEnrolled && (
                         <Badge variant="accent" size="sm" hasDot>
                           Enrolled
@@ -343,9 +353,9 @@ export const SubjectsPage: React.FC = () => {
                     <div className="flex justify-between text-xs text-nexora-subtext">
                       <span className="flex items-center gap-1.5">
                         <FolderKanban className="w-3.5 h-3.5 text-nexora-muted" />
-                        Curriculum Track
+                        Units / Modules
                       </span>
-                      <span className="font-semibold text-white">Active Syllabus</span>
+                      <span className="font-semibold text-white">{sub.topic_count ?? 0} Units</span>
                     </div>
                     <div className="flex justify-between text-xs text-nexora-subtext">
                       <span className="flex items-center gap-1.5">
@@ -354,6 +364,12 @@ export const SubjectsPage: React.FC = () => {
                       </span>
                       <span className="font-semibold text-white">{conceptCount} Concepts</span>
                     </div>
+                    {sub.semester && (
+                      <div className="flex justify-between text-[11px] text-nexora-subtext">
+                        <span>Term / Semester</span>
+                        <span className="text-white font-medium">{sub.semester}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-[11px] text-nexora-muted pt-1 border-t border-nexora-border/40">
                       <span>Category</span>
                       <span className="text-nexora-accent font-medium truncate max-w-[170px]">

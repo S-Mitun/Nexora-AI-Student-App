@@ -134,12 +134,17 @@ class TopicRead(BaseModel):
     is_active: bool = True
     concepts: List[ConceptRead] = Field(default_factory=list)
     concept_count: int = 0
+    evidence_text: Optional[str] = None
+    source_page: Optional[int] = None
+    unit_label: Optional[str] = None
+    is_lab: bool = False
 
 
 class TopicDetail(TopicRead):
     concepts: List[ConceptRead] = Field(default_factory=list)
     subject_name: Optional[str] = None
     subject_slug: Optional[str] = None
+    learning_outcomes: List[str] = Field(default_factory=list)
 
 
 # ==============================================================================
@@ -164,6 +169,11 @@ class SubjectRead(BaseModel):
     curriculum_id: Optional[str] = None
     name: str
     slug: str
+    code: Optional[str] = None
+    credits: Optional[str] = None
+    semester: Optional[str] = None
+    syllabus_version_id: Optional[str] = None
+    content_source: Optional[str] = None
     description: Optional[str] = None
     icon: str = "BookOpen"
     category: str = "Computer Science & Engineering"
@@ -177,6 +187,7 @@ class SubjectRead(BaseModel):
     topic_count: int = 0
     concept_count: int = 0
     topics: List[TopicRead] = Field(default_factory=list)
+    learning_outcomes: List[str] = Field(default_factory=list)
 
 
 class SubjectDetail(SubjectRead):

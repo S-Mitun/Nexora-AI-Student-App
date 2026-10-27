@@ -20,6 +20,7 @@ from app.models.syllabus import (
 from app.schemas.syllabus import SyllabusCompilationResult
 from app.services.syllabus.draft_engine import SyllabusDraftEngine
 from app.services.syllabus.job_runner import SyllabusJobRunner
+from app.services.syllabus.academic_heading_curator import AcademicHeadingCurator
 from app.core.logging import logger
 
 
@@ -258,7 +259,12 @@ class SyllabusCurriculumCompilerEngine:
                             continue
 
                         # Classify entity: metadata vs reference vs genuine curriculum topic
-                        category, is_lesson_cand, cat_reason = cls._classify_topic(cleaned_title)
+                        if AcademicHeadingCurator.is_reference_or_url(cleaned_title):
+                            category = "reference"
+                            is_lesson_cand = False
+                            cat_reason = "Textbook publication, bibliography, or web reference URL"
+                        else:
+                            category, is_lesson_cand, cat_reason = cls._classify_topic(cleaned_title)
                         topic.entity_category = category
                         topic.is_lesson_candidate = is_lesson_cand
 
@@ -312,9 +318,10 @@ class SyllabusCurriculumCompilerEngine:
                             continue
                         seen_in_this_unit.add(norm_key)
 
+                        curation = AcademicHeadingCurator.curate_topic_hierarchy(cleaned_title)
                         topic.title = cleaned_title
                         topic.is_lesson_candidate = True
-                        topic.lesson_candidate_title = cleaned_title
+                        topic.lesson_candidate_title = curation["concept_name"]
                         topic.source_section_id = f"{module.source_section_id}_top_{t_idx + 1}"
                         topic.page_start = topic.source_page or module.page_start
                         topic.page_end = topic.source_page or module.page_end

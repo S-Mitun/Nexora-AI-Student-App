@@ -40,6 +40,11 @@ export interface Subject {
   curriculum_id?: string;
   name: string;
   slug: string;
+  code?: string | null;
+  credits?: string | null;
+  semester?: string | null;
+  syllabus_version_id?: string | null;
+  content_source?: string;
   description: string;
   icon: string;
   category?: string;
@@ -51,6 +56,7 @@ export interface Subject {
   order_index?: number;
   topic_count?: number;
   concept_count: number;
+  learning_outcomes?: string[];
 }
 
 export interface StudentSubject {
@@ -235,12 +241,17 @@ export interface Topic {
   order_index: number;
   concept_count: number;
   concepts?: Concept[];
+  evidence_text?: string | null;
+  source_page?: number | null;
+  unit_label?: string | null;
+  is_lab?: boolean;
 }
 
 export interface TopicDetail extends Topic {
   concepts: Concept[];
   subject_name?: string;
   subject_slug?: string;
+  learning_outcomes?: string[];
 }
 
 export interface SubjectDetail extends Subject {

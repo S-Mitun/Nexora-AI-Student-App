@@ -199,12 +199,18 @@ def list_subjects(
     results = []
     for sub in subjects:
         total_concepts = sum(len(top.concepts) for top in sub.topics)
+        draft_meta = CurriculumService.get_subject_draft_metadata(db, sub) if sub.syllabus_version_id else {}
         results.append(
             SubjectRead(
                 id=sub.id,
                 curriculum_id=sub.curriculum_id,
                 name=sub.name,
                 slug=sub.slug,
+                code=draft_meta.get("code"),
+                credits=draft_meta.get("credits"),
+                semester=draft_meta.get("semester"),
+                syllabus_version_id=sub.syllabus_version_id,
+                content_source=sub.content_source,
                 description=sub.description,
                 icon=sub.icon,
                 category=sub.category,
@@ -217,9 +223,24 @@ def list_subjects(
                 is_active=sub.is_active,
                 topic_count=len(sub.topics),
                 concept_count=total_concepts,
+                learning_outcomes=draft_meta.get("learning_outcomes", []),
             )
         )
     return results
+
+
+@router.post("/curate-headings")
+def curate_curriculum_headings(
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+):
+    """
+    Triggers AcademicHeadingCurator to upgrade all topics, concepts, modules, and lessons
+    to realistic, clean textbook-grade academic headings.
+    """
+    from app.services.learning.curriculum_service import CurriculumCurationService
+    stats = CurriculumCurationService.curate_database_curriculum(db)
+    return {"success": True, "curation_stats": stats}
 
 
 @router.get("/subjects/{subject_identifier}", response_model=SubjectDetail)
@@ -242,6 +263,7 @@ def get_subject_detail(
 
     _verify_subject_access(db, sub, current_user, include_reference=include_reference)
 
+    draft_meta = CurriculumService.get_subject_draft_metadata(db, sub) if sub.syllabus_version_id else {}
     topic_details = []
     for top in sub.topics:
         concept_reads = [
@@ -257,10 +279,17 @@ def get_subject_detail(
                 order_index=con.order_index,
                 is_active=con.is_active,
                 module_count=len(con.learning_modules),
+                has_simulation=con.has_simulation,
+                has_visualization=con.has_visualization,
+                has_practice=con.has_practice,
+                has_lab=con.has_lab,
+                has_mindmap=con.has_mindmap,
+                learning_modes=con.learning_modes or ["learn", "ask", "practice", "notes"],
             )
             for con in top.concepts
             if con.is_active
         ]
+        top_meta = CurriculumService.get_topic_draft_metadata(db, top)
         topic_details.append(
             TopicDetail(
                 id=top.id,
@@ -274,6 +303,10 @@ def get_subject_detail(
                 concepts=concept_reads,
                 subject_name=sub.name,
                 subject_slug=sub.slug,
+                evidence_text=top_meta.get("evidence_text"),
+                source_page=top_meta.get("source_page"),
+                unit_label=top_meta.get("unit_label"),
+                is_lab=top_meta.get("is_lab", False),
             )
         )
 
@@ -281,17 +314,27 @@ def get_subject_detail(
 
     return SubjectDetail(
         id=sub.id,
+        curriculum_id=sub.curriculum_id,
         name=sub.name,
         slug=sub.slug,
+        code=draft_meta.get("code"),
+        credits=draft_meta.get("credits"),
+        semester=draft_meta.get("semester"),
+        syllabus_version_id=sub.syllabus_version_id,
+        content_source=sub.content_source,
         description=sub.description,
         icon=sub.icon,
         category=sub.category,
         difficulty_level=sub.difficulty_level,
+        education_level=getattr(sub, "education_level", "all-levels") or "all-levels",
+        academic_domain=getattr(sub, "academic_domain", "General") or "General",
+        is_system=getattr(sub, "is_system", True),
         order_index=sub.order_index,
         is_active=sub.is_active,
         topic_count=len(topic_details),
         concept_count=total_concepts,
         topics=topic_details,
+        learning_outcomes=draft_meta.get("learning_outcomes", []),
     )
 
 
@@ -314,6 +357,7 @@ def list_subject_topics(
     topics = CurriculumService.get_topics_for_subject(db, subject_identifier)
     results = []
     for top in topics:
+        top_meta = CurriculumService.get_topic_draft_metadata(db, top)
         results.append(
             TopicRead(
                 id=top.id,
@@ -324,6 +368,10 @@ def list_subject_topics(
                 order_index=top.order_index,
                 is_active=top.is_active,
                 concept_count=len(top.concepts),
+                evidence_text=top_meta.get("evidence_text"),
+                source_page=top_meta.get("source_page"),
+                unit_label=top_meta.get("unit_label"),
+                is_lab=top_meta.get("is_lab", False),
             )
         )
     return results
@@ -363,10 +411,17 @@ def get_topic_detail(
             order_index=con.order_index,
             is_active=con.is_active,
             module_count=len(con.learning_modules),
+            has_simulation=con.has_simulation,
+            has_visualization=con.has_visualization,
+            has_practice=con.has_practice,
+            has_lab=con.has_lab,
+            has_mindmap=con.has_mindmap,
+            learning_modes=con.learning_modes or ["learn", "ask", "practice", "notes"],
         )
         for con in top.concepts
         if con.is_active
     ]
+    top_meta = CurriculumService.get_topic_draft_metadata(db, top)
 
     return TopicDetail(
         id=top.id,
@@ -380,6 +435,10 @@ def get_topic_detail(
         concepts=concept_reads,
         subject_name=top.subject.name if top.subject else None,
         subject_slug=top.subject.slug if top.subject else None,
+        evidence_text=top_meta.get("evidence_text"),
+        source_page=top_meta.get("source_page"),
+        unit_label=top_meta.get("unit_label"),
+        is_lab=top_meta.get("is_lab", False),
     )
 
 
