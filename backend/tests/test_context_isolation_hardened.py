@@ -54,8 +54,8 @@ def test_level_switch_activity_and_progress_isolation(client, student_k12_header
     sec_fingerprint = ctx_sec["context_fingerprint"]
     assert sec_fingerprint is not None
 
-    # 2. Enroll in Class 6-10 Science
-    subs_res = client.get("/api/v1/learning/subjects?education_level=class-6-10")
+    # 2. Enroll in Class 6-10 Science (reference template)
+    subs_res = client.get("/api/v1/learning/subjects?education_level=class-6-10&include_reference=true")
     assert subs_res.status_code == 200
     sec_subs = subs_res.json()
     science_subj = next(s for s in sec_subs if "science" in s["slug"])
@@ -194,8 +194,8 @@ def test_primary_level_normalization_and_curriculum_retrieval(client):
     Validates that class_1_5 normalization properly retrieves primary subjects
     and never leaks or defaults to undergraduate CSE.
     """
-    # Primary subjects query
-    res = client.get("/api/v1/learning/subjects?education_level=class_1_5")
+    # Primary subjects query (reference templates)
+    res = client.get("/api/v1/learning/subjects?education_level=class_1_5&include_reference=true")
     assert res.status_code == 200
     slugs = [s["slug"] for s in res.json()]
     assert len(slugs) > 0

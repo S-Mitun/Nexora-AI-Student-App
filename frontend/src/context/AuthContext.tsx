@@ -79,8 +79,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (data?.preferred_language) {
         localStorage.setItem('nexora_preferred_language', data.preferred_language);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[NEXORA] Could not load profile from backend API:', err);
+      if (err?.response?.status === 404 && typeof err?.response?.data?.detail === 'string' && err.response.data.detail.includes('Account not found')) {
+        await signOut();
+        window.location.href = `/login?error=account_not_found&error_description=${encodeURIComponent(err.response.data.detail)}`;
+      }
     }
   };
 

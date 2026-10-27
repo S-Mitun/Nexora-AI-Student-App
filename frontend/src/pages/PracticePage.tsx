@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle2,
   XCircle,
@@ -15,12 +16,15 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
 import { useAcademicContext } from '../context/AcademicContext';
+import { useSyllabus } from '../context/SyllabusContext';
 import { AcademicContentRenderer } from '../components/common/AcademicContentRenderer';
 import { apiService } from '../services/api';
 import { PracticeSet, PracticeQuestion, PracticeResult } from '../types/learning';
 
 export const PracticePage: React.FC = () => {
+  const navigate = useNavigate();
   const { academicContext } = useAcademicContext();
+  const { hasSyllabus, isCurriculumActive, hasDraft } = useSyllabus();
   const currentTier = academicContext?.academic_level;
 
   // Practice Sets state
@@ -41,7 +45,7 @@ export const PracticePage: React.FC = () => {
   const [practiceResult, setPracticeResult] = useState<PracticeResult | null>(null);
 
   const loadPracticeSets = useCallback(async () => {
-    if (!currentTier) {
+    if (!currentTier || !isCurriculumActive) {
       setPracticeSets([]);
       setIsLoadingSets(false);
       return;
@@ -63,7 +67,7 @@ export const PracticePage: React.FC = () => {
     } finally {
       setIsLoadingSets(false);
     }
-  }, [currentTier]);
+  }, [currentTier, isCurriculumActive]);
 
   useEffect(() => {
     loadPracticeSets();
@@ -168,11 +172,33 @@ export const PracticePage: React.FC = () => {
         <Card className="border-nexora-border/80 p-8 text-center">
           <EmptyState
             icon={<HelpCircle className="w-10 h-10 text-nexora-muted mx-auto" />}
-            title="No practice sets calibrated for this level yet"
-            description={`Practice checks for ${academicContext?.grade_level || 'this academic tier'} are currently being aligned. You can explore baseline curriculum lessons.`}
+            title={
+              hasDraft && !isCurriculumActive
+                ? 'Curriculum draft ready. Practice pending activation.'
+                : hasSyllabus && !isCurriculumActive
+                ? 'Syllabus uploaded. Practice not ready yet.'
+                : isCurriculumActive
+                ? 'No practice sets generated yet for this curriculum'
+                : 'No practice available yet'
+            }
+            description={
+              hasDraft && !isCurriculumActive
+                ? 'Your syllabus document has been structured into draft subjects and units. Practice questions will be generated once curriculum activation is completed.'
+                : hasSyllabus && !isCurriculumActive
+                ? 'Your primary syllabus is uploaded and verified. Practice questions and modules will become available once curriculum activation is completed.'
+                : isCurriculumActive
+                ? 'Your curriculum is active. Practice modules for your active topics are being scheduled or can be launched from the active workspace.'
+                : 'Practice questions are calibrated and generated when your syllabus and learning units are activated.'
+            }
             action={
-              <Button variant="primary" size="md" onClick={() => (window.location.href = '/subjects')}>
-                Browse Active Subjects
+              <Button variant="primary" size="md" onClick={() => navigate(isCurriculumActive ? '/learn' : '/syllabus')}>
+                {isCurriculumActive
+                  ? 'Open Learning Workspace'
+                  : hasDraft && !isCurriculumActive
+                  ? 'Review Curriculum Draft'
+                  : hasSyllabus
+                  ? 'View Syllabus Hub'
+                  : 'Upload Syllabus'}
               </Button>
             }
           />

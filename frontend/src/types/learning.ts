@@ -16,7 +16,7 @@ export interface StudyMaterialDocument {
   source_type: string;
   file_path: string;
   file_size_bytes: number;
-  status: 'queued' | 'processing' | 'completed' | 'failed' | 'retry';
+  status: 'queued' | 'processing' | 'completed' | 'failed' | 'retry' | 'active' | 'ready' | string;
   curriculum_id?: string;
   subject_id?: string;
   language: string;
@@ -26,6 +26,10 @@ export interface StudyMaterialDocument {
   error_message?: string;
   page_count: number;
   content_hash?: string;
+  document_role?: 'syllabus' | 'secondary_material' | string;
+  syllabus_id?: string;
+  syllabus_version_id?: string;
+  academic_context_id?: string;
   metadata_json: Record<string, any>;
   created_at: string;
   updated_at: string;
@@ -36,6 +40,11 @@ export interface Subject {
   curriculum_id?: string;
   name: string;
   slug: string;
+  code?: string | null;
+  credits?: string | null;
+  semester?: string | null;
+  syllabus_version_id?: string | null;
+  content_source?: string;
   description: string;
   icon: string;
   category?: string;
@@ -47,6 +56,7 @@ export interface Subject {
   order_index?: number;
   topic_count?: number;
   concept_count: number;
+  learning_outcomes?: string[];
 }
 
 export interface StudentSubject {
@@ -103,9 +113,38 @@ export interface LearningToolStatus {
   phase_label: string;
 }
 
+export interface SyllabusVersion {
+  id: string;
+  syllabus_id: string;
+  version_number: number;
+  document_id?: string | null;
+  raw_extracted_json?: any;
+  is_active: boolean;
+  activated_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Syllabus {
+  id: string;
+  user_id: string;
+  title: string;
+  academic_level: string;
+  institution?: string | null;
+  program_degree?: string | null;
+  academic_year?: string | null;
+  status: 'uploaded' | 'processing' | 'extracted' | 'confirmed' | 'archived' | string;
+  created_at: string;
+  updated_at: string;
+  active_version?: SyllabusVersion | null;
+  versions?: SyllabusVersion[];
+}
+
 export interface WorkspaceOverview {
   profile_completeness: ProfileCompleteness;
   academic_identity: AcademicIdentity;
+  syllabus_state?: import('./syllabus').SyllabusCanonicalState;
+  active_syllabus?: Syllabus | null;
   enrolled_subjects: Subject[];
   materials_summary: MaterialsSummary;
   learning_tools: LearningToolStatus[];
@@ -122,6 +161,7 @@ export interface Lesson {
   order_index: number;
   estimated_minutes: number;
   is_active: boolean;
+  content_source?: string;
 }
 
 export interface LessonDetail extends Lesson {
@@ -201,12 +241,17 @@ export interface Topic {
   order_index: number;
   concept_count: number;
   concepts?: Concept[];
+  evidence_text?: string | null;
+  source_page?: number | null;
+  unit_label?: string | null;
+  is_lab?: boolean;
 }
 
 export interface TopicDetail extends Topic {
   concepts: Concept[];
   subject_name?: string;
   subject_slug?: string;
+  learning_outcomes?: string[];
 }
 
 export interface SubjectDetail extends Subject {
@@ -368,6 +413,10 @@ export interface AcademicProgressOverview {
   completed_quizzes_count: number;
   enrolled_subjects_count: number;
   study_minutes: number;
+  study_hours?: number;
+  formatted_time_spent?: string;
+  overall_progression_time?: string;
+  timezone?: string;
   subject_progress: SubjectProgress[];
 }
 

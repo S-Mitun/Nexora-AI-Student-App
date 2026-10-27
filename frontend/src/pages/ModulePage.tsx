@@ -120,11 +120,11 @@ export const ModulePage: React.FC = () => {
             </Link>
           </>
         )}
-        {moduleData.concept_slug && (
+        {moduleData.concept_slug && moduleData.concept_name && moduleData.concept_name.toLowerCase().trim() !== moduleData.title.toLowerCase().trim() && (
           <>
             <span>/</span>
             <Link to={`/concepts/${moduleData.concept_slug}`} className="hover:text-white transition-colors">
-              {moduleData.concept_name || 'Concept'}
+              {moduleData.concept_name}
             </Link>
           </>
         )}

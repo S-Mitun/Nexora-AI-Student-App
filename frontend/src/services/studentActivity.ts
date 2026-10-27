@@ -59,22 +59,10 @@ const STORAGE_KEY_COMPLETED_LESSONS = 'nexora_completed_lessons';
 const STORAGE_KEY_PRACTICE_ATTEMPTS = 'nexora_practice_attempts';
 const STORAGE_KEY_ACTIVE_COURSE = 'nexora_active_course';
 
+import { formatISTDate, formatISTTimeAgo } from '../utils/dateUtils';
+
 function formatTimeAgo(isoString: string): string {
-  try {
-    const date = new Date(isoString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays === 1) return 'Yesterday';
-    return `${diffDays}d ago`;
-  } catch {
-    return 'Recently';
-  }
+  return formatISTTimeAgo(isoString);
 }
 
 export const studentActivityService = {
@@ -153,11 +141,7 @@ export const studentActivityService = {
           id: `ct-${Date.now()}`,
           title: conceptName,
           subject: subject,
-          completedOn: new Date().toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-          }),
+          completedOn: formatISTDate(new Date()),
           score: scoreNote || 'Verified Lesson',
         };
         localStorage.setItem(STORAGE_KEY_COMPLETED_LESSONS, JSON.stringify([newRecord, ...completed]));
@@ -194,11 +178,7 @@ export const studentActivityService = {
         score,
         totalQuestions,
         accuracy,
-        date: new Date().toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        }),
+        date: formatISTDate(new Date()),
       };
       localStorage.setItem(STORAGE_KEY_PRACTICE_ATTEMPTS, JSON.stringify([newAttempt, ...attempts]));
 

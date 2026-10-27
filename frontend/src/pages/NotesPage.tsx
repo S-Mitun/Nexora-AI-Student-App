@@ -19,6 +19,7 @@ import { useAcademicContext } from '../context/AcademicContext';
 import { AcademicContentRenderer } from '../components/common/AcademicContentRenderer';
 import { apiService } from '../services/api';
 import { StudentNote } from '../types/learning';
+import { formatISTDate, formatISTDateTime } from '../utils/dateUtils';
 
 export const NotesPage: React.FC = () => {
   const [notes, setNotes] = useState<StudentNote[]>([]);
@@ -306,7 +307,7 @@ export const NotesPage: React.FC = () => {
                     </button>
                     <span className="text-[10px] text-nexora-muted flex items-center gap-1">
                       <Calendar className="w-3 h-3" />
-                      {new Date(note.updated_at).toLocaleDateString()}
+                      {formatISTDate(note.updated_at)}
                     </span>
                   </div>
                 </div>
@@ -373,7 +374,7 @@ export const NotesPage: React.FC = () => {
                 </span>
                 <h3 className="text-lg font-bold text-white mt-1.5">{viewingNote.title}</h3>
                 <p className="text-[11px] text-nexora-muted">
-                  Updated: {new Date(viewingNote.updated_at).toLocaleString()}
+                  Updated: {formatISTDateTime(viewingNote.updated_at)}
                 </p>
               </div>
               <button

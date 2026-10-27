@@ -141,25 +141,25 @@ def test_same_account_multi_provider_verification(client, db_session):
     user_uuid = "99999999-8888-7777-6666-555555555555"
     user_email = "alex.rivera@gmail.com"
 
-    # Step 1: Student logs in using Continue with Google
-    token_google = SecurityContext.create_test_jwt(
+    # Step 1: Student creates NEXORA account first (via email / signup)
+    token_email = SecurityContext.create_test_jwt(
         user_id=user_uuid,
         email=user_email,
         role="student",
-        provider="google",
-        identities=["google"],
+        provider="email",
+        identities=["email"],
     )
 
-    # 1a. /auth/me returns Google provider
-    res_me_goog = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token_google}"})
-    assert res_me_goog.status_code == 200
-    assert res_me_goog.json()["id"] == user_uuid
-    assert res_me_goog.json()["provider"] == "google"
+    # 1a. /auth/me returns Email provider
+    res_me_email = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token_email}"})
+    assert res_me_email.status_code == 200
+    assert res_me_email.json()["id"] == user_uuid
+    assert res_me_email.json()["provider"] == "email"
 
-    # 1b. GET profile auto-provisions for user_uuid
-    res_prof_goog = client.get("/api/v1/profile", headers={"Authorization": f"Bearer {token_google}"})
-    assert res_prof_goog.status_code == 200
-    profile_data = res_prof_goog.json()
+    # 1b. GET profile provisions/retrieves for user_uuid
+    res_prof_email = client.get("/api/v1/profile", headers={"Authorization": f"Bearer {token_email}"})
+    assert res_prof_email.status_code == 200
+    profile_data = res_prof_email.json()
     assert profile_data["id"] == user_uuid
     assert profile_data["email"] == user_email
 
@@ -169,29 +169,29 @@ def test_same_account_multi_provider_verification(client, db_session):
         json={
             "full_name": "Alex Rivera (Quantum Learner)",
             "institution": "Stanford University",
-            "education_level": "undergrad",
+            "education_level": "undergraduate",
             "interests": ["Quantum Mechanics", "Wave Optics"],
             "enable_code_mixing": True,
         },
-        headers={"Authorization": f"Bearer {token_google}"},
+        headers={"Authorization": f"Bearer {token_email}"},
     )
     assert put_res.status_code == 200
 
-    # Step 2: Student sets a password and later logs in using Email + Password
-    token_email = SecurityContext.create_test_jwt(
+    # Step 2: Now that NEXORA account exists, student logs in using Google OAuth
+    token_google = SecurityContext.create_test_jwt(
         user_id=user_uuid,
         email=user_email,
         role="student",
-        provider="email",
-        identities=["google", "email"],
+        provider="google",
+        identities=["email", "google"],
     )
 
     # 2a. /auth/me confirms same user UUID with linked identities
-    res_me_email = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token_email}"})
-    assert res_me_email.status_code == 200
-    assert res_me_email.json()["id"] == user_uuid
-    assert "google" in res_me_email.json()["identities"]
-    assert "email" in res_me_email.json()["identities"]
+    res_me_goog = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token_google}"})
+    assert res_me_goog.status_code == 200
+    assert res_me_goog.json()["id"] == user_uuid
+    assert "google" in res_me_goog.json()["identities"]
+    assert "email" in res_me_goog.json()["identities"]
 
     # 2b. Profile retrieved via Email login matches EXACT same profile customized via Google
     res_prof_email = client.get("/api/v1/profile", headers={"Authorization": f"Bearer {token_email}"})

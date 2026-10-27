@@ -32,6 +32,10 @@ class DocumentRead(DocumentBase):
     page_count: int = 0
     content_hash: Optional[str] = None
     metadata_json: Dict[str, Any] = Field(default_factory=dict)
+    document_role: str = "secondary_material"
+    syllabus_id: Optional[str] = None
+    syllabus_version_id: Optional[str] = None
+    academic_context_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

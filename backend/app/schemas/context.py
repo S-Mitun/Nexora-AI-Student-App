@@ -42,8 +42,8 @@ class AcademicContextResponse(BaseModel):
     board_type: Optional[str] = None  # national_board, state_board, international_board, university_degree, research, custom
     
     # Secondary academic attributes
-    grade_level: str = Field("Class 10", description="Specific grade or class (e.g. Class 4, Class 10, Year 2)")
-    academic_domain: str = Field("General Studies", description="Academic stream or focus area")
+    grade_level: Optional[str] = Field(None, description="Specific grade or class (e.g. Class 4, Class 10, Year 2)")
+    academic_domain: Optional[str] = Field(None, description="Academic stream or focus area")
     state_region: Optional[str] = None
     stream: Optional[str] = None
     program: Optional[str] = None

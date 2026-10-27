@@ -32,6 +32,7 @@ import { apiService } from '../services/api';
 import { Subject, RecommendedTopic, WorkspaceOverview } from '../types/learning';
 import { useAuth } from '../context/AuthContext';
 import { useAcademicContext } from '../context/AcademicContext';
+import { useSyllabus } from '../context/SyllabusContext';
 import {
   studentActivityService,
   ActiveCourseProgress,
@@ -42,42 +43,10 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { SkeletonCard } from '../components/ui/Skeleton';
+import { formatISTDateTime, formatStudyTime } from '../utils/dateUtils';
 import { EmptyState } from '../components/ui/EmptyState';
 
-const getExampleQueries = (category?: string, level?: string) => {
-  const norm = (category || level || '').toLowerCase();
-  if (norm.includes('primary') || norm.includes('class-1-5') || norm.includes('1-5')) {
-    return [
-      { label: 'Living and Non-Living Things', domain: 'Environmental Studies' },
-      { label: 'Addition & Basic Shapes', domain: 'Mathematics' },
-      { label: 'Parts of a Plant', domain: 'Science' },
-      { label: 'Alphabet & Story Reading', domain: 'Languages' },
-    ];
-  }
-  if (norm.includes('secondary') || norm.includes('class-6-10') || norm.includes('6-10')) {
-    return [
-      { label: "Force & Pressure Dynamics (F = ma)", domain: 'General Science' },
-      { label: 'Linear Equations (y = mx + c)', domain: 'Mathematics' },
-      { label: 'The Constitution & Rights', domain: 'Social Science' },
-      { label: 'Active and Passive Voice', domain: 'Languages' },
-    ];
-  }
-  if (norm.includes('higher') || norm.includes('11-12')) {
-    return [
-      { label: 'Wave Mechanics & Doppler Effect', domain: 'Physics' },
-      { label: 'Chemical Bonding & Kinetics', domain: 'Chemistry' },
-      { label: 'Cell Biology & Genetics', domain: 'Biology' },
-      { label: 'Calculus & Derivatives', domain: 'Mathematics' },
-    ];
-  }
-  return [
-    { label: 'Doppler Effect', domain: 'Physics' },
-    { label: 'Binary Search', domain: 'Computer Science' },
-    { label: 'Wave Mechanics', domain: 'Physics' },
-    { label: 'Operating Systems Deadlock', domain: 'Computer Science' },
-    { label: 'Database Normalization', domain: 'Computer Science' },
-  ];
-};
+
 
 export const HomePage: React.FC = () => {
   const { user, profile } = useAuth();
@@ -88,7 +57,7 @@ export const HomePage: React.FC = () => {
   const [recommendations, setRecommendations] = useState<RecommendedTopic[]>([]);
   const [loadingRecommendations, setLoadingRecommendations] = useState(true);
 
-  // Workspace Overview (Master Prompt 06)
+  // Workspace Overview (Master Prompt 06 & 01R)
   const [workspace, setWorkspace] = useState<WorkspaceOverview | null>(null);
   const [loadingWorkspace, setLoadingWorkspace] = useState(true);
   const [enrollingId, setEnrollingId] = useState<string | null>(null);
@@ -103,7 +72,8 @@ export const HomePage: React.FC = () => {
 
   const studentName = profile?.full_name || user?.email?.split('@')[0] || 'Student';
 
-  const { academicContext, isReady } = useAcademicContext();
+  const { academicContext, enrolledSubjects, isReady } = useAcademicContext();
+  const { hasSyllabus, isCurriculumActive, syllabusState, hasDraft, lifecycleState, loading: syllabusLoading } = useSyllabus();
   const activeLevel = academicContext?.academic_level || profile?.education_category || profile?.education_level;
 
   // Genuine student learning activity & active course strictly from database
@@ -117,22 +87,49 @@ export const HomePage: React.FC = () => {
     studyMinutes: 0,
   });
 
+  // Derive genuine suggested topics strictly from the student's active enrolled curriculum
+  const activeSuggestedTopics = React.useMemo(() => {
+    if (!isCurriculumActive || !workspace?.enrolled_subjects || workspace.enrolled_subjects.length === 0) {
+      return [];
+    }
+    const topicLabels: string[] = [];
+    const isPhysicsEnrolled = workspace.enrolled_subjects.some((s) =>
+      s.name.toLowerCase().includes('physic')
+    );
+    for (const sub of workspace.enrolled_subjects) {
+      if (sub.name && !topicLabels.includes(sub.name)) {
+        topicLabels.push(sub.name);
+      }
+    }
+    for (const rec of recommendations) {
+      if (rec.concept && !topicLabels.includes(rec.concept)) {
+        if (rec.concept.toLowerCase().includes('doppler') && !isPhysicsEnrolled) {
+          continue;
+        }
+        topicLabels.push(rec.concept);
+      }
+      if (topicLabels.length >= 4) break;
+    }
+    return topicLabels.slice(0, 4);
+  }, [isCurriculumActive, workspace, recommendations]);
+
   const fetchWorkspaceData = () => {
     apiService
       .getWorkspace()
       .then((data) => {
         setWorkspace(data);
         setLoadingWorkspace(false);
-        if (data?.enrolled_subjects && data.enrolled_subjects.length > 0) {
+        // Syllabus-First: only establish an active course if user has an active syllabus curriculum and enrolled subjects
+        if (isCurriculumActive && data?.enrolled_subjects && data.enrolled_subjects.length > 0) {
           const firstSub = data.enrolled_subjects[0];
           setActiveCourse({
             subject: firstSub.name,
             slug: firstSub.slug,
             courseTitle: firstSub.name,
-            currentTopic: `${firstSub.topic_count || 1} Topics available`,
-            lastLesson: 'Course Syllabus',
+            currentTopic: `${firstSub.topic_count || 0} Topics available`,
+            lastLesson: firstSub.name,
             completedTopics: 0,
-            totalTopics: firstSub.topic_count || 10,
+            totalTopics: firstSub.topic_count || 1,
             progressPercent: 0,
             targetUrl: `/subjects/${firstSub.slug}`,
           });
@@ -208,7 +205,7 @@ export const HomePage: React.FC = () => {
               id: a.id,
               title: a.title,
               subject: a.description || 'Academic Workspace',
-              timeAgo: new Date(a.created_at).toLocaleDateString(),
+              timeAgo: formatISTDateTime(a.created_at),
               timestamp: a.created_at,
               type: a.activity_type as any,
             }))
@@ -222,7 +219,7 @@ export const HomePage: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [activeLevel, isReady]);
+  }, [activeLevel, isReady, isCurriculumActive, syllabusState?.version_id, syllabusState?.is_curriculum_active, lifecycleState, enrolledSubjects?.length]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -261,9 +258,9 @@ export const HomePage: React.FC = () => {
   };
 
   const completeness = workspace?.profile_completeness || {
-    score: profile?.completeness_score || 0,
-    missing_fields: [],
-    is_complete: false,
+    score: (profile as any)?.profile_completeness?.score ?? profile?.completeness_score ?? 0,
+    missing_fields: (profile as any)?.profile_completeness?.missing_fields ?? profile?.missing_fields ?? [],
+    is_complete: (profile as any)?.profile_completeness?.is_complete ?? (profile?.completeness_score === 100),
   };
 
   const academic = workspace?.academic_identity;
@@ -326,7 +323,7 @@ export const HomePage: React.FC = () => {
                   <span>{academic.department}</span>
                 </div>
               )}
-              {academic?.academic_domain && (
+              {academic?.academic_domain && academic.academic_domain !== 'General Studies' && (
                 <div className="flex items-center gap-1.5">
                   <span className="text-nexora-muted">&bull;</span>
                   <span className="text-nexora-accent font-medium">{academic.academic_domain}</span>
@@ -398,6 +395,94 @@ export const HomePage: React.FC = () => {
         )}
       </div>
 
+      {/* 1b. State A: No Syllabus Added Yet */}
+      {!loadingWorkspace && !syllabusLoading && lifecycleState === 'NO_SYLLABUS' && (
+        <div className="p-6 rounded-2xl bg-gradient-to-r from-nexora-surface to-indigo-950/30 border border-nexora-primary/30 shadow-glow-sm">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-nexora-primary bg-nexora-primary/10 px-2.5 py-0.5 rounded-full border border-nexora-primary/20">
+                  Your Academic Workspace
+                </span>
+              </div>
+              <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                No active syllabus has been added yet.
+              </h2>
+              <p className="text-xs sm:text-sm text-nexora-subtext mt-1 max-w-xl">
+                Upload your syllabus to build your learning workspace. NEXORA extracts your subjects, units, and lessons directly from your prescribed curriculum.
+              </p>
+            </div>
+            <Link to="/syllabus" className="shrink-0">
+              <Button variant="primary" size="md" rightIcon={<ArrowRight className="w-4 h-4" />}>
+                Upload Syllabus
+              </Button>
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* 1c. State C: Syllabus Processed & Curriculum Draft Ready for Review */}
+      {!loadingWorkspace && !syllabusLoading && lifecycleState === 'DRAFT_READY_FOR_REVIEW' && (
+        <div className="p-6 rounded-2xl bg-gradient-to-r from-nexora-surface via-purple-950/30 to-indigo-950/30 border border-purple-500/50 shadow-glow-sm">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-purple-300 bg-purple-500/20 px-2.5 py-0.5 rounded-full border border-purple-500/40 flex items-center gap-1.5">
+                  <Sparkles className="w-3 h-3 text-purple-400" />
+                  Curriculum Draft Ready (Review Required)
+                </span>
+                <span className="text-xs text-nexora-muted">&bull;</span>
+                <span className="text-xs text-nexora-subtext font-mono">
+                  {syllabusState?.title || 'Prescribed Syllabus'} (v{syllabusState?.active_version_number || 1})
+                </span>
+              </div>
+              <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                Syllabus processed. Your curriculum draft is ready for review.
+              </h2>
+              <p className="text-xs sm:text-sm text-nexora-subtext mt-1 max-w-xl">
+                NEXORA has extracted structured subjects, units, topics, and course outcomes from your syllabus with source page citations.
+                Review the pre-activation draft on your Syllabus page.
+              </p>
+            </div>
+            <Link to="/syllabus" className="shrink-0">
+              <Button variant="primary" size="md" className="bg-purple-600 hover:bg-purple-700 shadow-md shadow-purple-900/40" rightIcon={<ArrowRight className="w-4 h-4" />}>
+                Review Curriculum Draft
+              </Button>
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* 1d. State B: Syllabus Uploaded, Document Analysis Pending */}
+      {!loadingWorkspace && !syllabusLoading && (lifecycleState === 'UPLOADED_PENDING' || lifecycleState === 'PROCESSING' || lifecycleState === 'WAITING_FOR_ACTIVATION') && (
+        <div className="p-6 rounded-2xl bg-gradient-to-r from-nexora-surface via-purple-950/20 to-nexora-surface border border-purple-500/40 shadow-glow-sm">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-purple-400 bg-purple-500/15 px-2.5 py-0.5 rounded-full border border-purple-500/30">
+                  Syllabus Uploaded
+                </span>
+                <span className="text-xs text-nexora-muted">&bull;</span>
+                <span className="text-xs text-nexora-subtext font-mono">
+                  {syllabusState?.title || 'Prescribed Syllabus'} (v{syllabusState?.active_version_number || 1})
+                </span>
+              </div>
+              <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                Syllabus uploaded. Curriculum not activated yet.
+              </h2>
+              <p className="text-xs sm:text-sm text-nexora-subtext mt-1 max-w-xl">
+                Your primary academic syllabus has been stored and verified. Analyze your syllabus to extract structured units, topics, and course outcomes.
+              </p>
+            </div>
+            <Link to="/syllabus" className="shrink-0">
+              <Button variant="primary" size="md" className="bg-purple-600 hover:bg-purple-700" rightIcon={<ArrowRight className="w-4 h-4" />}>
+                Analyze Syllabus
+              </Button>
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* 2. Educational Search & Concept Exploration */}
       <div className="p-6 rounded-2xl bg-nexora-surface/80 border border-nexora-border/80">
         <h2 className="text-base font-semibold text-white mb-1">
@@ -414,7 +499,7 @@ export const HomePage: React.FC = () => {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search concepts or topics (e.g. Doppler Effect, Binary Search, Deadlock)..."
+              placeholder="Search concepts or topics in your syllabus..."
               className="w-full bg-nexora-bg border border-nexora-border text-white text-xs sm:text-sm rounded-xl pl-10 pr-4 py-2.5 placeholder-nexora-muted focus:outline-none focus:border-nexora-primary focus:ring-1 focus:ring-nexora-primary"
             />
           </div>
@@ -423,18 +508,29 @@ export const HomePage: React.FC = () => {
           </Button>
         </form>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-nexora-muted font-medium">Suggested topics:</span>
-          {getExampleQueries(profile?.education_category, profile?.education_level).map((item, idx) => (
-            <button
-              key={idx}
-              onClick={() => navigate(`/learn?q=${encodeURIComponent(item.label)}`)}
-              className="px-2.5 py-1 rounded-lg bg-nexora-bg/90 border border-nexora-border text-nexora-subtext hover:text-white hover:border-nexora-primary/50 transition-colors cursor-pointer"
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        {isCurriculumActive && activeSuggestedTopics.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-nexora-muted font-medium">Curriculum tracks:</span>
+            {activeSuggestedTopics.map((topic, idx) => (
+              <button
+                key={idx}
+                onClick={() => navigate(`/learn?q=${encodeURIComponent(topic)}`)}
+                className="px-2.5 py-1 rounded-lg bg-nexora-bg/90 border border-nexora-border text-nexora-subtext hover:text-white hover:border-nexora-primary/50 transition-colors cursor-pointer"
+              >
+                {topic}
+              </button>
+            ))}
+          </div>
+        ) : !isCurriculumActive ? (
+          <div className="text-xs text-nexora-muted flex items-center gap-2 py-1">
+            <Sparkles className="w-3.5 h-3.5 text-nexora-primary" />
+            <span>
+              {hasSyllabus
+                ? "Syllabus uploaded. Curriculum concepts will become active once your syllabus is processed."
+                : "Upload and activate your syllabus to populate curriculum topics and lessons for exploration."}
+            </span>
+          </div>
+        ) : null}
       </div>
 
       {/* 3. My Enrolled Subjects (Master Prompt 06) */}
@@ -466,15 +562,32 @@ export const HomePage: React.FC = () => {
               <SkeletonCard key={i} />
             ))}
           </div>
+        ) : !isCurriculumActive ? (
+          <EmptyState
+            icon={<BookOpen className="w-8 h-8 text-nexora-muted" />}
+            title={hasSyllabus ? "Syllabus uploaded. Curriculum not activated yet." : "No active syllabus has been added yet."}
+            description={
+              hasSyllabus
+                ? "Your syllabus has been received and verified. Curriculum subjects will appear once your syllabus curriculum is activated."
+                : "No active syllabus has been added yet. Upload your syllabus to build your learning workspace and populate subjects."
+            }
+            action={
+              <Link to="/syllabus">
+                <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                  {hasSyllabus ? "View Syllabus Hub" : "Upload Syllabus"}
+                </Button>
+              </Link>
+            }
+          />
         ) : !workspace?.enrolled_subjects || workspace.enrolled_subjects.length === 0 ? (
           <EmptyState
             icon={<BookOpen className="w-8 h-8 text-nexora-muted" />}
-            title="No Enrolled Subjects Yet"
-            description="You are not enrolled in any subjects for your curriculum session. Enroll in subjects matching your syllabus or upload your course materials to organize your workspace."
+            title="No subjects enrolled yet"
+            description="You have not enrolled in any subjects from your active syllabus yet."
             action={
               <Link to="/subjects">
                 <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
-                  Browse &amp; Enroll Subjects
+                  Browse Available Subjects
                 </Button>
               </Link>
             }
@@ -634,53 +747,85 @@ export const HomePage: React.FC = () => {
         )}
       </div>
 
-      {/* 5. Concept-Aware Academic Learning Tools (Master Prompt 06) */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-xl font-bold text-white tracking-tight">Academic Learning Tools</h2>
-            <p className="text-xs text-nexora-muted">
-              10 multi-modal learning modalities aligned to your curriculum concepts
+      {/* 5. Compact Academic Status Overview (Truthful persisted state) */}
+      <div className="p-5 rounded-2xl bg-nexora-surface/80 border border-nexora-border/70 backdrop-blur-sm">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-nexora-muted">
+                Curriculum Status &bull; {academicContext?.grade_level || activeLevel || 'Academic Workspace'}
+              </span>
+              <Badge
+                variant={
+                  lifecycleState === 'ACTIVE_CURRICULUM'
+                    ? 'success'
+                    : lifecycleState === 'DRAFT_READY_FOR_REVIEW'
+                    ? 'accent'
+                    : lifecycleState === 'NO_SYLLABUS'
+                    ? 'neutral'
+                    : 'primary'
+                }
+                size="sm"
+              >
+                {lifecycleState === 'ACTIVE_CURRICULUM'
+                  ? 'Curriculum Active'
+                  : lifecycleState === 'DRAFT_READY_FOR_REVIEW'
+                  ? 'Draft Ready for Review'
+                  : lifecycleState === 'PROCESSING'
+                  ? 'Analyzing Syllabus'
+                  : lifecycleState === 'UPLOADED_PENDING'
+                  ? 'Syllabus Uploaded'
+                  : lifecycleState === 'WAITING_FOR_ACTIVATION'
+                  ? 'Awaiting Activation'
+                  : 'No Syllabus Uploaded'}
+              </Badge>
+            </div>
+            <h3 className="text-base font-bold text-white">
+              {hasSyllabus
+                ? `${syllabusState?.title || 'Prescribed Syllabus'} (v${syllabusState?.active_version_number || 1})`
+                : 'No Prescribed Syllabus Configured'}
+            </h3>
+            <p className="text-xs text-nexora-subtext">
+              {lifecycleState === 'ACTIVE_CURRICULUM'
+                ? `${workspace?.enrolled_subjects?.length || 0} active enrolled subjects powering your concept lessons and practice.`
+                : lifecycleState === 'DRAFT_READY_FOR_REVIEW'
+                ? 'Your syllabus document has been compiled into a structured curriculum draft awaiting student review.'
+                : lifecycleState === 'NO_SYLLABUS'
+                ? 'Upload your primary syllabus document to extract verified course units, lessons, and topic hierarchies.'
+                : 'Primary syllabus received and verified. Run analysis or activate your curriculum to populate subjects.'}
             </p>
           </div>
-        </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {(workspace?.learning_tools || []).map((tool) => {
-            const isLive = tool.status === 'active';
-            return (
-              <div
-                key={tool.id}
-                onClick={() => {
-                  if (isLive && tool.route) {
-                    navigate(tool.route);
-                  }
-                }}
-                className={`p-4 rounded-xl border transition-all ${
-                  isLive
-                    ? 'bg-nexora-surface/90 border-nexora-border/80 hover:border-nexora-primary/60 cursor-pointer group hover:-translate-y-0.5'
-                    : 'bg-nexora-surface/40 border-nexora-border/40 opacity-75'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-bold text-white group-hover:text-nexora-accent transition-colors">
-                    {tool.name}
-                  </span>
-                  <Badge variant={isLive ? 'accent' : 'neutral'} size="sm">
-                    {isLive ? 'Live' : tool.phase_label}
-                  </Badge>
-                </div>
-                <p className="text-[11px] text-nexora-subtext line-clamp-2 leading-snug">
-                  {tool.description}
-                </p>
-                {isLive && (
-                  <div className="mt-3 text-[11px] font-semibold text-nexora-primary flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
-                    Launch <ArrowRight className="w-3 h-3" />
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          <div className="flex items-center gap-3 shrink-0">
+            {lifecycleState === 'DRAFT_READY_FOR_REVIEW' && (
+              <Link to="/syllabus">
+                <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                  Review Curriculum Draft
+                </Button>
+              </Link>
+            )}
+            {lifecycleState === 'NO_SYLLABUS' && (
+              <Link to="/syllabus">
+                <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                  Upload Syllabus
+                </Button>
+              </Link>
+            )}
+            {(lifecycleState === 'WAITING_FOR_ACTIVATION' || lifecycleState === 'UPLOADED_PENDING' || lifecycleState === 'PROCESSING') && (
+              <Link to="/syllabus">
+                <Button variant="outline" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                  View Syllabus Hub
+                </Button>
+              </Link>
+            )}
+            {lifecycleState === 'ACTIVE_CURRICULUM' && (
+              <Link to="/subjects">
+                <Button variant="outline" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                  Browse Subjects
+                </Button>
+              </Link>
+            )}
+          </div>
         </div>
       </div>
 
@@ -773,11 +918,16 @@ export const HomePage: React.FC = () => {
         {/* Overall Progress Widget */}
         <Card className="flex flex-col justify-between">
           <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-nexora-accent" />
-              Overall Progress
-            </CardTitle>
-            <CardDescription>Cumulative course completion</CardDescription>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-nexora-accent" />
+                Overall Progress
+              </CardTitle>
+              <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                IST Tracked
+              </span>
+            </div>
+            <CardDescription>Cumulative course completion and logged study time</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="text-center py-3">
@@ -786,11 +936,17 @@ export const HomePage: React.FC = () => {
               </div>
               <p className="text-xs text-nexora-subtext">
                 {overallProgress.completedLessons > 0
-                  ? `${overallProgress.completedLessons} lessons verified`
+                  ? `${overallProgress.completedLessons} lessons verified in active syllabus`
                   : 'No progress recorded yet'}
               </p>
             </div>
             <div className="space-y-2">
+              <div className="flex justify-between text-xs text-nexora-subtext">
+                <span>Overall Time Spent</span>
+                <span className="font-semibold text-emerald-400">
+                  {formatStudyTime(overallProgress.studyMinutes).formatted}
+                </span>
+              </div>
               <div className="flex justify-between text-xs text-nexora-subtext">
                 <span>Completed Lessons</span>
                 <span className="font-semibold text-white">
@@ -821,32 +977,30 @@ export const HomePage: React.FC = () => {
         </Card>
       </div>
 
-      {/* 7. Exploration Through Your Interests (Master Prompt 04) */}
+      {/* 7. Exploration Through Your Interests (Master Prompt 04 & Requirement 3) */}
       <div>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs font-semibold uppercase tracking-wider text-nexora-primary bg-nexora-primary/10 px-2 py-0.5 rounded-full border border-nexora-primary/20 flex items-center gap-1.5">
                 <Compass className="w-3 h-3" />
-                {profile?.interests && profile.interests.length > 0
-                  ? 'Connected to Your Interests'
-                  : 'Curriculum Exploration'}
+                Connected to Your Interests
               </span>
             </div>
             <h2 className="text-xl font-bold text-white tracking-tight">
               {profile?.interests && profile.interests.length > 0
                 ? 'Learn Through Examples You Care About'
-                : 'Recommended Core Topics'}
+                : 'Connect Concepts With Your Interests'}
             </h2>
             <p className="text-xs text-nexora-muted">
               {profile?.interests && profile.interests.length > 0
                 ? 'Concepts connected with your selected hobbies and technical passions.'
-                : 'Foundational concepts. You can connect explanations to your hobbies anytime in Profile.'}
+                : 'Personalize explanations with real-world examples from your chosen hobbies.'}
             </p>
           </div>
           <Link to="/profile">
             <Button variant="ghost" size="sm" rightIcon={<ChevronRight className="w-4 h-4" />}>
-              {profile?.interests && profile.interests.length > 0 ? 'Edit Interests' : 'Personalize Interests'}
+              {profile?.interests && profile.interests.length > 0 ? 'Edit Interests' : 'Choose Interests'}
             </Button>
           </Link>
         </div>
@@ -857,6 +1011,44 @@ export const HomePage: React.FC = () => {
               <SkeletonCard key={i} />
             ))}
           </div>
+        ) : (!profile?.interests || profile.interests.length === 0) ? (
+          <Card className="p-6 border-nexora-border/80 bg-gradient-to-r from-nexora-surface to-nexora-elevated">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="p-3 rounded-xl bg-nexora-primary/10 border border-nexora-primary/20 text-nexora-primary shrink-0">
+                  <Compass className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-white">No interests selected yet</h3>
+                  <p className="text-xs text-nexora-muted mt-1 max-w-xl leading-relaxed">
+                    Personalize your curriculum experience by choosing your hobbies and passions (such as Gaming, Automotive, Coding, Music, or Space). NEXORA will connect theoretical syllabus topics to real-world applications without fabricating fake concepts.
+                  </p>
+                </div>
+              </div>
+              <Link to="/profile" className="shrink-0">
+                <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                  Set Up Interests
+                </Button>
+              </Link>
+            </div>
+          </Card>
+        ) : !isCurriculumActive || recommendations.length === 0 ? (
+          <EmptyState
+            icon={<Compass className="w-8 h-8 text-nexora-muted" />}
+            title={hasSyllabus ? "Curriculum activation pending" : "No concepts matched for your interests"}
+            description={
+              hasSyllabus
+                ? "Concepts and personalized recommendations will become available upon syllabus curriculum activation."
+                : "Explore your active syllabus curriculum or update your selected interests in Profile."
+            }
+            action={
+              <Link to={hasSyllabus ? "/syllabus" : "/profile"}>
+                <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                  {hasSyllabus ? "View Syllabus Hub" : "Adjust Interests"}
+                </Button>
+              </Link>
+            }
+          />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {recommendations.map((rec) => (
@@ -897,18 +1089,18 @@ export const HomePage: React.FC = () => {
         <div className="flex items-center justify-between mb-4">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold text-white tracking-tight">Reference Curriculum Library</h2>
+              <h2 className="text-xl font-bold text-white tracking-tight">Active Curriculum Subjects</h2>
               <Badge variant="neutral" size="sm">
-                Universal Reference
+                Syllabus Grounded
               </Badge>
             </div>
             <p className="text-xs text-nexora-muted mt-0.5">
-              Explore foundational syllabi across Natural Sciences, Mathematics, and Computer Science available on the platform
+              Subjects extracted from your active syllabus curriculum
             </p>
           </div>
           <Link to="/subjects">
             <Button variant="ghost" size="sm" rightIcon={<ChevronRight className="w-4 h-4" />}>
-              View All Syllabi
+              Manage Subjects
             </Button>
           </Link>
         </div>
@@ -919,6 +1111,23 @@ export const HomePage: React.FC = () => {
               <SkeletonCard key={i} />
             ))}
           </div>
+        ) : !isCurriculumActive || subjects.length === 0 ? (
+          <EmptyState
+            icon={<BookOpen className="w-8 h-8 text-nexora-muted" />}
+            title={hasSyllabus ? "Syllabus uploaded. Curriculum is not activated yet." : "No active syllabus available"}
+            description={
+              hasSyllabus
+                ? "Your syllabus has been received and verified. Curriculum subjects will appear once your syllabus curriculum is activated."
+                : "No active syllabus has been added yet. Upload your syllabus to build your learning workspace."
+            }
+            action={
+              <Link to="/syllabus">
+                <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                  {hasSyllabus ? "View Syllabus Hub" : "Upload Syllabus"}
+                </Button>
+              </Link>
+            }
+          />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {subjects.map((sub) => (

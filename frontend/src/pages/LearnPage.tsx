@@ -19,7 +19,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { apiService } from '../services/api';
-import { ConceptExploreResult, PersonalizedContext } from '../types/learning';
+import { ConceptExploreResult, PersonalizedContext, WorkspaceOverview } from '../types/learning';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -29,31 +29,45 @@ import { studentActivityService, ActiveCourseProgress } from '../services/studen
 import { AcademicContentRenderer } from '../components/common/AcademicContentRenderer';
 
 import { useAuth } from '../context/AuthContext';
+import { useSyllabus } from '../context/SyllabusContext';
 
 export const LearnPage: React.FC = () => {
   const { profile } = useAuth();
+  const { hasSyllabus, isCurriculumActive, syllabusState, hasDraft, lifecycleState, loading: syllabusLoading } = useSyllabus();
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
   const queryParam = searchParams.get('q');
+  const navigate = useNavigate();
 
-  // --- STATE FOR "MY LEARNING" VIEW ---
+  // --- STATE FOR "MY LEARNING OVERVIEW" VIEW ---
   const [learningFilter, setLearningFilter] = useState<'all' | 'in-progress' | 'completed'>('all');
+  const [workspace, setWorkspace] = useState<WorkspaceOverview | null>(null);
+  const [loadingWorkspace, setLoadingWorkspace] = useState(true);
 
-  // Genuine started courses derived from real student activity
-  const activeCourse = studentActivityService.getActiveCourse(profile?.education_category || profile?.education_level);
-  const registeredCourses = activeCourse
-    ? [
-        {
-          id: `course-${activeCourse.slug}`,
-          subject: activeCourse.courseTitle,
-          slug: activeCourse.slug,
-          totalTopics: activeCourse.totalTopics,
-          completedTopics: activeCourse.completedTopics,
-          progress: activeCourse.progressPercent,
-          currentTopic: activeCourse.currentTopic,
-          lastLessonSlug: activeCourse.lastLesson,
-        },
-      ]
+  useEffect(() => {
+    setLoadingWorkspace(true);
+    apiService
+      .getWorkspace()
+      .then((data) => {
+        setWorkspace(data);
+        setLoadingWorkspace(false);
+      })
+      .catch(() => {
+        setLoadingWorkspace(false);
+      });
+  }, [isCurriculumActive, lifecycleState, syllabusState?.version_id]);
+
+  // Strictly derive registered courses from active syllabus & enrolled subjects
+  const registeredCourses = (isCurriculumActive && workspace?.enrolled_subjects)
+    ? workspace.enrolled_subjects.map((sub) => ({
+        id: `course-${sub.slug}`,
+        subject: sub.name,
+        slug: sub.slug,
+        totalTopics: sub.topic_count || 0,
+        completedTopics: 0,
+        progress: 0,
+        currentTopic: `${sub.topic_count || 0} Topics available`,
+        lastLessonSlug: sub.slug,
+      }))
     : [];
 
   // --- STATE FOR "TOPIC / LESSON" VIEW ---
@@ -327,17 +341,65 @@ export const LearnPage: React.FC = () => {
           </div>
         </div>
 
-        {filteredCourses.length === 0 ? (
+        {loadingWorkspace || syllabusLoading ? (
+          <div className="p-12 text-center text-xs text-nexora-muted animate-pulse">
+            Loading courses and learning path...
+          </div>
+        ) : filteredCourses.length === 0 ? (
           <EmptyState
             icon={<BookOpen className="w-8 h-8 text-nexora-muted" />}
-            title="You haven't started learning yet"
-            description="Select a subject from the curriculum to begin your personalized learning path."
+            title={
+              lifecycleState === 'DRAFT_READY_FOR_REVIEW'
+                ? 'Curriculum draft is ready for review.'
+                : lifecycleState === 'PROCESSING'
+                ? 'Syllabus is being analyzed'
+                : lifecycleState === 'UPLOADED_PENDING'
+                ? 'Syllabus uploaded. Analysis pending.'
+                : lifecycleState === 'WAITING_FOR_ACTIVATION'
+                ? 'Syllabus uploaded. Curriculum not activated yet.'
+                : lifecycleState === 'NO_SYLLABUS'
+                ? 'No active syllabus has been added yet.'
+                : 'No courses enrolled yet'
+            }
+            description={
+              lifecycleState === 'DRAFT_READY_FOR_REVIEW'
+                ? 'Your syllabus has been compiled into a canonical curriculum draft with verified lessons, units, and learning outcomes. Review the curriculum draft before starting learning.'
+                : lifecycleState === 'PROCESSING'
+                ? 'Your syllabus document is currently being analyzed. Lessons will become available once the curriculum is activated.'
+                : lifecycleState === 'UPLOADED_PENDING'
+                ? 'Your syllabus has been received and verified. Run document analysis on your syllabus to extract structured learning units.'
+                : lifecycleState === 'WAITING_FOR_ACTIVATION'
+                ? 'Your syllabus is verified. Complete curriculum activation on your Syllabus page to start learning.'
+                : lifecycleState === 'NO_SYLLABUS'
+                ? 'No active syllabus has been added yet. Upload your syllabus to build your personalized learning path.'
+                : 'Enroll in subjects from your active curriculum to start lessons and track your progress.'
+            }
             action={
-              <Link to="/subjects">
-                <Button variant="primary" size="md">
-                  Explore Subjects
-                </Button>
-              </Link>
+              lifecycleState === 'DRAFT_READY_FOR_REVIEW' ? (
+                <Link to="/syllabus">
+                  <Button variant="primary" size="md">
+                    Review Curriculum Draft
+                  </Button>
+                </Link>
+              ) : lifecycleState === 'NO_SYLLABUS' ? (
+                <Link to="/syllabus">
+                  <Button variant="primary" size="md">
+                    Upload Syllabus
+                  </Button>
+                </Link>
+              ) : lifecycleState === 'WAITING_FOR_ACTIVATION' || lifecycleState === 'UPLOADED_PENDING' || lifecycleState === 'PROCESSING' ? (
+                <Link to="/syllabus">
+                  <Button variant="primary" size="md">
+                    View Syllabus Hub
+                  </Button>
+                </Link>
+              ) : (
+                <Link to="/subjects">
+                  <Button variant="primary" size="md">
+                    Browse Subjects
+                  </Button>
+                </Link>
+              )
             }
           />
         ) : (
@@ -403,14 +465,21 @@ export const LearnPage: React.FC = () => {
   if (!conceptData) {
     return (
       <div className="py-16 text-center space-y-4 max-w-md mx-auto">
-        <BookOpen className="w-12 h-12 text-nexora-muted mx-auto" />
-        <h2 className="text-lg font-bold text-white">Lesson Not Found</h2>
-        <p className="text-xs text-nexora-subtext">
-          Could not find a structured lesson for "{queryParam}". Check your syllabus or search another topic.
-        </p>
-        <Button variant="primary" size="sm" onClick={() => navigate('/learn')}>
-          Back to My Learning
-        </Button>
+        <EmptyState
+          icon={<BookOpen className="w-10 h-10 text-nexora-muted" />}
+          title="Concept Not Grounded in Active Syllabus"
+          description={`"${queryParam}" is not available in your active syllabus curriculum. Upload learning materials or add this topic to your syllabus to explore it.`}
+          action={
+            <div className="flex gap-2 justify-center">
+              <Button variant="outline" size="sm" onClick={() => navigate('/learn')}>
+                Back to My Learning
+              </Button>
+              <Button variant="primary" size="sm" onClick={() => navigate('/syllabus')}>
+                {hasSyllabus ? "View Syllabus Hub" : "Upload Syllabus"}
+              </Button>
+            </div>
+          }
+        />
       </div>
     );
   }

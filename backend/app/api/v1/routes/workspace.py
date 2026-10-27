@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -24,62 +24,23 @@ from app.schemas.learning import SubjectRead, StudentSubjectRead, StudentSubject
 from app.schemas.documents import DocumentRead
 from app.schemas.context import AcademicContextResponse
 from app.services.learning.context_service import AcademicContextResolver
+from app.services.learning.curriculum_service import CurriculumService
+from app.services.profile.completion_service import ProfileCompletionService
+from app.services.syllabus.state_resolver import SyllabusStateResolver
 
 workspace_router = APIRouter(tags=["Academic Workspace"])
 
 
 def compute_profile_completeness(profile: UserProfile) -> ProfileCompleteness:
-    """Calculates completion score and missing fields for a student's academic profile."""
-    missing = []
-    total_checks = 5
-    passed_checks = 0
-
-    # 1. Full name
-    if profile.full_name and profile.full_name.strip():
-        passed_checks += 1
-    else:
-        missing.append("full_name")
-
-    # 2. Education Level & Category
-    if profile.education_level and profile.education_category:
-        passed_checks += 1
-    else:
-        missing.append("education_level")
-
-    # 3. Grade / Class / Year
-    if profile.grade_level and profile.grade_level.strip():
-        passed_checks += 1
-    else:
-        missing.append("grade_level")
-
-    # 4. Curriculum / Board
-    if profile.curriculum_id:
-        passed_checks += 1
-    else:
-        missing.append("curriculum_id")
-
-    # 5. Domain / Stream / Degree
-    if profile.academic_domain and profile.academic_domain.strip():
-        passed_checks += 1
-    else:
-        missing.append("academic_domain")
-
-    # Higher Education conditional checks
-    is_higher_ed = profile.education_level in ["undergraduate", "postgraduate", "research"]
-    if is_higher_ed:
-        total_checks += 1
-        if (profile.degree and profile.degree.strip()) or (profile.institution and profile.institution.strip()):
-            passed_checks += 1
-        else:
-            missing.append("institution_or_degree")
-
-    score = int((passed_checks / total_checks) * 100)
-    is_complete = len(missing) == 0
-
+    """Canonical profile completion calculation wrapper using ProfileCompletionService."""
+    result = ProfileCompletionService.calculate_completion(profile)
     return ProfileCompleteness(
-        score=score,
-        is_complete=is_complete,
-        missing_fields=missing,
+        score=result.score,
+        completion_percentage=result.score,
+        is_complete=result.is_complete,
+        required_fields=result.required_fields,
+        completed_fields=result.completed_fields,
+        missing_fields=result.missing_fields,
     )
 
 
@@ -95,20 +56,28 @@ def get_academic_workspace(
     """
     # 1. Fetch Student Profile
     profile = db.query(UserProfile).filter(UserProfile.id == current_user.id).first()
+    if not profile and current_user.email:
+        profile = db.query(UserProfile).filter(UserProfile.email == current_user.email).first()
+
     if not profile:
+        if current_user.provider == "google":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Account not found. Create a NEXORA account first, then sign in with Google.",
+            )
         profile = UserProfile(
             id=current_user.id,
             email=current_user.email,
-            education_level="undergraduate",
-            education_category="undergraduate",
-            grade_level="Class 10",
-            academic_domain="General Studies",
+            education_level=None,
+            education_category=None,
+            grade_level=None,
+            academic_domain=None,
         )
         db.add(profile)
         db.commit()
         db.refresh(profile)
 
-    # 2. Compute Completeness
+    # 2. Compute Completeness using Single Canonical Service
     completeness = compute_profile_completeness(profile)
 
     # 3. Fetch Curriculum details if linked
@@ -120,15 +89,18 @@ def get_academic_workspace(
     academic_context = AcademicContextResolver.resolve_context(db, current_user.id)
 
     academic_identity = AcademicIdentity(
-        education_level=profile.education_level or "undergraduate",
-        education_category=profile.education_category or "undergraduate",
-        grade_level=profile.grade_level or "Class 10",
+        education_level=profile.education_level,
+        education_category=profile.education_category,
+        grade_level=profile.grade_level,
         curriculum_id=profile.curriculum_id,
         curriculum_name=curriculum.name if curriculum else None,
         curriculum_code=curriculum.code if curriculum else None,
         board_authority=curriculum.board_authority if curriculum else None,
-        academic_domain=profile.academic_domain or "General Studies",
+        board_type=profile.board_type or (curriculum.board_type if curriculum else None),
+        academic_domain=profile.academic_domain,
         state_region=profile.state_region,
+        stream=profile.stream or (curriculum.stream if curriculum else None),
+        program=profile.program or (curriculum.program if curriculum else None),
         institution=profile.institution,
         degree=profile.degree,
         department=profile.department,
@@ -148,6 +120,7 @@ def get_academic_workspace(
         .filter(
             StudentSubject.user_id == current_user.id,
             StudentSubject.is_active == True,
+            Subject.is_active == True,
             (StudentSubject.academic_level == academic_context.academic_level) | (StudentSubject.academic_level == None),
         )
         .all()
@@ -155,12 +128,18 @@ def get_academic_workspace(
 
     enrolled_subjects = []
     for link in enrolled_links:
-        if link.subject and AcademicContextResolver.level_matches(link.subject.education_level, academic_context.academic_level):
+        if link.subject and link.subject.is_active and AcademicContextResolver.level_matches(link.subject.education_level, academic_context.academic_level):
+            draft_meta = CurriculumService.get_subject_draft_metadata(db, link.subject) if link.subject.syllabus_version_id else {}
             subj_read = SubjectRead(
                 id=link.subject.id,
                 curriculum_id=link.subject.curriculum_id,
                 name=link.subject.name,
                 slug=link.subject.slug,
+                code=draft_meta.get("code"),
+                credits=draft_meta.get("credits"),
+                semester=draft_meta.get("semester"),
+                syllabus_version_id=link.subject.syllabus_version_id,
+                content_source=link.subject.content_source,
                 description=link.subject.description,
                 icon=link.subject.icon,
                 category=link.subject.category,
@@ -173,6 +152,7 @@ def get_academic_workspace(
                 is_active=link.subject.is_active,
                 topic_count=len(link.subject.topics) if link.subject.topics else 0,
                 concept_count=sum(len(t.concepts) for t in link.subject.topics) if link.subject.topics else 0,
+                learning_outcomes=draft_meta.get("learning_outcomes", []),
             )
             enrolled_subjects.append(subj_read)
 
@@ -198,83 +178,78 @@ def get_academic_workspace(
         recent_materials=recent_doc_reads,
     )
 
-    # 6. Honest Educational Tool Statuses
-    learning_tools = [
-        LearningToolStatus(
-            id="tool-learn",
-            name="Concept Lessons",
-            description="Master atomic concepts through intuition, motivation, and verified explanations.",
-            icon="BookOpen",
-            route="/learn",
-            status="active",
-            phase_label="Live",
-        ),
-        LearningToolStatus(
-            id="tool-materials",
-            name="Study Materials Hub",
-            description="Manage uploaded textbooks, lecture slides, and notes powering your workspace.",
-            icon="FolderKanban",
-            route="/materials",
-            status="active",
-            phase_label="Live",
-        ),
-        LearningToolStatus(
-            id="tool-practice",
-            name="Concept Practice Checks",
-            description="Test your understanding with concept-aligned questions and immediate feedback.",
-            icon="CheckCircle2",
-            route="/practice",
-            status="active",
-            phase_label="Live",
-        ),
-        LearningToolStatus(
-            id="tool-notes",
-            name="Personal Academic Notes",
-            description="Record insights, formulas, and summaries attached directly to concepts.",
-            icon="FileText",
-            route="/notes",
-            status="active",
-            phase_label="Live",
-        ),
-        LearningToolStatus(
-            id="tool-mindmap",
-            name="Concept Knowledge Map",
-            description="Visualize the conceptual hierarchy and prerequisite relationships.",
-            icon="Binary",
-            route="/mindmap",
-            status="active",
-            phase_label="Live",
-        ),
-        LearningToolStatus(
-            id="tool-tutor",
-            name="AI Academic Tutor",
-            description="Conversational academic dialogue grounded strictly in your syllabus and materials.",
-            icon="Sparkles",
-            route="/chat",
-            status="upcoming_prompt",
-            phase_label="Phase 2 (Prompt 10)",
-        ),
-        LearningToolStatus(
-            id="tool-labs",
-            name="Concept Simulations & Labs",
-            description="Parameter-tuning models and virtual experiments tied to scientific concepts.",
-            icon="Cpu",
-            route="/labs",
-            status="upcoming_prompt",
-            phase_label="Phase 2 (Prompt 20)",
-        ),
-    ]
+    # 6. Academic Learning Tools (Promotional cards removed per Issue 1; legitimate routes accessible via workspace navigation)
+    learning_tools: List[LearningToolStatus] = []
 
-    starter_subjects_available = (
-        db.query(Subject)
-        .filter(Subject.is_system == True, Subject.is_active == True)
-        .count()
+    from app.models.syllabus import Syllabus, SyllabusVersion
+    from app.schemas.syllabus import SyllabusRead, SyllabusVersionRead
+    from app.services.syllabus.state_resolver import SyllabusStateResolver
+
+    # Authoritative Canonical Syllabus State
+    canonical_syllabus_state = SyllabusStateResolver.resolve_state(
+        db, current_user.id, target_context_id=academic_context.context_id
     )
+
+    # Prioritize syllabus with active version
+    active_ver = (
+        db.query(SyllabusVersion)
+        .join(Syllabus, Syllabus.id == SyllabusVersion.syllabus_id)
+        .filter(
+            Syllabus.user_id == current_user.id,
+            (Syllabus.academic_context_id == academic_context.context_id) | (Syllabus.academic_level == academic_context.academic_level),
+            SyllabusVersion.is_active == True,
+        )
+        .first()
+    )
+    if active_ver:
+        active_syl_model = active_ver.syllabus
+    else:
+        active_syl_model = (
+            db.query(Syllabus)
+            .filter(
+                Syllabus.user_id == current_user.id,
+                (Syllabus.academic_context_id == academic_context.context_id) | (Syllabus.academic_level == academic_context.academic_level),
+                Syllabus.status.in_(["confirmed", "extracted", "active"]),
+            )
+            .first()
+        )
+    active_syllabus_read = None
+    if active_syl_model:
+        if not active_ver:
+            active_ver = (
+                db.query(SyllabusVersion)
+                .filter(SyllabusVersion.syllabus_id == active_syl_model.id, SyllabusVersion.is_active == True)
+                .first()
+            )
+        active_syllabus_read = SyllabusRead(
+            id=active_syl_model.id,
+            user_id=active_syl_model.user_id,
+            title=active_syl_model.title,
+            academic_level=active_syl_model.academic_level,
+            academic_context_id=active_syl_model.academic_context_id,
+            institution=active_syl_model.institution,
+            program_degree=active_syl_model.program_degree,
+            academic_year=active_syl_model.academic_year,
+            status=active_syl_model.status,
+            created_at=active_syl_model.created_at,
+            updated_at=active_syl_model.updated_at,
+            active_version=SyllabusVersionRead.model_validate(active_ver) if active_ver else None,
+            versions=[SyllabusVersionRead.model_validate(v) for v in active_syl_model.versions],
+        )
+
+    # Absolute Rule: Only when curriculum is explicitly active may subjects appear
+    if not canonical_syllabus_state.is_curriculum_active:
+        enrolled_subjects = []
+        starter_subjects_available = 0
+    else:
+        starter_subjects_available = len(enrolled_subjects)
 
     return WorkspaceOverview(
         profile_completeness=completeness,
         academic_identity=academic_identity,
         academic_context=academic_context,
+        syllabus_state=canonical_syllabus_state,
+        active_syllabus=active_syllabus_read if canonical_syllabus_state.has_syllabus else None,
         enrolled_subjects=enrolled_subjects,
         materials_summary=materials_summary,
         learning_tools=learning_tools,
@@ -383,9 +358,16 @@ def list_enrolled_subjects(
     Returns only the subjects actively enrolled by the current student for the active academic level.
     """
     target_level = academic_level
+    ctx = AcademicContextResolver.resolve_context(db, current_user.id)
     if not target_level:
-        ctx = AcademicContextResolver.resolve_context(db, current_user.id)
         target_level = ctx.academic_level
+
+    # Strictly check canonical syllabus state: if student has a syllabus and no curriculum is active, enrolled subjects are quarantined
+    canonical_syllabus_state = SyllabusStateResolver.resolve_state(
+        db, current_user.id, target_context_id=ctx.context_id
+    )
+    if canonical_syllabus_state.has_syllabus and not canonical_syllabus_state.is_curriculum_active:
+        return []
 
     enrolled_links = (
         db.query(StudentSubject)
@@ -397,6 +379,7 @@ def list_enrolled_subjects(
         .filter(
             StudentSubject.user_id == current_user.id,
             StudentSubject.is_active == True,
+            Subject.is_active == True,
             (StudentSubject.academic_level == target_level) | (StudentSubject.academic_level == None),
         )
         .all()
@@ -404,13 +387,19 @@ def list_enrolled_subjects(
 
     results = []
     for link in enrolled_links:
-        if link.subject and AcademicContextResolver.level_matches(link.subject.education_level, target_level):
+        if link.subject and link.subject.is_active and AcademicContextResolver.level_matches(link.subject.education_level, target_level):
+            draft_meta = CurriculumService.get_subject_draft_metadata(db, link.subject) if link.subject.syllabus_version_id else {}
             results.append(
                 SubjectRead(
                     id=link.subject.id,
                     curriculum_id=link.subject.curriculum_id,
                     name=link.subject.name,
                     slug=link.subject.slug,
+                    code=draft_meta.get("code"),
+                    credits=draft_meta.get("credits"),
+                    semester=draft_meta.get("semester"),
+                    syllabus_version_id=link.subject.syllabus_version_id,
+                    content_source=link.subject.content_source,
                     description=link.subject.description,
                     icon=link.subject.icon,
                     category=link.subject.category,
@@ -423,6 +412,7 @@ def list_enrolled_subjects(
                     is_active=link.subject.is_active,
                     topic_count=len(link.subject.topics) if link.subject.topics else 0,
                     concept_count=sum(len(t.concepts) for t in link.subject.topics) if link.subject.topics else 0,
+                    learning_outcomes=draft_meta.get("learning_outcomes", []),
                 )
             )
     return results
@@ -469,8 +459,13 @@ def get_workspace_activity(
 
     activities = []
     now = datetime.utcnow()
+    ist_tz = timezone(timedelta(hours=5, minutes=30))
     for l in logs:
         read_obj = ActivityLogRead.model_validate(l)
+        dt_utc = l.created_at if (l.created_at and l.created_at.tzinfo) else l.created_at.replace(tzinfo=timezone.utc)
+        dt_ist = dt_utc.astimezone(ist_tz)
+        read_obj.created_at_ist = dt_ist.strftime("%d %b %Y, %I:%M %p IST")
+
         # Calculate human-friendly time_ago
         diff = (now - l.created_at.replace(tzinfo=None)).total_seconds()
         if diff < 60:
@@ -478,9 +473,9 @@ def get_workspace_activity(
         elif diff < 3600:
             read_obj.time_ago = f"{int(diff // 60)}m ago"
         elif diff < 86400:
-            read_obj.time_ago = f"{int(diff // 3600)}h ago"
+            read_obj.time_ago = f"{int(diff // 3600)}h ago (IST)"
         else:
-            read_obj.time_ago = f"{int(diff // 86400)}d ago"
+            read_obj.time_ago = dt_ist.strftime("%d %b %Y, %I:%M %p IST")
         activities.append(read_obj)
 
     return ActivityFeedResponse(
@@ -526,6 +521,9 @@ def record_workspace_activity(
     db.refresh(log_entry)
 
     read_obj = ActivityLogRead.model_validate(log_entry)
+    dt_utc = log_entry.created_at if (log_entry.created_at and log_entry.created_at.tzinfo) else log_entry.created_at.replace(tzinfo=timezone.utc)
+    dt_ist = dt_utc.astimezone(timezone(timedelta(hours=5, minutes=30)))
+    read_obj.created_at_ist = dt_ist.strftime("%d %b %Y, %I:%M %p IST")
     read_obj.time_ago = "Just now"
     return read_obj
 
@@ -580,13 +578,14 @@ def get_workspace_progress(
         .filter(
             StudentSubject.user_id == current_user.id,
             StudentSubject.is_active == True,
+            Subject.is_active == True,
             (StudentSubject.academic_level == target_level) | (StudentSubject.academic_level == None),
         )
         .all()
     )
     enrolled_records = [
         link for link in enrolled_records
-        if link.subject and AcademicContextResolver.level_matches(link.subject.education_level, target_level)
+        if link.subject and link.subject.is_active and AcademicContextResolver.level_matches(link.subject.education_level, target_level)
     ]
     enrolled_count = len(enrolled_records)
 
@@ -626,7 +625,7 @@ def get_workspace_progress(
         else (min(100, completed_lessons_count * 10) if completed_lessons_count > 0 else 0)
     )
 
-    # Approximate study minutes from activity count
+    # Calculate account-specific progression time and overall time spent
     activity_count = (
         db.query(AcademicActivityLog)
         .filter(
@@ -635,7 +634,16 @@ def get_workspace_progress(
         )
         .count()
     )
-    study_minutes = activity_count * 15 + completed_lessons_count * 20
+    study_minutes = activity_count * 15 + completed_lessons_count * 20 + quiz_count * 10
+    study_hours = round(study_minutes / 60.0, 1)
+    if study_minutes < 60:
+        formatted_time = f"{study_minutes} mins"
+    else:
+        h = study_minutes // 60
+        m = study_minutes % 60
+        formatted_time = f"{h}h {m}m" if m > 0 else f"{h} hrs"
+
+    progression_time = f"{formatted_time} logged ({overall_percent}% curriculum progression)"
 
     return AcademicProgressOverview(
         academic_level=target_level,
@@ -644,5 +652,9 @@ def get_workspace_progress(
         completed_quizzes_count=quiz_count,
         enrolled_subjects_count=enrolled_count,
         study_minutes=study_minutes,
+        study_hours=study_hours,
+        formatted_time_spent=formatted_time,
+        overall_progression_time=progression_time,
+        timezone="IST (UTC+5:30)",
         subject_progress=subject_progress_list,
     )

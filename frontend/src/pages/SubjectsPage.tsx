@@ -23,6 +23,7 @@ import {
 import { apiService } from '../services/api';
 import { Subject } from '../types/learning';
 import { useAcademicContext } from '../context/AcademicContext';
+import { useSyllabus } from '../context/SyllabusContext';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { SkeletonCard } from '../components/ui/Skeleton';
@@ -32,6 +33,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 export const SubjectsPage: React.FC = () => {
   const navigate = useNavigate();
   const { academicContext, refreshAcademicContext, isReady } = useAcademicContext();
+  const { hasSyllabus, isCurriculumActive, syllabusState, hasDraft, lifecycleState, loading: syllabusLoading } = useSyllabus();
   const currentTier = academicContext?.academic_level;
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -42,8 +44,9 @@ export const SubjectsPage: React.FC = () => {
   const [actionInProgressId, setActionInProgressId] = useState<string | null>(null);
 
   const fetchSubjectsAndEnrollments = useCallback(async () => {
-    if (!currentTier) {
+    if (!currentTier || !isCurriculumActive) {
       setSubjects([]);
+      setEnrolledSubjectIds(new Set());
       setLoading(false);
       return;
     }
@@ -64,7 +67,7 @@ export const SubjectsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentTier]);
+  }, [currentTier, isCurriculumActive, syllabusState?.version_id, lifecycleState]);
 
   useEffect(() => {
     fetchSubjectsAndEnrollments();
@@ -223,7 +226,7 @@ export const SubjectsPage: React.FC = () => {
       </div>
 
       {/* Grid Content */}
-      {loading ? (
+      {loading || syllabusLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <SkeletonCard />
           <SkeletonCard />
@@ -235,19 +238,67 @@ export const SubjectsPage: React.FC = () => {
           title={
             activeCategoryFilter === 'enrolled'
               ? 'No subjects enrolled yet'
-              : 'No subjects found for this academic level'
+              : lifecycleState === 'DRAFT_READY_FOR_REVIEW'
+              ? 'Curriculum draft generated. Review required.'
+              : lifecycleState === 'PROCESSING'
+              ? 'Syllabus is being analyzed'
+              : lifecycleState === 'UPLOADED_PENDING'
+              ? 'Syllabus uploaded. Analysis pending.'
+              : lifecycleState === 'WAITING_FOR_ACTIVATION'
+              ? 'Syllabus uploaded. Curriculum not activated yet.'
+              : lifecycleState === 'NO_SYLLABUS'
+              ? 'No syllabus uploaded'
+              : 'No subjects found'
           }
           description={
             activeCategoryFilter === 'enrolled'
-              ? 'Enroll in subjects from the curriculum above to build your active learning workspace.'
-              : `Curriculum subjects for ${academicContext?.grade_level || currentTier} are currently being mapped to standard syllabi.`
+              ? 'Enroll in subjects from your active syllabus to build your learning workspace.'
+              : lifecycleState === 'DRAFT_READY_FOR_REVIEW'
+              ? 'Your syllabus document has been structured into draft subjects and units with citations. Review your draft on the Syllabus page; subjects will become active once activated.'
+              : lifecycleState === 'PROCESSING'
+              ? 'Your syllabus document is currently being analyzed. Subjects will appear once the curriculum draft is reviewed and activated.'
+              : lifecycleState === 'UPLOADED_PENDING'
+              ? 'Your primary syllabus is uploaded and verified. Run document analysis on the Syllabus page to extract structured curriculum subjects.'
+              : lifecycleState === 'WAITING_FOR_ACTIVATION'
+              ? 'Your primary syllabus is uploaded and verified. Curriculum subjects will become available once curriculum activation is completed.'
+              : lifecycleState === 'NO_SYLLABUS'
+              ? 'Upload your primary syllabus to generate and activate your curriculum subjects.'
+              : 'No subjects match your current filter criteria.'
           }
           action={
             activeCategoryFilter === 'enrolled' ? (
               <Button variant="primary" size="sm" onClick={() => setActiveCategoryFilter('all')}>
                 Browse Available Subjects
               </Button>
-            ) : undefined
+            ) : lifecycleState === 'DRAFT_READY_FOR_REVIEW' ? (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => navigate('/syllabus')}
+              >
+                Review Curriculum Draft
+              </Button>
+            ) : lifecycleState === 'NO_SYLLABUS' ? (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => navigate('/syllabus')}
+              >
+                Upload Syllabus
+              </Button>
+            ) : lifecycleState === 'WAITING_FOR_ACTIVATION' || lifecycleState === 'UPLOADED_PENDING' || lifecycleState === 'PROCESSING' ? (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => navigate('/syllabus')}
+              >
+                View Syllabus Hub
+              </Button>
+            ) : (
+              <Button variant="primary" size="sm" onClick={() => setActiveCategoryFilter('all')}>
+                Browse Available Subjects
+              </Button>
+            )
           }
         />
       ) : (
@@ -268,7 +319,17 @@ export const SubjectsPage: React.FC = () => {
                     <div className="w-12 h-12 rounded-xl bg-nexora-elevated flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
                       {getSubjectIcon(sub.icon)}
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {sub.code && (
+                        <Badge variant="accent" size="sm" className="font-mono font-semibold">
+                          {sub.code}
+                        </Badge>
+                      )}
+                      {sub.credits && (
+                        <Badge variant="neutral" size="sm">
+                          {sub.credits}
+                        </Badge>
+                      )}
                       {isEnrolled && (
                         <Badge variant="accent" size="sm" hasDot>
                           Enrolled
@@ -292,9 +353,9 @@ export const SubjectsPage: React.FC = () => {
                     <div className="flex justify-between text-xs text-nexora-subtext">
                       <span className="flex items-center gap-1.5">
                         <FolderKanban className="w-3.5 h-3.5 text-nexora-muted" />
-                        Curriculum Track
+                        Units / Modules
                       </span>
-                      <span className="font-semibold text-white">Active Syllabus</span>
+                      <span className="font-semibold text-white">{sub.topic_count ?? 0} Units</span>
                     </div>
                     <div className="flex justify-between text-xs text-nexora-subtext">
                       <span className="flex items-center gap-1.5">
@@ -303,6 +364,12 @@ export const SubjectsPage: React.FC = () => {
                       </span>
                       <span className="font-semibold text-white">{conceptCount} Concepts</span>
                     </div>
+                    {sub.semester && (
+                      <div className="flex justify-between text-[11px] text-nexora-subtext">
+                        <span>Term / Semester</span>
+                        <span className="text-white font-medium">{sub.semester}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-[11px] text-nexora-muted pt-1 border-t border-nexora-border/40">
                       <span>Category</span>
                       <span className="text-nexora-accent font-medium truncate max-w-[170px]">

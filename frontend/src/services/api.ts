@@ -327,5 +327,204 @@ export const apiService = {
     const response = await apiClient.get<import('../types/learning').AcademicProgressOverview>('/api/v1/workspace/progress');
     return response.data;
   },
+
+  // --- UNIVERSAL SYLLABUS & VERSION LIFECYCLE (MASTER PROMPT 02R) ---
+  async uploadSyllabus(formData: FormData): Promise<import('../types/syllabus').SyllabusUploadResponse> {
+    const response = await apiClient.post<import('../types/syllabus').SyllabusUploadResponse>(
+      '/api/v1/syllabi',
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }
+    );
+    return response.data;
+  },
+
+  // --- SYLLABUS UPLOAD & CANONICAL STATE LIFECYCLE (PROMPTS 02R & 02R-A) ---
+  async getSyllabusState(academicContextId?: string): Promise<import('../types/syllabus').SyllabusCanonicalState> {
+    const params = academicContextId ? { academic_context_id: academicContextId } : {};
+    const response = await apiClient.get<import('../types/syllabus').SyllabusCanonicalState>('/api/v1/syllabi/state', { params });
+    return response.data;
+  },
+
+  async getSyllabi(academicLevel?: string): Promise<import('../types/syllabus').Syllabus[]> {
+    const response = await apiClient.get<import('../types/syllabus').Syllabus[]>('/api/v1/syllabi', {
+      params: academicLevel ? { academic_level: academicLevel } : undefined,
+    });
+    return response.data;
+  },
+
+  async getSyllabus(syllabusId: string): Promise<import('../types/syllabus').Syllabus> {
+    const response = await apiClient.get<import('../types/syllabus').Syllabus>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}`
+    );
+    return response.data;
+  },
+
+  async getSyllabusVersions(syllabusId: string): Promise<import('../types/syllabus').SyllabusVersion[]> {
+    const response = await apiClient.get<import('../types/syllabus').SyllabusVersion[]>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions`
+    );
+    return response.data;
+  },
+
+  async uploadSyllabusVersion(
+    syllabusId: string,
+    formData: FormData
+  ): Promise<import('../types/syllabus').SyllabusUploadResponse> {
+    const response = await apiClient.post<import('../types/syllabus').SyllabusUploadResponse>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions`,
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }
+    );
+    return response.data;
+  },
+
+  async activateSyllabusVersion(
+    syllabusId: string,
+    versionId: string
+  ): Promise<import('../types/syllabus').Syllabus> {
+    const response = await apiClient.patch<import('../types/syllabus').Syllabus>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/activate`
+    );
+    return response.data;
+  },
+
+  async archiveSyllabusVersion(
+    syllabusId: string,
+    versionId: string
+  ): Promise<import('../types/syllabus').SyllabusVersion> {
+    const response = await apiClient.patch<import('../types/syllabus').SyllabusVersion>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/archive`
+    );
+    return response.data;
+  },
+
+  async deleteSyllabus(syllabusId: string): Promise<{ message: string; id: string }> {
+    const response = await apiClient.delete<{ message: string; id: string }>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}`
+    );
+    return response.data;
+  },
+
+  async downloadSyllabusFile(syllabusId: string, versionId: string, filename: string): Promise<void> {
+    const response = await apiClient.get(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/download`,
+      { responseType: 'blob' }
+    );
+    const blobUrl = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(blobUrl);
+  },
+
+  // --- SYLLABUS DOCUMENT UNDERSTANDING & CURRICULUM DRAFT (MASTER PROMPT 03R) ---
+  async triggerSyllabusProcessing(
+    syllabusId: string,
+    versionId: string,
+    force: boolean = false
+  ): Promise<import('../types/syllabus').SyllabusProcessingJob> {
+    const response = await apiClient.post<import('../types/syllabus').SyllabusProcessingJob>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/process`,
+      { force_reprocess: force }
+    );
+    return response.data;
+  },
+
+  async getSyllabusProcessingStatus(
+    syllabusId: string,
+    versionId: string
+  ): Promise<import('../types/syllabus').SyllabusProcessingJob> {
+    const response = await apiClient.get<import('../types/syllabus').SyllabusProcessingJob>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/processing`
+    );
+    return response.data;
+  },
+
+  async getSyllabusCurriculumDraft(
+    syllabusId: string,
+    versionId: string
+  ): Promise<import('../types/syllabus').SyllabusCurriculumDraft> {
+    const response = await apiClient.get<import('../types/syllabus').SyllabusCurriculumDraft>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/curriculum-draft`
+    );
+    return response.data;
+  },
+
+  // --- SYLLABUS CURRICULUM COMPILER (MASTER PROMPT 04R) ---
+  async compileSyllabusCurriculumDraft(
+    syllabusId: string,
+    versionId: string,
+    forceRecompile: boolean = false
+  ): Promise<import('../types/syllabus').SyllabusCompilationResult> {
+    const response = await apiClient.post<import('../types/syllabus').SyllabusCompilationResult>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/compile`,
+      { force_recompile: forceRecompile }
+    );
+    return response.data;
+  },
+
+  async getCurriculumDraftById(
+    draftId: string
+  ): Promise<import('../types/syllabus').SyllabusCurriculumDraft> {
+    const response = await apiClient.get<import('../types/syllabus').SyllabusCurriculumDraft>(
+      `/api/v1/syllabi/drafts/${encodeURIComponent(draftId)}`
+    );
+    return response.data;
+  },
+
+  // --- CURRICULUM REVIEW CORRECTIONS & EXPLICIT ACTIVATION (MASTER PROMPT 05R) ---
+  async saveDraftCorrections(
+    syllabusId: string,
+    versionId: string,
+    corrections: import('../types/syllabus').SyllabusDraftCorrectionRequest
+  ): Promise<import('../types/syllabus').SyllabusCurriculumDraft> {
+    const response = await apiClient.put<import('../types/syllabus').SyllabusCurriculumDraft>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/draft`,
+      corrections
+    );
+    return response.data;
+  },
+
+  async checkActivationEligibility(
+    syllabusId: string,
+    versionId: string
+  ): Promise<import('../types/syllabus').SyllabusActivationEligibilityResponse> {
+    const response = await apiClient.get<import('../types/syllabus').SyllabusActivationEligibilityResponse>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/activation-eligibility`
+    );
+    return response.data;
+  },
+
+  async activateCurriculum(
+    syllabusId: string,
+    versionId: string,
+    request: import('../types/syllabus').SyllabusCurriculumActivateRequest = { confirm_activation: true }
+  ): Promise<import('../types/syllabus').SyllabusCurriculumActivationResponse> {
+    const response = await apiClient.post<import('../types/syllabus').SyllabusCurriculumActivationResponse>(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/activate-curriculum`,
+      request
+    );
+    return response.data;
+  },
+
+  async deactivateCurriculum(
+    syllabusId: string,
+    versionId: string
+  ): Promise<{ message: string; version_id: string; curriculum_status: string; is_curriculum_active: boolean }> {
+    const response = await apiClient.post(
+      `/api/v1/syllabi/${encodeURIComponent(syllabusId)}/versions/${encodeURIComponent(versionId)}/deactivate`
+    );
+    return response.data;
+  },
 };
+
+
+
 

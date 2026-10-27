@@ -103,10 +103,16 @@ export const ConceptPage: React.FC = () => {
             </Link>
           </>
         )}
-        {concept.topic_name && (
+        {concept.topic_name && concept.topic_name.toLowerCase().trim() !== concept.name.toLowerCase().trim() && (
           <>
             <span>/</span>
-            <span className="text-nexora-muted">{concept.topic_name}</span>
+            {concept.topic_slug ? (
+              <Link to={`/topics/${concept.topic_slug}`} className="hover:text-white transition-colors">
+                {concept.topic_name}
+              </Link>
+            ) : (
+              <span className="text-nexora-muted">{concept.topic_name}</span>
+            )}
           </>
         )}
         <span>/</span>

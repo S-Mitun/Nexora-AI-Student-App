@@ -22,12 +22,14 @@ import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Link } from 'react-router-dom';
 import { useAcademicContext } from '../context/AcademicContext';
+import { useSyllabus } from '../context/SyllabusContext';
 import { apiService } from '../services/api';
 import { SubjectDetail, Subject } from '../types/learning';
 import { AcademicContentRenderer } from '../components/common/AcademicContentRenderer';
 
 export const MindMapPage: React.FC = () => {
   const { academicContext, enrolledSubjects } = useAcademicContext();
+  const { lifecycleState, syllabusState, loading: syllabusLoading } = useSyllabus();
   const [availableSubjects, setAvailableSubjects] = useState<Subject[]>([]);
   const [selectedSubjectSlug, setSelectedSubjectSlug] = useState<string>('');
   const [subjectDetail, setSubjectDetail] = useState<SubjectDetail | null>(null);
@@ -73,7 +75,7 @@ export const MindMapPage: React.FC = () => {
 
     loadSubjects();
     return () => { isMounted = false; };
-  }, [enrolledSubjects, academicContext?.academic_level]);
+  }, [enrolledSubjects, academicContext?.academic_level, syllabusState?.version_id]);
 
   // 2. Fetch selected subject's full topic and concept tree
   useEffect(() => {
@@ -147,7 +149,7 @@ export const MindMapPage: React.FC = () => {
         )}
       </div>
 
-      {loading ? (
+      {loading || syllabusLoading ? (
         <div className="p-12 text-center text-xs text-nexora-muted animate-pulse">
           Loading curriculum concept graph...
         </div>
@@ -155,14 +157,58 @@ export const MindMapPage: React.FC = () => {
         <Card className="border-nexora-border/80 p-8 text-center">
           <EmptyState
             icon={<Network className="w-10 h-10 text-nexora-muted mx-auto" />}
-            title="No concept map available for this context yet"
-            description={`No subjects with active topic structures are available for ${academicContext?.grade_level || 'your academic tier'}.`}
+            title={
+              lifecycleState === 'DRAFT_READY_FOR_REVIEW'
+                ? 'Curriculum draft awaiting activation'
+                : lifecycleState === 'PROCESSING'
+                ? 'Syllabus analysis in progress'
+                : lifecycleState === 'UPLOADED_PENDING'
+                ? 'Syllabus uploaded. Analysis pending.'
+                : lifecycleState === 'WAITING_FOR_ACTIVATION'
+                ? 'Curriculum not activated yet'
+                : lifecycleState === 'NO_SYLLABUS'
+                ? 'No syllabus uploaded'
+                : 'No concept map available for this context yet'
+            }
+            description={
+              lifecycleState === 'DRAFT_READY_FOR_REVIEW'
+                ? 'A concept knowledge map requires an active curriculum with topic structures. Your syllabus has been compiled into a curriculum draft with verified units and topics. Review and activate your curriculum to explore the concept knowledge map.'
+                : lifecycleState === 'PROCESSING'
+                ? 'A concept knowledge map requires an active curriculum with topic structures. Your syllabus is currently being processed.'
+                : lifecycleState === 'UPLOADED_PENDING'
+                ? 'A concept knowledge map requires an active curriculum with topic structures. Run document analysis on your syllabus to extract topic structures.'
+                : lifecycleState === 'WAITING_FOR_ACTIVATION'
+                ? 'A concept knowledge map requires an active curriculum with topic structures. Activate your curriculum to generate the concept graph.'
+                : lifecycleState === 'NO_SYLLABUS'
+                ? 'A concept knowledge map requires an active curriculum with topic structures. Upload your syllabus to build your learning workspace and concept map.'
+                : `A concept knowledge map requires an active curriculum with topic structures. No subjects with active topic structures are available for ${academicContext?.grade_level || 'your academic tier'}.`
+            }
             action={
-              <Link to="/subjects">
-                <Button variant="primary" size="md">
-                  Explore Subjects
-                </Button>
-              </Link>
+              lifecycleState === 'DRAFT_READY_FOR_REVIEW' ? (
+                <Link to="/syllabus">
+                  <Button variant="primary" size="md">
+                    Review Curriculum Draft
+                  </Button>
+                </Link>
+              ) : lifecycleState === 'NO_SYLLABUS' ? (
+                <Link to="/syllabus">
+                  <Button variant="primary" size="md">
+                    Upload Syllabus
+                  </Button>
+                </Link>
+              ) : lifecycleState === 'WAITING_FOR_ACTIVATION' || lifecycleState === 'UPLOADED_PENDING' || lifecycleState === 'PROCESSING' ? (
+                <Link to="/syllabus">
+                  <Button variant="primary" size="md">
+                    View Syllabus Status
+                  </Button>
+                </Link>
+              ) : (
+                <Link to="/subjects">
+                  <Button variant="primary" size="md">
+                    Explore Subjects
+                  </Button>
+                </Link>
+              )
             }
           />
         </Card>

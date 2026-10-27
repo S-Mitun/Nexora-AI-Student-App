@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { AcademicContextProvider } from './context/AcademicContext';
+import { SyllabusProvider } from './context/SyllabusContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { AppShell } from './layouts/AppShell';
 import { LoginPage } from './pages/LoginPage';
@@ -10,9 +11,11 @@ import { HomePage } from './pages/HomePage';
 import { LearnPage } from './pages/LearnPage';
 import { SubjectsPage } from './pages/SubjectsPage';
 import { SubjectDetailPage } from './pages/SubjectDetailPage';
+import { TopicPage } from './pages/TopicPage';
 import { ConceptPage } from './pages/ConceptPage';
 import { ModulePage } from './pages/ModulePage';
 import { LessonPage } from './pages/LessonPage';
+import { SyllabusPage } from './pages/SyllabusPage';
 import { MaterialsPage } from './pages/MaterialsPage';
 import { PracticePage } from './pages/PracticePage';
 import { LabsPage } from './pages/LabsPage';
@@ -28,7 +31,8 @@ export const App: React.FC = () => {
     <BrowserRouter>
       <AuthProvider>
         <AcademicContextProvider>
-          <Routes>
+          <SyllabusProvider>
+            <Routes>
             {/* Public Authentication Routes */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
@@ -37,9 +41,12 @@ export const App: React.FC = () => {
             <Route element={<ProtectedRoute />}>
               <Route element={<AppShell />}>
                 <Route path="/" element={<HomePage />} />
+                <Route path="/syllabus" element={<SyllabusPage />} />
                 <Route path="/learn" element={<LearnPage />} />
                 <Route path="/subjects" element={<SubjectsPage />} />
                 <Route path="/subjects/:subjectSlug" element={<SubjectDetailPage />} />
+                <Route path="/subjects/:subjectSlug/topics/:topicSlug" element={<TopicPage />} />
+                <Route path="/topics/:topicSlug" element={<TopicPage />} />
                 <Route path="/concepts/:conceptSlug" element={<ConceptPage />} />
                 <Route path="/modules/:moduleId" element={<ModulePage />} />
                 <Route path="/modules/:moduleId/lessons/:lessonSlug" element={<LessonPage />} />
@@ -59,6 +66,7 @@ export const App: React.FC = () => {
             {/* Fallback Catch-all Route */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </SyllabusProvider>
         </AcademicContextProvider>
       </AuthProvider>
     </BrowserRouter>

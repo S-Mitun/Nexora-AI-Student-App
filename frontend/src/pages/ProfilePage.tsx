@@ -28,6 +28,7 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Input } from '../components/ui/Input';
 import { Callout } from '../components/ui/Callout';
+import { resolveProfileCompletion } from '../utils/profileCompletion';
 
 const AVAILABLE_INTERESTS = [
   'Gaming & Game Dev',
@@ -129,23 +130,22 @@ export const ProfilePage: React.FC = () => {
 
   const [fullName, setFullName] = useState(authProfile?.full_name || user?.user_metadata?.full_name || '');
   const [institution, setInstitution] = useState(authProfile?.institution || '');
-  const [educationLevel, setEducationLevel] = useState(authProfile?.education_level || 'undergraduate');
-  const [educationCategory, setEducationCategory] = useState(authProfile?.education_category || 'undergraduate');
-  const [curriculumId, setCurriculumId] = useState(authProfile?.curriculum_id || 'cur-00000000-0000-0000-0000-000000000002');
-  const [gradeLevel, setGradeLevel] = useState(authProfile?.grade_level || 'Class 10');
-  const [academicDomain, setAcademicDomain] = useState(authProfile?.academic_domain || 'General Studies');
+  const [educationLevel, setEducationLevel] = useState(authProfile?.education_level || '');
+  const [educationCategory, setEducationCategory] = useState(authProfile?.education_category || '');
+  const [curriculumId, setCurriculumId] = useState(authProfile?.curriculum_id || '');
+  const [gradeLevel, setGradeLevel] = useState(authProfile?.grade_level || '');
   const [stateRegion, setStateRegion] = useState(authProfile?.state_region || '');
   const [degree, setDegree] = useState(authProfile?.degree || '');
   const [department, setDepartment] = useState(authProfile?.department || '');
   const [specialization, setSpecialization] = useState(authProfile?.specialization || '');
   const [academicYear, setAcademicYear] = useState(authProfile?.academic_year || '');
-  const [boardType, setBoardType] = useState(authProfile?.board_type || 'national');
+  const [boardType, setBoardType] = useState(authProfile?.board_type || '');
   const [stream, setStream] = useState(authProfile?.stream || '');
   const [program, setProgram] = useState(authProfile?.program || '');
   const [primaryLanguage, setPrimaryLanguage] = useState(
     authProfile?.preferred_language || localStorage.getItem('nexora_preferred_language') || 'en'
   );
-  const [interests, setInterests] = useState<string[]>(authProfile?.interests || ['Space Exploration & Astronomy', 'Gaming & Game Dev']);
+  const [interests, setInterests] = useState<string[]>(authProfile?.interests || []);
   const [customInterests, setCustomInterests] = useState<string[]>(authProfile?.custom_interests || []);
   const [newCustomInterest, setNewCustomInterest] = useState<string>('');
   const [learningPreferences, setLearningPreferences] = useState<string[]>(
@@ -160,16 +160,24 @@ export const ProfilePage: React.FC = () => {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const calculateCompleteness = () => {
-    let score = 0;
-    if (fullName.trim()) score += 20;
-    if (educationCategory) score += 20;
-    if (gradeLevel.trim()) score += 20;
-    if (curriculumId) score += 20;
-    if (academicDomain.trim()) score += 20;
-    return score;
-  };
-  const completeness = calculateCompleteness();
+  // Single Canonical Source of Truth for profile completeness
+  const completionDetails = resolveProfileCompletion({
+    full_name: fullName,
+    education_level: educationLevel,
+    education_category: educationCategory,
+    grade_level: gradeLevel,
+    curriculum_id: curriculumId,
+    board_type: boardType,
+    state_region: stateRegion,
+    degree,
+    department,
+    specialization,
+    academic_year: academicYear,
+    stream,
+    program,
+    institution,
+  });
+  const completeness = completionDetails.score;
 
   // Security password management state
   const [showPasswordForm, setShowPasswordForm] = useState(false);
@@ -230,7 +238,6 @@ export const ProfilePage: React.FC = () => {
       if (authProfile.education_category) setEducationCategory(authProfile.education_category);
       if (authProfile.curriculum_id) setCurriculumId(authProfile.curriculum_id);
       if (authProfile.grade_level) setGradeLevel(authProfile.grade_level);
-      if (authProfile.academic_domain) setAcademicDomain(authProfile.academic_domain);
       if (authProfile.state_region) setStateRegion(authProfile.state_region);
       if (authProfile.degree) setDegree(authProfile.degree);
       if (authProfile.department) setDepartment(authProfile.department);
@@ -334,13 +341,12 @@ export const ProfilePage: React.FC = () => {
       stream: stream.trim() || undefined,
       program: program.trim() || undefined,
       grade_level: gradeLevel,
-      academic_domain: academicDomain,
       state_region: stateRegion.trim() || undefined,
       degree: degree.trim() || undefined,
       department: department.trim() || undefined,
       specialization: specialization.trim() || undefined,
       academic_year: academicYear.trim() || undefined,
-      profile_completed: true,
+      profile_completed: completionDetails.is_complete,
       preferred_language: primaryLanguage,
       interests,
       custom_interests: customInterests,
@@ -437,8 +443,8 @@ export const ProfilePage: React.FC = () => {
                 </h3>
                 <p className="text-xs text-nexora-muted">
                   {completeness === 100 
-                    ? 'Your academic workspace is fully configured with your board and grade level.'
-                    : 'Configure your education category, board, and grade level to personalize your syllabus.'}
+                    ? 'Your academic workspace is fully configured and calibrated.'
+                    : `Missing required: ${completionDetails.missing_fields.map(f => f.replace(/_/g, ' ')).join(', ')}`}
                 </p>
               </div>
             </div>
@@ -757,18 +763,6 @@ export const ProfilePage: React.FC = () => {
               />
             </div>
           )}
-
-          {/* Academic Domain */}
-          <div className="pt-4 border-t border-nexora-border/50">
-            <label className="text-xs font-medium text-nexora-text-muted block mb-1.5">
-              Primary Academic Discipline / Domain
-            </label>
-            <Input 
-              value={academicDomain}
-              onChange={(e) => setAcademicDomain(e.target.value)}
-              placeholder="e.g. General Science & Mathematics, Computer Science & Engineering, Humanities"
-            />
-          </div>
         </CardContent>
       </Card>
 
