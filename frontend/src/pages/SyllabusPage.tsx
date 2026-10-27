@@ -38,6 +38,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { CurriculumReviewModal } from '../components/syllabus/CurriculumReviewModal';
 import { apiService } from '../services/api';
 import { Syllabus, SyllabusVersion, SyllabusCurriculumDraft, SyllabusProcessingJob } from '../types/syllabus';
+import { formatISTDate, formatISTDateTime } from '../utils/dateUtils';
 import { useAcademicContext } from '../context/AcademicContext';
 import { useSyllabus } from '../context/SyllabusContext';
 
@@ -524,7 +525,7 @@ export const SyllabusPage: React.FC = () => {
                         <span className="capitalize">{syl.academic_level.replace(/_/g, ' ')}</span>
                         {syl.program_degree && <span>• {syl.program_degree}</span>}
                         {syl.academic_year && <span>• {syl.academic_year}</span>}
-                        <span>• Added {new Date(syl.created_at).toLocaleDateString()}</span>
+                        <span>• Added {formatISTDate(syl.created_at)}</span>
                       </div>
                     </div>
                   </div>
@@ -612,7 +613,7 @@ export const SyllabusPage: React.FC = () => {
                               <div className="text-[11px] text-nexora-muted flex items-center gap-2 mt-0.5">
                                 <span>{formatFileSize(ver.file_size_bytes)}</span>
                                 <span>•</span>
-                                <span>Uploaded {new Date(ver.created_at).toLocaleDateString()}</span>
+                                <span>Uploaded {formatISTDateTime(ver.created_at)}</span>
                                 {ver.checksum && (
                                   <>
                                     <span>•</span>

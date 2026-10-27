@@ -43,6 +43,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { SkeletonCard } from '../components/ui/Skeleton';
+import { formatISTDateTime, formatStudyTime } from '../utils/dateUtils';
 import { EmptyState } from '../components/ui/EmptyState';
 
 
@@ -71,7 +72,7 @@ export const HomePage: React.FC = () => {
 
   const studentName = profile?.full_name || user?.email?.split('@')[0] || 'Student';
 
-  const { academicContext, isReady } = useAcademicContext();
+  const { academicContext, enrolledSubjects, isReady } = useAcademicContext();
   const { hasSyllabus, isCurriculumActive, syllabusState, hasDraft, lifecycleState, loading: syllabusLoading } = useSyllabus();
   const activeLevel = academicContext?.academic_level || profile?.education_category || profile?.education_level;
 
@@ -92,6 +93,9 @@ export const HomePage: React.FC = () => {
       return [];
     }
     const topicLabels: string[] = [];
+    const isPhysicsEnrolled = workspace.enrolled_subjects.some((s) =>
+      s.name.toLowerCase().includes('physic')
+    );
     for (const sub of workspace.enrolled_subjects) {
       if (sub.name && !topicLabels.includes(sub.name)) {
         topicLabels.push(sub.name);
@@ -99,6 +103,9 @@ export const HomePage: React.FC = () => {
     }
     for (const rec of recommendations) {
       if (rec.concept && !topicLabels.includes(rec.concept)) {
+        if (rec.concept.toLowerCase().includes('doppler') && !isPhysicsEnrolled) {
+          continue;
+        }
         topicLabels.push(rec.concept);
       }
       if (topicLabels.length >= 4) break;
@@ -198,7 +205,7 @@ export const HomePage: React.FC = () => {
               id: a.id,
               title: a.title,
               subject: a.description || 'Academic Workspace',
-              timeAgo: new Date(a.created_at).toLocaleDateString(),
+              timeAgo: formatISTDateTime(a.created_at),
               timestamp: a.created_at,
               type: a.activity_type as any,
             }))
@@ -212,7 +219,7 @@ export const HomePage: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [activeLevel, isReady, isCurriculumActive]);
+  }, [activeLevel, isReady, isCurriculumActive, syllabusState?.version_id, syllabusState?.is_curriculum_active, lifecycleState, enrolledSubjects?.length]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -911,11 +918,16 @@ export const HomePage: React.FC = () => {
         {/* Overall Progress Widget */}
         <Card className="flex flex-col justify-between">
           <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-nexora-accent" />
-              Overall Progress
-            </CardTitle>
-            <CardDescription>Cumulative course completion</CardDescription>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-nexora-accent" />
+                Overall Progress
+              </CardTitle>
+              <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                IST Tracked
+              </span>
+            </div>
+            <CardDescription>Cumulative course completion and logged study time</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="text-center py-3">
@@ -924,11 +936,17 @@ export const HomePage: React.FC = () => {
               </div>
               <p className="text-xs text-nexora-subtext">
                 {overallProgress.completedLessons > 0
-                  ? `${overallProgress.completedLessons} lessons verified`
+                  ? `${overallProgress.completedLessons} lessons verified in active syllabus`
                   : 'No progress recorded yet'}
               </p>
             </div>
             <div className="space-y-2">
+              <div className="flex justify-between text-xs text-nexora-subtext">
+                <span>Overall Time Spent</span>
+                <span className="font-semibold text-emerald-400">
+                  {formatStudyTime(overallProgress.studyMinutes).formatted}
+                </span>
+              </div>
               <div className="flex justify-between text-xs text-nexora-subtext">
                 <span>Completed Lessons</span>
                 <span className="font-semibold text-white">
@@ -959,32 +977,30 @@ export const HomePage: React.FC = () => {
         </Card>
       </div>
 
-      {/* 7. Exploration Through Your Interests (Master Prompt 04) */}
+      {/* 7. Exploration Through Your Interests (Master Prompt 04 & Requirement 3) */}
       <div>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs font-semibold uppercase tracking-wider text-nexora-primary bg-nexora-primary/10 px-2 py-0.5 rounded-full border border-nexora-primary/20 flex items-center gap-1.5">
                 <Compass className="w-3 h-3" />
-                {profile?.interests && profile.interests.length > 0
-                  ? 'Connected to Your Interests'
-                  : 'Curriculum Exploration'}
+                Connected to Your Interests
               </span>
             </div>
             <h2 className="text-xl font-bold text-white tracking-tight">
               {profile?.interests && profile.interests.length > 0
                 ? 'Learn Through Examples You Care About'
-                : 'Recommended Core Topics'}
+                : 'Connect Concepts With Your Interests'}
             </h2>
             <p className="text-xs text-nexora-muted">
               {profile?.interests && profile.interests.length > 0
                 ? 'Concepts connected with your selected hobbies and technical passions.'
-                : 'Foundational concepts. You can connect explanations to your hobbies anytime in Profile.'}
+                : 'Personalize explanations with real-world examples from your chosen hobbies.'}
             </p>
           </div>
           <Link to="/profile">
             <Button variant="ghost" size="sm" rightIcon={<ChevronRight className="w-4 h-4" />}>
-              {profile?.interests && profile.interests.length > 0 ? 'Edit Interests' : 'Personalize Interests'}
+              {profile?.interests && profile.interests.length > 0 ? 'Edit Interests' : 'Choose Interests'}
             </Button>
           </Link>
         </div>
@@ -995,19 +1011,40 @@ export const HomePage: React.FC = () => {
               <SkeletonCard key={i} />
             ))}
           </div>
+        ) : (!profile?.interests || profile.interests.length === 0) ? (
+          <Card className="p-6 border-nexora-border/80 bg-gradient-to-r from-nexora-surface to-nexora-elevated">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="p-3 rounded-xl bg-nexora-primary/10 border border-nexora-primary/20 text-nexora-primary shrink-0">
+                  <Compass className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-white">No interests selected yet</h3>
+                  <p className="text-xs text-nexora-muted mt-1 max-w-xl leading-relaxed">
+                    Personalize your curriculum experience by choosing your hobbies and passions (such as Gaming, Automotive, Coding, Music, or Space). NEXORA will connect theoretical syllabus topics to real-world applications without fabricating fake concepts.
+                  </p>
+                </div>
+              </div>
+              <Link to="/profile" className="shrink-0">
+                <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                  Set Up Interests
+                </Button>
+              </Link>
+            </div>
+          </Card>
         ) : !isCurriculumActive || recommendations.length === 0 ? (
           <EmptyState
             icon={<Compass className="w-8 h-8 text-nexora-muted" />}
-            title={hasSyllabus ? "Curriculum activation pending" : "No concepts available yet"}
+            title={hasSyllabus ? "Curriculum activation pending" : "No concepts matched for your interests"}
             description={
               hasSyllabus
                 ? "Concepts and personalized recommendations will become available upon syllabus curriculum activation."
-                : "Upload your syllabus to activate and explore personalized concepts."
+                : "Explore your active syllabus curriculum or update your selected interests in Profile."
             }
             action={
-              <Link to="/syllabus">
+              <Link to={hasSyllabus ? "/syllabus" : "/profile"}>
                 <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
-                  {hasSyllabus ? "View Syllabus Hub" : "Upload Syllabus"}
+                  {hasSyllabus ? "View Syllabus Hub" : "Adjust Interests"}
                 </Button>
               </Link>
             }

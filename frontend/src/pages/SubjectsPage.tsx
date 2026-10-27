@@ -33,7 +33,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 export const SubjectsPage: React.FC = () => {
   const navigate = useNavigate();
   const { academicContext, refreshAcademicContext, isReady } = useAcademicContext();
-  const { hasSyllabus, isCurriculumActive, hasDraft, lifecycleState, loading: syllabusLoading } = useSyllabus();
+  const { hasSyllabus, isCurriculumActive, syllabusState, hasDraft, lifecycleState, loading: syllabusLoading } = useSyllabus();
   const currentTier = academicContext?.academic_level;
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -67,7 +67,7 @@ export const SubjectsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentTier, isCurriculumActive]);
+  }, [currentTier, isCurriculumActive, syllabusState?.version_id, lifecycleState]);
 
   useEffect(() => {
     fetchSubjectsAndEnrollments();

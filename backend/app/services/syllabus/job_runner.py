@@ -67,6 +67,7 @@ class SyllabusJobRunner:
                 SyllabusCurriculumDraft.syllabus_version_id == version_id,
                 SyllabusCurriculumDraft.user_id == user_id,
             )
+            .order_by(SyllabusCurriculumDraft.compilation_version.desc())
             .first()
         )
 

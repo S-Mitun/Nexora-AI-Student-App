@@ -16,6 +16,7 @@ import {
   Layers,
   Sparkles,
   RefreshCw,
+  ChevronRight,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -23,11 +24,14 @@ import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
 import { apiService } from '../services/api';
 import { StudyMaterialDocument } from '../types/learning';
+import { SyllabusDraftReference } from '../types/syllabus';
 import { useSyllabus } from '../context/SyllabusContext';
 
 export const MaterialsPage: React.FC = () => {
-  const { hasSyllabus } = useSyllabus();
+  const { hasSyllabus, isCurriculumActive, syllabusState } = useSyllabus();
   const [documents, setDocuments] = useState<StudyMaterialDocument[]>([]);
+  const [syllabusReferences, setSyllabusReferences] = useState<SyllabusDraftReference[]>([]);
+  const [loadingReferences, setLoadingReferences] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,6 +62,30 @@ export const MaterialsPage: React.FC = () => {
   useEffect(() => {
     loadDocuments();
   }, []);
+
+  useEffect(() => {
+    if (!syllabusState?.syllabus_id || !syllabusState?.version_id) {
+      setSyllabusReferences([]);
+      return;
+    }
+    let isMounted = true;
+    setLoadingReferences(true);
+    apiService
+      .getSyllabusCurriculumDraft(syllabusState.syllabus_id, syllabusState.version_id)
+      .then((draft) => {
+        if (isMounted) {
+          const refs = draft.references || (draft.subjects && draft.subjects[0]?.references) || [];
+          setSyllabusReferences(refs.filter((r) => !r.is_excluded));
+        }
+      })
+      .catch(() => {
+        if (isMounted) setSyllabusReferences([]);
+      })
+      .finally(() => {
+        if (isMounted) setLoadingReferences(false);
+      });
+    return () => { isMounted = false; };
+  }, [syllabusState?.syllabus_id, syllabusState?.version_id, isCurriculumActive]);
 
   // Poll for background ingestion status for any active jobs
   useEffect(() => {
@@ -245,6 +273,98 @@ export const MaterialsPage: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* Prescribed Syllabus Textbooks & References */}
+      {isCurriculumActive && syllabusReferences.length > 0 && (
+        <div className="space-y-3 p-5 rounded-2xl bg-nexora-surface border border-nexora-border/80">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <BookOpen className="w-4 h-4 text-nexora-primary" />
+                <span className="text-xs font-semibold text-nexora-primary uppercase tracking-wider">
+                  Syllabus Prescribed Literature
+                </span>
+              </div>
+              <h2 className="text-base font-bold text-white tracking-tight">
+                Textbooks &amp; Prescribed References
+              </h2>
+              <p className="text-xs text-nexora-muted">
+                Official course literature extracted and verified from your active curriculum.
+              </p>
+            </div>
+            <Badge variant="primary" size="sm">
+              {syllabusReferences.length} Prescribed
+            </Badge>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+            {syllabusReferences.map((ref, idx) => {
+              const isTextbook =
+                ref.reference_type?.toLowerCase().includes('text') ||
+                (!ref.reference_type?.toLowerCase().includes('web') && idx === 0);
+              const isWeb =
+                ref.reference_type?.toLowerCase().includes('web') ||
+                Boolean(ref.url && ref.url.startsWith('http'));
+
+              return (
+                <div
+                  key={ref.id || idx}
+                  className="p-3.5 rounded-xl bg-nexora-elevated/70 border border-nexora-border/70 flex flex-col justify-between hover:border-nexora-primary/40 transition-colors"
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <Badge variant={isTextbook ? 'primary' : isWeb ? 'accent' : 'neutral'} size="sm">
+                        {isTextbook ? 'Prescribed Textbook' : isWeb ? 'Web Resource' : 'Reference Book'}
+                      </Badge>
+                      {ref.source_page && (
+                        <span className="text-[10px] text-nexora-muted font-medium">
+                          Page {ref.source_page}
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="text-xs font-bold text-white line-clamp-2">
+                      {ref.title}
+                    </h3>
+                    {ref.author && (
+                      <p className="text-[11px] text-nexora-subtext">
+                        <span className="text-nexora-muted">Author(s):</span> {ref.author}
+                      </p>
+                    )}
+                    {(ref.publisher || ref.edition || ref.year) && (
+                      <p className="text-[10px] text-nexora-muted">
+                        {[ref.edition, ref.publisher, ref.year].filter(Boolean).join(' • ')}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="pt-2.5 mt-2 border-t border-nexora-border/40 flex items-center justify-between">
+                    <span className="text-[10px] text-nexora-muted uppercase tracking-wider font-semibold">
+                      Curriculum Prescribed
+                    </span>
+                    {ref.url ? (
+                      <a
+                        href={ref.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-nexora-primary hover:text-nexora-accent font-medium transition-colors"
+                      >
+                        Visit Link <ExternalLink className="w-3 h-3" />
+                      </a>
+                    ) : (
+                      <Link
+                        to={`/learn?q=${encodeURIComponent(ref.title)}`}
+                        className="inline-flex items-center gap-1 text-xs text-nexora-primary hover:text-nexora-accent font-medium transition-colors"
+                      >
+                        Explore Topics <ChevronRight className="w-3 h-3" />
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Filters and Search */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3">

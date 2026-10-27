@@ -53,6 +53,7 @@ export interface SyllabusCanonicalState {
   has_syllabus: boolean;
   syllabus_id: string | null;
   current_version_id: string | null;
+  version_id?: string | null;
   academic_context_id: string | null;
   upload_status: 'pending' | 'uploaded' | 'verified' | 'failed' | string | null;
   processing_status: 'not_started' | 'processing' | 'completed' | 'failed' | string;
@@ -127,6 +128,7 @@ export interface SyllabusDraftReference {
   author?: string | null;
   publisher?: string | null;
   edition?: string | null;
+  year?: string | null;
   url?: string | null;
   source_page?: number | null;
   evidence_text?: string | null;

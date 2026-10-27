@@ -295,6 +295,10 @@ class SyllabusCurriculumCompilerEngine:
                             continue
 
                         if category == "uncertain":
+                            if cleaned_title.endswith(":"):
+                                topic.is_excluded = True
+                                topic.lesson_candidate_title = None
+                                continue
                             topic.is_lesson_candidate = False
                             topic.is_ambiguous = True
                             topic.ambiguity_reason = cat_reason or "Unclassified entity structure requiring review"
@@ -345,6 +349,13 @@ class SyllabusCurriculumCompilerEngine:
                             prerequisites_to_add.append(prereq)
 
                         cleaned_topics.append(topic)
+
+                    # Enforce standard curriculum limit of 2-5 lessons per unit (excluding lab experiments)
+                    if "lab" not in module.display_label.lower() and "experiment" not in module.title.lower():
+                        lesson_cands = [t for t in cleaned_topics if t.is_lesson_candidate and not t.is_excluded]
+                        if len(lesson_cands) > 5:
+                            for extra_top in lesson_cands[5:]:
+                                extra_top.is_lesson_candidate = False
 
                     # Update module topics with clean candidates
                     module.topics = cleaned_topics
@@ -536,8 +547,23 @@ class SyllabusCurriculumCompilerEngine:
             return "reference", False, "Textbook citation"
 
         # 7. Unclassified or highly ambiguous fragment
-        if len(text) < 3 or text.isdigit():
+        if text.strip().endswith(":") or len(text) < 3 or text.isdigit():
             return "uncertain", False, "Fragmented or purely numeric line requiring review"
+
+        # 8. Filter single-word fragments and grammatical filler words
+        STOP_WORDS = {
+            "to", "and", "or", "the", "in", "of", "for", "on", "with", "vs", "etc",
+            "understand", "analyze", "apply", "describe", "explain", "illustrate", "types",
+            "ability", "completion", "concepts", "fundamentals", "definition", "role", "roles",
+            "problem", "problems", "case", "study", "studies", "basic", "basics", "simple",
+            "course", "unit", "module", "chapter", "student", "students", "shall", "have",
+            "hours", "periods", "lecture", "tutorial", "practical", "credits"
+        }
+        words = [w for w in re.split(r"[\s\-_]+", lower) if w]
+        if len(words) == 1 and (words[0] in STOP_WORDS or len(words[0]) < 4):
+            return "uncertain", False, "Single-word fragment or grammatical verb not representing a lesson"
+        if all(w in STOP_WORDS for w in words):
+            return "uncertain", False, "Grammatical filler phrase without curriculum concept"
 
         return "topic", True, None
 

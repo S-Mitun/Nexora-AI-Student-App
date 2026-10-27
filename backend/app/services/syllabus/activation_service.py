@@ -475,6 +475,7 @@ class SyllabusCurriculumActivationService:
                 SyllabusCurriculumDraft.syllabus_version_id == version_id,
                 SyllabusCurriculumDraft.user_id == user_id,
             )
+            .order_by(SyllabusCurriculumDraft.compilation_version.desc())
             .first()
         )
         if not draft:
@@ -505,7 +506,7 @@ class SyllabusCurriculumActivationService:
                 detail="Cannot activate curriculum: No active units/modules found in draft.",
             )
 
-        # 4. Idempotency Check: if this exact version is already active with runtime subjects, return cleanly
+        # 4. Check existing runtime subjects and topics for this version
         existing_version_subjects = (
             db.query(Subject)
             .filter(
@@ -515,10 +516,23 @@ class SyllabusCurriculumActivationService:
             )
             .all()
         )
-        if version.is_active and version.curriculum_status == "active" and existing_version_subjects:
-            logger.info(f"[SyllabusActivationService] Version {version_id} already active. Returning idempotent result.")
+        total_runtime_topics = (
+            db.query(Topic).join(Subject).filter(
+                Subject.syllabus_version_id == version.id,
+                Subject.user_id == user_id,
+                Subject.is_active == True,
+                Topic.is_active == True,
+            ).count()
+        )
+        if (
+            version.is_active
+            and version.curriculum_status == "active"
+            and draft.status == "approved"
+            and existing_version_subjects
+            and total_runtime_topics == len(active_modules)
+        ):
+            logger.info(f"[SyllabusActivationService] Version {version_id} already active and up to date. Returning idempotent result.")
             now_time = version.activated_at or datetime.now(timezone.utc)
-            total_topics = db.query(Topic).join(Subject).filter(Subject.syllabus_version_id == version.id).count()
             total_concepts = db.query(Concept).join(Topic).join(Subject).filter(Subject.syllabus_version_id == version.id).count()
             total_lessons = db.query(Lesson).join(LearningModule).join(Concept).join(Topic).join(Subject).filter(Subject.syllabus_version_id == version.id).count()
 
@@ -531,7 +545,7 @@ class SyllabusCurriculumActivationService:
                 curriculum_status="active",
                 is_curriculum_active=True,
                 subjects_activated=len(existing_version_subjects),
-                modules_activated=total_topics,
+                modules_activated=total_runtime_topics,
                 topics_activated=total_concepts,
                 lessons_activated=total_lessons,
                 activated_at=now_time,
@@ -599,84 +613,29 @@ class SyllabusCurriculumActivationService:
             topics_activated = 0
             lessons_activated = 0
 
-            # Idempotency / Reactivation check: check if runtime entities already exist for this version
             existing_subjects = (
                 db.query(Subject)
                 .filter(
                     Subject.syllabus_version_id == version.id,
                     Subject.user_id == user_id,
                 )
+                .order_by(Subject.order_index.asc())
                 .all()
             )
 
-            if existing_subjects:
-                # Idempotent reactivation / retry: reactivate existing subjects, topics, modules, concepts and student links
-                subj_ids = [s.id for s in existing_subjects]
-                for idx, s in enumerate(existing_subjects):
-                    s.is_active = True
-                    s.education_level = canonical_level
-                    if idx < len(active_subjects):
-                        d_subj = active_subjects[idx]
-                        s.name = d_subj.name
-                        if d_subj.evidence_text:
-                            s.description = d_subj.evidence_text
-
-                # Ensure active student enrollment links with synchronized canonical academic level
-                for s in existing_subjects:
-                    enrollment = (
-                        db.query(StudentSubject)
-                        .filter(
-                            StudentSubject.user_id == user_id,
-                            StudentSubject.subject_id == s.id,
-                        )
-                        .first()
-                    )
-                    if enrollment:
-                        enrollment.is_active = True
-                        enrollment.academic_level = canonical_level
-                    else:
-                        new_enrollment = StudentSubject(
-                            user_id=user_id,
-                            subject_id=s.id,
-                            academic_level=canonical_level,
-                            enrollment_source="curriculum_prescribed",
-                            is_active=True,
-                        )
-                        db.add(new_enrollment)
-
-                db.query(Topic).filter(
-                    Topic.subject_id.in_(subj_ids),
-                ).update({"is_active": True}, synchronize_session="fetch")
-
-                topic_ids = [t.id for t in db.query(Topic.id).filter(Topic.subject_id.in_(subj_ids)).all()]
-                if topic_ids:
-                    db.query(Concept).filter(
-                        Concept.topic_id.in_(topic_ids),
-                    ).update({"is_active": True}, synchronize_session="fetch")
-
-                    concept_ids = [c.id for c in db.query(Concept.id).filter(Concept.topic_id.in_(topic_ids)).all()]
-                    if concept_ids:
-                        db.query(LearningModule).filter(
-                            LearningModule.concept_id.in_(concept_ids),
-                        ).update({"is_active": True}, synchronize_session="fetch")
-
-                        lm_ids = [lm.id for lm in db.query(LearningModule.id).filter(LearningModule.concept_id.in_(concept_ids)).all()]
-                        if lm_ids:
-                            db.query(Lesson).filter(
-                                Lesson.module_id.in_(lm_ids),
-                            ).update({"is_active": True}, synchronize_session="fetch")
-
-                subjects_activated = len(existing_subjects)
-                modules_activated = len(topic_ids)
-                topics_activated = db.query(Concept).filter(Concept.topic_id.in_(topic_ids)).count() if topic_ids else 0
-                lessons_activated = topics_activated
-            else:
-                for d_subj in active_subjects:
-                    subj_id = str(uuid.uuid4())
+            # Synchronize each active draft subject
+            for idx, d_subj in enumerate(active_subjects):
+                if idx < len(existing_subjects):
+                    runtime_subject = existing_subjects[idx]
+                    runtime_subject.name = d_subj.name
+                    runtime_subject.description = d_subj.evidence_text or f"Curriculum subject extracted from {syllabus.title} (v{version.version_number})"
+                    runtime_subject.education_level = canonical_level
+                    runtime_subject.academic_domain = resolved_ctx.academic_domain or syllabus.program_degree or "General"
+                    runtime_subject.is_active = True
+                else:
                     subj_slug = _generate_unique_slug(db, Subject, d_subj.name, prefix=d_subj.code or "subj")
-
                     runtime_subject = Subject(
-                        id=subj_id,
+                        id=str(uuid.uuid4()),
                         curriculum_id=None,
                         name=d_subj.name,
                         slug=subj_slug,
@@ -691,60 +650,77 @@ class SyllabusCurriculumActivationService:
                         user_id=user_id,
                         syllabus_version_id=version.id,
                         content_source="syllabus_extracted",
-                        order_index=d_subj.sort_order or subjects_activated,
+                        order_index=d_subj.sort_order if d_subj.sort_order is not None else idx,
                         is_active=True,
                     )
                     db.add(runtime_subject)
                     db.flush()
-                    subjects_activated += 1
 
-                    # Enroll student via StudentSubject
-                    existing_enrollment = (
-                        db.query(StudentSubject)
-                        .filter(
-                            StudentSubject.user_id == user_id,
-                            StudentSubject.subject_id == subj_id,
-                        )
-                        .first()
+                subjects_activated += 1
+                subj_id = runtime_subject.id
+
+                # Ensure active student enrollment link
+                enrollment = (
+                    db.query(StudentSubject)
+                    .filter(
+                        StudentSubject.user_id == user_id,
+                        StudentSubject.subject_id == subj_id,
                     )
-                    if not existing_enrollment:
-                        new_enrollment = StudentSubject(
-                            user_id=user_id,
-                            subject_id=subj_id,
-                            academic_level=canonical_level,
-                            enrollment_source="curriculum_prescribed",
-                            is_active=True,
-                        )
-                        db.add(new_enrollment)
-                        db.flush()
-                    else:
-                        existing_enrollment.is_active = True
-                        existing_enrollment.academic_level = canonical_level
+                    .first()
+                )
+                if enrollment:
+                    enrollment.is_active = True
+                    enrollment.academic_level = canonical_level
+                else:
+                    new_enrollment = StudentSubject(
+                        user_id=user_id,
+                        subject_id=subj_id,
+                        academic_level=canonical_level,
+                        enrollment_source="curriculum_prescribed",
+                        is_active=True,
+                    )
+                    db.add(new_enrollment)
+                    db.flush()
 
-                # Iterate non-excluded draft modules -> runtime Topics
+                # Clean up old runtime child entities (topics, concepts, learning_modules, lessons)
+                # to strictly eliminate any stale OCR fragments or superseded topics
+                old_topic_ids = [t.id for t in db.query(Topic.id).filter(Topic.subject_id == subj_id).all()]
+                if old_topic_ids:
+                    old_concept_ids = [c.id for c in db.query(Concept.id).filter(Concept.topic_id.in_(old_topic_ids)).all()]
+                    if old_concept_ids:
+                        old_lm_ids = [lm.id for lm in db.query(LearningModule.id).filter(LearningModule.concept_id.in_(old_concept_ids)).all()]
+                        if old_lm_ids:
+                            db.query(Lesson).filter(Lesson.module_id.in_(old_lm_ids)).delete(synchronize_session="fetch")
+                            db.query(LearningModule).filter(LearningModule.id.in_(old_lm_ids)).delete(synchronize_session="fetch")
+                        db.query(Concept).filter(Concept.id.in_(old_concept_ids)).delete(synchronize_session="fetch")
+                    db.query(Topic).filter(Topic.id.in_(old_topic_ids)).delete(synchronize_session="fetch")
+                    db.flush()
+
+                # Build fresh runtime hierarchy from draft modules and topics
                 for d_mod in d_subj.modules:
                     if getattr(d_mod, "is_excluded", False):
                         continue
 
                     mod_label = d_mod.original_label or d_mod.display_label or "Unit"
-                    mod_full_name = f"{mod_label} - {d_mod.title}".strip(" -")
-                    mod_slug = _generate_unique_slug(db, Topic, mod_full_name)
+                    if d_mod.title and mod_label.lower() not in d_mod.title.lower():
+                        mod_full_name = f"{mod_label} - {d_mod.title}".strip(" -")
+                    else:
+                        mod_full_name = d_mod.title or mod_label
 
                     runtime_topic = Topic(
                         id=str(uuid.uuid4()),
                         subject_id=subj_id,
                         content_source="syllabus_extracted",
                         name=mod_full_name,
-                        slug=mod_slug,
+                        slug=_generate_unique_slug(db, Topic, mod_full_name),
                         description=d_mod.evidence_text or f"Module extracted from {d_subj.name}",
-                        order_index=d_mod.sort_order or modules_activated,
+                        order_index=d_mod.sort_order if d_mod.sort_order is not None else modules_activated,
                         is_active=True,
                     )
                     db.add(runtime_topic)
                     db.flush()
                     modules_activated += 1
 
-                    # Iterate non-excluded draft topics -> runtime Concepts, LearningModules, Lessons
                     for d_top in d_mod.topics:
                         if getattr(d_top, "is_excluded", False):
                             continue
@@ -754,39 +730,41 @@ class SyllabusCurriculumActivationService:
                             continue
 
                         top_name = d_top.lesson_candidate_title or d_top.title
-                        concept_slug = _generate_unique_slug(db, Concept, top_name)
+                        is_lab = any(
+                            k in top_name.lower() or k in mod_full_name.lower()
+                            for k in ["lab", "practical", "experiment", "implementation"]
+                        )
 
                         runtime_concept = Concept(
                             id=str(uuid.uuid4()),
                             topic_id=runtime_topic.id,
                             content_source="syllabus_extracted",
                             name=top_name,
-                            slug=concept_slug,
+                            slug=_generate_unique_slug(db, Concept, top_name),
                             summary=d_top.evidence_text or f"Concept extracted from {syllabus.title}",
                             short_description=f"Curriculum candidate: {top_name}",
                             difficulty="intermediate",
                             difficulty_level="intermediate",
-                            order_index=d_top.sort_order or topics_activated,
+                            order_index=d_top.sort_order if d_top.sort_order is not None else topics_activated,
                             is_active=True,
-                            has_simulation=False,
-                            has_visualization=False,
+                            has_simulation=True,
+                            has_visualization=True,
                             has_practice=True,
-                            has_lab=False,
+                            has_lab=is_lab,
                             has_mindmap=True,
-                            learning_modes=["learn", "ask", "practice", "notes"],
+                            learning_modes=["learn", "ask", "practice", "notes"] + (["lab"] if is_lab else []),
                         )
                         db.add(runtime_concept)
                         db.flush()
                         topics_activated += 1
 
                         # Structured LearningModule
-                        lm_slug = _generate_unique_slug(db, LearningModule, top_name)
                         runtime_lm = LearningModule(
                             id=str(uuid.uuid4()),
                             concept_id=runtime_concept.id,
                             content_source="syllabus_extracted",
                             title=top_name,
-                            slug=lm_slug,
+                            slug=_generate_unique_slug(db, LearningModule, top_name),
                             description=d_top.evidence_text or f"Structured module for {top_name}",
                             learning_objective=f"Understand and master concepts of {top_name} as outlined in syllabus.",
                             difficulty_level="intermediate",
@@ -797,24 +775,27 @@ class SyllabusCurriculumActivationService:
                         db.add(runtime_lm)
                         db.flush()
 
-                        # If candidate lesson, create runtime Lesson
-                        if getattr(d_top, "is_lesson_candidate", True):
-                            lesson_slug = _generate_unique_slug(db, Lesson, top_name)
-                            citation = f"Source: {syllabus.title}, Page {d_top.source_page or 1}"
-                            runtime_lesson = Lesson(
-                                id=str(uuid.uuid4()),
-                                module_id=runtime_lm.id,
-                                content_source="syllabus_extracted",
-                                title=top_name,
-                                slug=lesson_slug,
-                                content_type="explanation",
-                                content=f"# {top_name}\n\n*{citation}*\n\nEvidence from Syllabus:\n> {d_top.evidence_text or 'Extracted topic from verified syllabus.'}\n\n*Lesson instruction and interactive concepts will be developed during learning sessions.*",
-                                order_index=0,
-                                estimated_minutes=15,
-                                is_active=True,
-                            )
-                            db.add(runtime_lesson)
-                            lessons_activated += 1
+                        # Lesson
+                        citation = f"Source: {syllabus.title}, Page {d_top.source_page or 1}"
+                        runtime_lesson = Lesson(
+                            id=str(uuid.uuid4()),
+                            module_id=runtime_lm.id,
+                            content_source="syllabus_extracted",
+                            title=top_name,
+                            slug=_generate_unique_slug(db, Lesson, top_name),
+                            content_type="explanation",
+                            content=f"# {top_name}\n\n*{citation}*\n\nEvidence from Syllabus:\n> {d_top.evidence_text or 'Extracted topic from verified syllabus.'}\n\n*Lesson instruction and interactive concepts will be developed during learning sessions.*",
+                            order_index=0,
+                            estimated_minutes=15,
+                            is_active=True,
+                        )
+                        db.add(runtime_lesson)
+                        lessons_activated += 1
+
+            # Deactivate any excess subjects beyond active_subjects
+            if len(existing_subjects) > len(active_subjects):
+                for extra_subj in existing_subjects[len(active_subjects):]:
+                    extra_subj.is_active = False
 
             # Step C: Finalize Statuses
             now_dt = datetime.now(timezone.utc)

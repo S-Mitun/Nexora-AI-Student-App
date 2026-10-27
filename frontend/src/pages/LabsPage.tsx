@@ -17,6 +17,7 @@ import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
 import { useAcademicContext } from '../context/AcademicContext';
 import { useSyllabus } from '../context/SyllabusContext';
+import { apiService } from '../services/api';
 
 interface LabTrack {
   id: string;
@@ -63,22 +64,114 @@ const ALL_LAB_TRACKS: LabTrack[] = [
     activeLessonLink: '/learn?q=Operating%20Systems%20Deadlock',
     activeLessonTitle: 'Deadlock Condition Model',
   },
+  {
+    id: 'track-algorithms',
+    title: 'Algorithms & Intelligent Systems Lab',
+    description:
+      'Divide-and-conquer bisections, greedy path optimizations, dynamic programming lattices, and state-space search.',
+    applicableTiers: ['undergraduate', 'postgraduate'],
+    icon: Layers,
+    status: 'In Development',
+    activeLessonLink: '/learn?q=Binary%20Search',
+    activeLessonTitle: 'Algorithm Analysis & Search Visualizer',
+  },
 ];
 
 export const LabsPage: React.FC = () => {
   const { academicContext, enrolledSubjects } = useAcademicContext();
-  const { hasSyllabus, isCurriculumActive, hasDraft } = useSyllabus();
+  const { hasSyllabus, isCurriculumActive, syllabusState, hasDraft } = useSyllabus();
   const currentTier = academicContext?.academic_level;
   const displayCategory = academicContext?.education_category || currentTier;
 
-  // Filter lab tracks that genuinely match the student's active enrolled subjects
+  const [experiments, setExperiments] = React.useState<Array<{
+    id: string;
+    title: string;
+    moduleName: string;
+    subjectName: string;
+    subjectSlug: string;
+    conceptSlug: string;
+    targetUrl: string;
+  }>>([]);
+  const [loadingExperiments, setLoadingExperiments] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!isCurriculumActive || !enrolledSubjects || enrolledSubjects.length === 0) {
+      setExperiments([]);
+      setLoadingExperiments(false);
+      return;
+    }
+    let isMounted = true;
+    setLoadingExperiments(true);
+
+    Promise.all(
+      enrolledSubjects.map((s) => apiService.getSubject(s.slug).catch(() => null))
+    )
+      .then((details) => {
+        if (!isMounted) return;
+        const exps: Array<{
+          id: string;
+          title: string;
+          moduleName: string;
+          subjectName: string;
+          subjectSlug: string;
+          conceptSlug: string;
+          targetUrl: string;
+        }> = [];
+        for (const det of details) {
+          if (!det || !det.topics) continue;
+          for (const top of det.topics) {
+            const isLabModule =
+              top.name.toLowerCase().includes('lab') ||
+              top.name.toLowerCase().includes('practical') ||
+              top.name.toLowerCase().includes('experiment');
+
+            if (top.concepts) {
+              for (const c of top.concepts) {
+                const isExpConcept =
+                  isLabModule ||
+                  Boolean(c.has_lab) ||
+                  c.name.toLowerCase().startsWith('implementation') ||
+                  c.name.toLowerCase().startsWith('study of') ||
+                  c.name.toLowerCase().includes('experiment');
+
+                if (isExpConcept) {
+                  exps.push({
+                    id: c.id,
+                    title: c.name,
+                    moduleName: top.name,
+                    subjectName: det.name,
+                    subjectSlug: det.slug,
+                    conceptSlug: c.slug,
+                    targetUrl: `/learn?q=${encodeURIComponent(c.name)}`,
+                  });
+                }
+              }
+            }
+          }
+        }
+        setExperiments(exps);
+      })
+      .catch(() => {
+        if (isMounted) setExperiments([]);
+      })
+      .finally(() => {
+        if (isMounted) setLoadingExperiments(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [enrolledSubjects, isCurriculumActive, syllabusState?.version_id]);
+
+  // Filter conceptual lab tracks that match the student's active enrolled subjects
   const applicableTracks = currentTier && enrolledSubjects && enrolledSubjects.length > 0 && isCurriculumActive
     ? ALL_LAB_TRACKS.filter((track) => {
         const matchesTier = track.applicableTiers.some((tier) => tier === currentTier || tier === displayCategory);
         if (!matchesTier) return false;
-        // Verify that at least one enrolled subject genuinely relates to this lab track domain
         const trackKeywords =
-          track.id === 'track-systems'
+          track.id === 'track-algorithms'
+            ? ['algorithm', 'artificial intelligence', 'data structure', 'machine learning', 'computing', 'design technique']
+            : track.id === 'track-systems'
             ? ['operating system', 'concurrency', 'computer system', 'distributed system', 'cache']
             : track.id === 'track-physics'
             ? ['physics', 'kinematics', 'mechanics', 'wave']
@@ -88,6 +181,8 @@ export const LabsPage: React.FC = () => {
         );
       })
     : [];
+
+  const hasAnyLabs = experiments.length > 0 || applicableTracks.length > 0;
 
   return (
     <div className="space-y-8 animate-fadeIn max-w-5xl mx-auto">
@@ -112,6 +207,61 @@ export const LabsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Real Syllabus-Prescribed Laboratory Practicals */}
+      {isCurriculumActive && experiments.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-1.5 mb-1">
+                <FlaskConical className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs font-semibold text-cyan-400 uppercase tracking-wider">
+                  Verified Syllabus Practicals
+                </span>
+              </div>
+              <h2 className="text-xl font-bold text-white tracking-tight">
+                Prescribed Laboratory Practicals &amp; Experiments
+              </h2>
+              <p className="text-xs text-nexora-muted">
+                Mandatory lab experiments and programming practicals directly extracted from your active curriculum.
+              </p>
+            </div>
+            <Badge variant="primary" size="sm">
+              {experiments.length} Active Practicals
+            </Badge>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {experiments.map((exp) => (
+              <Card key={exp.id} className="border-nexora-border/80 flex flex-col justify-between hover:border-cyan-500/40 transition-colors">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <Badge variant="accent" size="sm">
+                      Lab Practical
+                    </Badge>
+                    <span className="text-[11px] font-medium text-nexora-muted truncate max-w-[140px]">
+                      {exp.subjectName}
+                    </span>
+                  </div>
+                  <CardTitle className="text-sm font-bold text-white line-clamp-2">
+                    {exp.title}
+                  </CardTitle>
+                  <CardDescription className="text-xs text-nexora-subtext mt-1 line-clamp-1">
+                    {exp.moduleName}
+                  </CardDescription>
+                </CardHeader>
+                <CardFooter className="pt-3 border-t border-nexora-border/40">
+                  <Link to={exp.targetUrl} className="w-full">
+                    <Button variant="outline" size="sm" className="w-full" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                      Launch Virtual Lab
+                    </Button>
+                  </Link>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Blueprint Info Banner */}
       <div className="p-6 rounded-2xl bg-nexora-surface border border-nexora-border/80 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-start gap-4">
@@ -123,8 +273,8 @@ export const LabsPage: React.FC = () => {
               Interactive Lab Blueprint
             </h3>
             <p className="text-xs text-nexora-subtext leading-relaxed max-w-2xl">
-              Virtual laboratory simulation environments are scheduled for curriculum activation in Prompt 20.
-              Active visual models are accessible directly within individual concept lessons.
+              Virtual laboratory simulation environments and parameter-tuning models are integrated with your verified syllabus.
+              Interactive simulations are accessible directly within individual concept lessons.
             </p>
           </div>
         </div>
@@ -136,7 +286,7 @@ export const LabsPage: React.FC = () => {
       </div>
 
       {/* Context-Aware Content or Honest Empty State */}
-      {applicableTracks.length === 0 ? (
+      {!hasAnyLabs ? (
         <Card className="border-nexora-border/80 p-8 text-center">
           <EmptyState
             icon={<FlaskConical className="w-10 h-10 text-nexora-muted mx-auto" />}
@@ -173,12 +323,12 @@ export const LabsPage: React.FC = () => {
             }
           />
         </Card>
-      ) : (
+      ) : applicableTracks.length > 0 ? (
         <div className="space-y-4">
           <div>
-            <h2 className="text-lg font-bold text-white tracking-tight">Curriculum Lab Tracks</h2>
+            <h2 className="text-lg font-bold text-white tracking-tight">Interactive Conceptual Simulations</h2>
             <p className="text-xs text-nexora-muted">
-              Practical laboratories aligned with your active academic curriculum ({academicContext?.grade_level})
+              Virtual simulations and parameter-tuning models calibrated to your curriculum concepts ({academicContext?.grade_level})
             </p>
           </div>
 
@@ -226,7 +376,7 @@ export const LabsPage: React.FC = () => {
             })}
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 };

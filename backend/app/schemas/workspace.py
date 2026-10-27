@@ -50,6 +50,10 @@ class AcademicProgressOverview(BaseModel):
     completed_quizzes_count: int = 0
     enrolled_subjects_count: int = 0
     study_minutes: int = 0
+    study_hours: float = 0.0
+    formatted_time_spent: str = "0 mins"
+    overall_progression_time: str = "0 mins"
+    timezone: str = "IST (UTC+5:30)"
     subject_progress: List[SubjectProgressRead] = Field(default_factory=list)
 
 

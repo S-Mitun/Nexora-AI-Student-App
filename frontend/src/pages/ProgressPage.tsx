@@ -19,6 +19,7 @@ import { Link } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { useAcademicContext } from '../context/AcademicContext';
 import { AcademicProgressOverview, SubjectProgress } from '../types/learning';
+import { formatStudyTime } from '../utils/dateUtils';
 
 export const ProgressPage: React.FC = () => {
   const { academicContext, isReady } = useAcademicContext();
@@ -66,9 +67,11 @@ export const ProgressPage: React.FC = () => {
   const completedQuizzes = progressOverview?.completed_quizzes_count || 0;
   const activeCourses = progressOverview?.enrolled_subjects_count || 0;
   const overallPercent = progressOverview?.overall_progress_percent || 0;
+  const studyMinutes = progressOverview?.study_minutes || 0;
+  const timeSpent = formatStudyTime(studyMinutes);
   const subjectsBreakdown: SubjectProgress[] = progressOverview?.subject_progress || [];
 
-  const hasActivity = completedLessons > 0 || completedQuizzes > 0 || notesCount > 0;
+  const hasActivity = completedLessons > 0 || completedQuizzes > 0 || notesCount > 0 || studyMinutes > 0;
 
   return (
     <div className="space-y-8 animate-fadeIn max-w-5xl mx-auto">
@@ -88,7 +91,7 @@ export const ProgressPage: React.FC = () => {
             Learning Progress
           </h1>
           <p className="text-sm text-nexora-subtext mt-1">
-            Genuine academic metrics derived strictly from your active curriculum interactions and assessments.
+            Genuine academic metrics and progression time derived strictly from your active curriculum interactions.
           </p>
         </div>
 
@@ -105,44 +108,54 @@ export const ProgressPage: React.FC = () => {
         </div>
       ) : (
         <>
-          {/* 1. Overall Summary Metric Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <Card className="p-5 border-nexora-border/80">
-              <span className="text-xs font-semibold text-nexora-muted uppercase tracking-wider block mb-1">
-                Overall Completion
+          {/* 1. Overall Summary Metric Cards with Progression Time and Time Spent */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+            <Card className="p-4 border-nexora-border/80">
+              <span className="text-[11px] font-semibold text-nexora-muted uppercase tracking-wider block mb-1">
+                Overall Progression
               </span>
-              <div className="text-3xl font-extrabold text-white">{overallPercent}%</div>
-              <span className="text-[11px] text-nexora-accent font-medium mt-1 block">
-                {activeCourses > 0 ? `Across ${activeCourses} Enrolled Subjects` : 'No active courses'}
+              <div className="text-2xl sm:text-3xl font-extrabold text-white">{overallPercent}%</div>
+              <span className="text-[11px] text-nexora-accent font-medium mt-1 block truncate">
+                {activeCourses > 0 ? `${activeCourses} Enrolled Subjects` : 'No active courses'}
               </span>
             </Card>
 
-            <Card className="p-5 border-nexora-border/80">
-              <span className="text-xs font-semibold text-nexora-muted uppercase tracking-wider block mb-1">
+            <Card className="p-4 border-nexora-border/80">
+              <span className="text-[11px] font-semibold text-nexora-muted uppercase tracking-wider block mb-1">
+                Overall Time Spent
+              </span>
+              <div className="text-2xl sm:text-3xl font-extrabold text-white">{timeSpent.formatted}</div>
+              <span className="text-[11px] text-emerald-400 font-medium mt-1 block truncate" title="Tracked in Indian Standard Time (IST)">
+                Tracked in IST (Asia/Kolkata)
+              </span>
+            </Card>
+
+            <Card className="p-4 border-nexora-border/80">
+              <span className="text-[11px] font-semibold text-nexora-muted uppercase tracking-wider block mb-1">
                 Completed Lessons
               </span>
-              <div className="text-3xl font-extrabold text-white">{completedLessons}</div>
-              <span className="text-[11px] text-emerald-400 font-medium mt-1 block">
+              <div className="text-2xl sm:text-3xl font-extrabold text-white">{completedLessons}</div>
+              <span className="text-[11px] text-indigo-300 font-medium mt-1 block truncate">
                 {completedLessons > 0 ? 'Verified in curriculum' : 'None completed yet'}
               </span>
             </Card>
 
-            <Card className="p-5 border-nexora-border/80">
-              <span className="text-xs font-semibold text-nexora-muted uppercase tracking-wider block mb-1">
-                Practice Checks Taken
+            <Card className="p-4 border-nexora-border/80">
+              <span className="text-[11px] font-semibold text-nexora-muted uppercase tracking-wider block mb-1">
+                Practice Checks
               </span>
-              <div className="text-3xl font-extrabold text-white">{completedQuizzes}</div>
-              <span className="text-[11px] text-nexora-subtext font-medium mt-1 block">
-                {completedQuizzes > 0 ? `${completedQuizzes} assessments recorded` : 'No checks taken'}
+              <div className="text-2xl sm:text-3xl font-extrabold text-white">{completedQuizzes}</div>
+              <span className="text-[11px] text-nexora-subtext font-medium mt-1 block truncate">
+                {completedQuizzes > 0 ? `${completedQuizzes} recorded` : 'No checks taken'}
               </span>
             </Card>
 
-            <Card className="p-5 border-nexora-border/80">
-              <span className="text-xs font-semibold text-nexora-muted uppercase tracking-wider block mb-1">
-                Study Notes Added
+            <Card className="p-4 border-nexora-border/80 col-span-2 sm:col-span-1">
+              <span className="text-[11px] font-semibold text-nexora-muted uppercase tracking-wider block mb-1">
+                Study Notes
               </span>
-              <div className="text-3xl font-extrabold text-white">{notesCount}</div>
-              <span className="text-[11px] text-indigo-300 font-medium mt-1 block">
+              <div className="text-2xl sm:text-3xl font-extrabold text-white">{notesCount}</div>
+              <span className="text-[11px] text-purple-300 font-medium mt-1 block truncate">
                 {notesCount > 0 ? 'Personal references' : 'No notes created'}
               </span>
             </Card>

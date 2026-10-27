@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from typing import List, Optional, Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 from app.db.session import get_db
 from app.api.dependencies import get_optional_user, get_current_user
 from app.core.security import AuthenticatedUser
@@ -1053,10 +1053,57 @@ def get_recommendations(
     else:
         education_category = None
 
+    # Requirement 3: Strictly return empty list if student has no explicitly chosen interests
+    if not student_interests or len(student_interests) == 0:
+        return []
+
+    allowed_concepts = []
+    syllabus_title = active_syl.title if active_syl else None
+
+    # 1. Collect from active syllabus version
+    if active_ver:
+        if active_ver.subjects:
+            for s in active_ver.subjects:
+                if s.is_active:
+                    allowed_concepts.append(s.name)
+                    for t in s.topics:
+                        allowed_concepts.append(t.name)
+                        for c in t.concepts:
+                            allowed_concepts.append(c.name)
+        if active_ver.raw_extracted_json and isinstance(active_ver.raw_extracted_json, dict):
+            for u in active_ver.raw_extracted_json.get("units", []):
+                if u.get("title") or u.get("unit_title"):
+                    allowed_concepts.append(u.get("title") or u.get("unit_title"))
+                for top in u.get("topics", []):
+                    top_name = top.get("topic_name") or top.get("title") or (top if isinstance(top, str) else "")
+                    if top_name:
+                        allowed_concepts.append(str(top_name).strip())
+
+    # 2. Collect from runtime enrolled subjects
+    from app.models.learning import StudentSubject, Subject, Topic, Concept
+    enrolled = (
+        db.query(StudentSubject)
+        .options(joinedload(StudentSubject.subject).selectinload(Subject.topics).selectinload(Topic.concepts))
+        .filter(StudentSubject.user_id == current_user.id, StudentSubject.is_active == True)
+        .all()
+    )
+    for link in enrolled:
+        if link.subject and link.subject.is_active:
+            allowed_concepts.append(link.subject.name)
+            for t in link.subject.topics:
+                allowed_concepts.append(t.name)
+                for c in t.concepts:
+                    allowed_concepts.append(c.name)
+
+    if active_syl:
+        allowed_concepts.append(active_syl.title)
+
     return PersonalizationService.get_recommended_topics(
         student_interests=student_interests,
         favorite_subjects=favorite_subjects,
         education_category=education_category,
+        allowed_concepts=allowed_concepts if allowed_concepts else None,
+        syllabus_title=syllabus_title,
     )
 
 

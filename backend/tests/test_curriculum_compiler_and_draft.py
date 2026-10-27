@@ -716,7 +716,7 @@ def test_real_uploaded_syllabus_compilation_integration(db_session: Session, set
 
     assert result.compilation_status == "compiled"
     assert result.subject_count == 1
-    assert result.lesson_candidate_count >= 35
+    assert 15 <= result.lesson_candidate_count <= 28
     assert len(draft.references) >= 3
     assert result.outcome_count == 5
 
@@ -748,7 +748,7 @@ def test_real_uploaded_syllabus_compilation_integration(db_session: Session, set
 
     # Check lesson candidates
     total_candidates = sum(len(m.topics) for m in subj.modules)
-    assert total_candidates >= 35
+    assert 15 <= total_candidates <= 28
     for mod in subj.modules:
         for topic in mod.topics:
             assert topic.is_lesson_candidate is True

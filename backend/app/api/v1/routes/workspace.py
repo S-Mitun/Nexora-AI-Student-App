@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -436,8 +436,13 @@ def get_workspace_activity(
 
     activities = []
     now = datetime.utcnow()
+    ist_tz = timezone(timedelta(hours=5, minutes=30))
     for l in logs:
         read_obj = ActivityLogRead.model_validate(l)
+        dt_utc = l.created_at if (l.created_at and l.created_at.tzinfo) else l.created_at.replace(tzinfo=timezone.utc)
+        dt_ist = dt_utc.astimezone(ist_tz)
+        read_obj.created_at_ist = dt_ist.strftime("%d %b %Y, %I:%M %p IST")
+
         # Calculate human-friendly time_ago
         diff = (now - l.created_at.replace(tzinfo=None)).total_seconds()
         if diff < 60:
@@ -445,9 +450,9 @@ def get_workspace_activity(
         elif diff < 3600:
             read_obj.time_ago = f"{int(diff // 60)}m ago"
         elif diff < 86400:
-            read_obj.time_ago = f"{int(diff // 3600)}h ago"
+            read_obj.time_ago = f"{int(diff // 3600)}h ago (IST)"
         else:
-            read_obj.time_ago = f"{int(diff // 86400)}d ago"
+            read_obj.time_ago = dt_ist.strftime("%d %b %Y, %I:%M %p IST")
         activities.append(read_obj)
 
     return ActivityFeedResponse(
@@ -493,6 +498,9 @@ def record_workspace_activity(
     db.refresh(log_entry)
 
     read_obj = ActivityLogRead.model_validate(log_entry)
+    dt_utc = log_entry.created_at if (log_entry.created_at and log_entry.created_at.tzinfo) else log_entry.created_at.replace(tzinfo=timezone.utc)
+    dt_ist = dt_utc.astimezone(timezone(timedelta(hours=5, minutes=30)))
+    read_obj.created_at_ist = dt_ist.strftime("%d %b %Y, %I:%M %p IST")
     read_obj.time_ago = "Just now"
     return read_obj
 
@@ -594,7 +602,7 @@ def get_workspace_progress(
         else (min(100, completed_lessons_count * 10) if completed_lessons_count > 0 else 0)
     )
 
-    # Approximate study minutes from activity count
+    # Calculate account-specific progression time and overall time spent
     activity_count = (
         db.query(AcademicActivityLog)
         .filter(
@@ -603,7 +611,16 @@ def get_workspace_progress(
         )
         .count()
     )
-    study_minutes = activity_count * 15 + completed_lessons_count * 20
+    study_minutes = activity_count * 15 + completed_lessons_count * 20 + quiz_count * 10
+    study_hours = round(study_minutes / 60.0, 1)
+    if study_minutes < 60:
+        formatted_time = f"{study_minutes} mins"
+    else:
+        h = study_minutes // 60
+        m = study_minutes % 60
+        formatted_time = f"{h}h {m}m" if m > 0 else f"{h} hrs"
+
+    progression_time = f"{formatted_time} logged ({overall_percent}% curriculum progression)"
 
     return AcademicProgressOverview(
         academic_level=target_level,
@@ -612,5 +629,9 @@ def get_workspace_progress(
         completed_quizzes_count=quiz_count,
         enrolled_subjects_count=enrolled_count,
         study_minutes=study_minutes,
+        study_hours=study_hours,
+        formatted_time_spent=formatted_time,
+        overall_progression_time=progression_time,
+        timezone="IST (UTC+5:30)",
         subject_progress=subject_progress_list,
     )

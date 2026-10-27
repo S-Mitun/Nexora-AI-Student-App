@@ -402,6 +402,10 @@ export interface AcademicProgressOverview {
   completed_quizzes_count: number;
   enrolled_subjects_count: number;
   study_minutes: number;
+  study_hours?: number;
+  formatted_time_spent?: string;
+  overall_progression_time?: string;
+  timezone?: string;
   subject_progress: SubjectProgress[];
 }
 

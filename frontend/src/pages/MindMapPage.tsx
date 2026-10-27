@@ -29,7 +29,7 @@ import { AcademicContentRenderer } from '../components/common/AcademicContentRen
 
 export const MindMapPage: React.FC = () => {
   const { academicContext, enrolledSubjects } = useAcademicContext();
-  const { lifecycleState, loading: syllabusLoading } = useSyllabus();
+  const { lifecycleState, syllabusState, loading: syllabusLoading } = useSyllabus();
   const [availableSubjects, setAvailableSubjects] = useState<Subject[]>([]);
   const [selectedSubjectSlug, setSelectedSubjectSlug] = useState<string>('');
   const [subjectDetail, setSubjectDetail] = useState<SubjectDetail | null>(null);
@@ -75,7 +75,7 @@ export const MindMapPage: React.FC = () => {
 
     loadSubjects();
     return () => { isMounted = false; };
-  }, [enrolledSubjects, academicContext?.academic_level]);
+  }, [enrolledSubjects, academicContext?.academic_level, syllabusState?.version_id]);
 
   // 2. Fetch selected subject's full topic and concept tree
   useEffect(() => {

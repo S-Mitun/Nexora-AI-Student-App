@@ -33,7 +33,7 @@ import { useSyllabus } from '../context/SyllabusContext';
 
 export const LearnPage: React.FC = () => {
   const { profile } = useAuth();
-  const { hasSyllabus, isCurriculumActive, hasDraft, lifecycleState, loading: syllabusLoading } = useSyllabus();
+  const { hasSyllabus, isCurriculumActive, syllabusState, hasDraft, lifecycleState, loading: syllabusLoading } = useSyllabus();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryParam = searchParams.get('q');
   const navigate = useNavigate();
@@ -54,7 +54,7 @@ export const LearnPage: React.FC = () => {
       .catch(() => {
         setLoadingWorkspace(false);
       });
-  }, [isCurriculumActive, lifecycleState]);
+  }, [isCurriculumActive, lifecycleState, syllabusState?.version_id]);
 
   // Strictly derive registered courses from active syllabus & enrolled subjects
   const registeredCourses = (isCurriculumActive && workspace?.enrolled_subjects)
